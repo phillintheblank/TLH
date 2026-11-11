@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Laparoscopic Hysterectomy Simulator</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* layout: theatre monitor on the left, a narrow instruction rail on the right; one dark visual world, by choice */
+  color-scheme: dark;
+  --bg:#0a0f13; --panel:#111920; --panel-2:#17222a; --line:#22323c;
+  --text:#dfe8ec; --muted:#8799a4; --accent:#43c6c0; --accent-ink:#06211f;
+  --warn:#f0b24a; --crit:#ef5a56; --ok:#5fcf8e;
+  --display:"Barlow Condensed","Arial Narrow",sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--text);font:14px/1.45 var(--body);-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible,.pad:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+[hidden]{display:none!important}
+kbd{font:500 11px var(--mono);padding:1px 5px;border:1px solid var(--line);border-radius:4px;color:var(--muted);background:var(--bg)}
+#app{height:100%;display:grid;grid-template-rows:auto minmax(0,1fr)}
+.bar{display:flex;align-items:center;justify-content:space-between;gap:12px 20px;flex-wrap:wrap;padding:9px 16px;border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:baseline;gap:12px;min-width:0}
+.brand h1{margin:0;font:600 22px/1 var(--display);letter-spacing:.04em;text-transform:uppercase}
+.brand p{margin:0;color:var(--muted);font-size:13px}
+.bar-ctl{display:flex;gap:6px;flex-wrap:wrap}
+.tog,.ghost{background:transparent;border:1px solid var(--line);border-radius:6px;padding:5px 10px;font-size:13px;color:var(--muted)}
+.tog.on{color:var(--text);border-color:var(--accent);box-shadow:inset 0 -2px 0 var(--accent)}
+.ghost:hover,.tog:hover{color:var(--text);border-color:#35505e}
+main{display:grid;grid-template-columns:minmax(0,1fr) 352px;min-height:0}
+.stage{display:flex;flex-direction:column;gap:10px;min-width:0;min-height:0;padding:12px 0 12px 16px}
+.view{position:relative;flex:1;min-height:260px;border-radius:8px;overflow:hidden;background:#050101;border:1px solid #000;cursor:none;touch-action:none;user-select:none}
+.view canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+#haze{position:absolute;inset:0;pointer-events:none;opacity:0;background:radial-gradient(ellipse at 50% 55%,rgba(226,226,232,.9),rgba(196,196,206,.55))}
+.vignette{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,rgba(0,0,0,0) 52%,rgba(0,0,0,.62) 100%)}
+.hud{position:absolute;pointer-events:none;display:flex;flex-direction:column;gap:4px;font:500 12px/1.2 var(--mono);letter-spacing:.03em}
+.hud.tl{left:12px;top:10px}.hud.tr{right:12px;top:10px;align-items:flex-end}
+.hudline{background:rgba(6,9,11,.62);padding:4px 8px;border-radius:4px;color:#cfe0e6;white-space:pre}
+.hudline.hot{background:rgba(240,178,74,.92);color:#221402}
+.hudline.safe{color:var(--ok)}.hudline.warn{color:var(--warn)}.hudline.crit{color:#fff;background:rgba(190,40,36,.9)}
+.hud .lab{color:var(--muted);margin-right:8px}
+.toast{position:absolute;left:50%;bottom:18px;transform:translate(-50%,8px);max-width:min(560px,86%);padding:8px 14px;border-radius:6px;background:rgba(8,12,15,.88);border-left:3px solid var(--accent);font-size:13.5px;opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;text-wrap:balance}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.toast.ok{border-color:var(--ok)}.toast.tech,.toast.near{border-color:var(--warn)}.toast.bleed,.toast.injury{border-color:var(--crit);background:rgba(70,10,10,.92)}
+.modal{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(4,6,8,.62);cursor:default;overflow:auto}
+.sheet{width:min(680px,100%);max-height:100%;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:22px 24px}
+.sheet h2{margin:0 0 4px;font:600 28px/1.05 var(--display);letter-spacing:.03em;text-transform:uppercase;text-wrap:balance}
+.sheet .sub{margin:0 0 14px;color:var(--muted)}
+.sheet h3{margin:16px 0 6px;font:600 13px var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+.sheet p{margin:0 0 8px;max-width:64ch}
+.keys{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:5px 18px;margin:0;padding:0;list-style:none;font-size:13.5px}
+.keys li{display:flex;gap:8px;align-items:baseline}.keys b{font-weight:500;color:var(--muted);min-width:98px;flex:none}
+.cta{margin-top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.primary{background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:10px 18px;font-weight:600}
+.primary:hover{filter:brightness(1.08)}
+.fine{color:var(--muted);font-size:12.5px;max-width:60ch;margin:12px 0 0}
+.tray{display:flex;gap:10px 18px;align-items:stretch;flex-wrap:wrap}
+.tools{display:flex;flex-direction:column;justify-content:center;gap:8px;flex:1;min-width:min(100%,300px)}
+.grp{display:flex;gap:6px;align-items:stretch;flex-wrap:wrap}
+.hand{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 12px;text-align:left;min-width:124px;line-height:1.25}
+.hand small{display:block;color:var(--muted);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase}
+.hand b{font-weight:600}
+.hand.on{border-color:var(--accent);background:var(--panel-2);box-shadow:inset 3px 0 0 var(--accent)}
+.inst{display:flex;align-items:center;gap:7px;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 10px}
+.inst.on{border-color:var(--accent);background:var(--panel-2)}
+.inst:hover,.hand:hover{border-color:#35505e}
+.act{background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:6px 12px;display:flex;gap:7px;align-items:center}
+.act:disabled{opacity:.4;cursor:default}
+.side{overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.stepcard{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:8px;padding:14px 16px}
+.eyebrow{display:flex;justify-content:space-between;gap:8px;font:500 11.5px var(--mono);letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.stepcard h2{margin:6px 0 8px;font:600 22px/1.12 var(--display);letter-spacing:.02em;text-wrap:balance}
+.stepcard ol{margin:0 0 10px;padding-left:18px}.stepcard ol li{margin:0 0 5px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.chip{font-size:12.5px;padding:3px 8px 3px 22px;border-radius:99px;border:1px solid var(--line);position:relative;color:var(--muted)}
+.chip::before{content:"";position:absolute;left:8px;top:50%;width:8px;height:8px;margin-top:-4px;border-radius:50%;border:1.5px solid currentColor}
+.chip.ok{color:var(--ok);border-color:rgba(95,207,142,.4)}.chip.ok::before{background:currentColor}
+.chip.no{color:var(--warn);border-color:rgba(240,178,74,.4)}
+.chip.crit{color:#fff;background:rgba(190,40,36,.85);border-color:transparent}.chip.crit::before{background:#fff;border-color:#fff}
+.mini{background:transparent;border:1px solid var(--line);border-radius:6px;padding:4px 9px;font-size:12.5px;color:var(--text)}
+.mini:hover{border-color:var(--accent)}
+.prog{display:flex;align-items:center;gap:10px;margin:8px 0}
+.prog .track{flex:1;height:5px;border-radius:3px;background:var(--panel-2);overflow:hidden}
+.prog i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+.prog span{font:500 12px var(--mono);color:var(--muted);white-space:nowrap}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
+.pearl{margin:10px 0 0;padding-top:10px;border-top:1px solid var(--line);color:#b9c8cf;font-size:13px}
+.pearl b{display:block;font:500 11.5px var(--mono);letter-spacing:.05em;text-transform:uppercase;color:var(--warn);margin-bottom:2px}
+.block h3,.manip h3{margin:0 0 8px;font:600 12px var(--body);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+.manip{display:flex;gap:12px;align-items:stretch}
+.manip h3{margin:0}
+.manip.off{opacity:.38;pointer-events:none}
+.pad{position:relative;flex:none;width:112px;height:112px;border-radius:8px;background:radial-gradient(circle at center,var(--panel-2),var(--panel));border:1px solid var(--line);touch-action:none;cursor:grab}
+.pad::before,.pad::after{content:"";position:absolute;background:var(--line)}
+.pad::before{left:50%;top:8px;bottom:8px;width:1px}.pad::after{top:50%;left:8px;right:8px;height:1px}
+.pad span{position:absolute;font:500 10px var(--mono);letter-spacing:.04em;color:var(--muted);text-transform:uppercase}
+.pad .n{top:4px;left:50%;transform:translateX(-50%)}.pad .s{bottom:4px;left:50%;transform:translateX(-50%)}
+.pad .w{left:5px;top:50%;transform:translateY(-140%)}.pad .e{right:5px;top:50%;transform:translateY(-140%)}
+#knob{position:absolute;width:20px;height:20px;margin:-10px 0 0 -10px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 4px rgba(67,198,192,.2);left:50%;top:50%;z-index:1}
+.manip-r{display:flex;flex-direction:column;justify-content:space-between;gap:6px;width:204px;min-width:0}
+.manip-r label{display:block;font-size:12.5px;color:var(--muted)}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.presets{display:flex;flex-wrap:wrap;gap:5px}
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px}
+.metrics div{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 8px}
+.metrics b{display:block;font:500 16px var(--mono);font-variant-numeric:tabular-nums}
+.metrics span{font-size:11px;color:var(--muted);line-height:1.2;display:block}
+.log{list-style:none;margin:0;padding:0;font-size:12.5px;display:flex;flex-direction:column;gap:4px}
+.log li{padding-left:10px;border-left:2px solid var(--line);color:#b9c8cf}
+.log time{font:500 11px var(--mono);color:var(--muted);margin-right:7px}
+.log .injury,.log .bleed{border-color:var(--crit)}.log .near,.log .tech{border-color:var(--warn)}.log .ok{border-color:var(--ok)}.log .none{border:0;padding:0;color:var(--muted)}
+.checklist h4{margin:10px 0 4px;font:500 11.5px var(--mono);letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.checklist ol{list-style:none;margin:0;padding:0}
+.checklist li{display:flex;gap:8px;align-items:center;padding:2.5px 0;color:var(--muted);font-size:13px}
+.checklist li i{flex:none;width:9px;height:9px;border-radius:50%;border:1.5px solid #3a505c}
+.checklist li.done{color:#9fb1ba}.checklist li.done i{background:var(--ok);border-color:var(--ok)}
+.checklist li.cur{color:var(--text);font-weight:600}.checklist li.cur i{border-color:var(--accent);box-shadow:0 0 0 3px rgba(67,198,192,.22)}
+.db-top{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:6px}
+.db-score{font:500 44px/1 var(--mono);font-variant-numeric:tabular-nums}.db-score small{font-size:15px;color:var(--muted)}
+.db-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:4px 22px}
+.row{display:flex;justify-content:space-between;gap:12px;padding:4px 0;border-bottom:1px solid var(--line);font-size:13.5px}
+.row b{font:500 13px var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.row.warn b{color:var(--warn)}.row.crit b{color:var(--crit)}.row.ok b{color:var(--ok)}
+.sheet ul{margin:0;padding-left:18px}.sheet ul .good{color:var(--ok)}
+.sheet .log{max-height:150px;overflow:auto}
+#nogl{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;color:var(--muted)}
+@media (max-width:940px){
+  html,body{height:auto}
+  #app{height:auto;display:block}
+  main{grid-template-columns:minmax(0,1fr)}
+  .stage{padding:12px 16px 0}
+  .view{flex:none;aspect-ratio:16/11;min-height:0}
+  .side{overflow:visible}
+  .brand p{display:none}
+}
+@media (max-width:520px){.manip-r{width:auto;flex:1}.metrics{grid-template-columns:repeat(2,1fr)}.hand{flex:1 1 124px}.hud{font-size:10.5px}#hudProx{display:none}}
+@media (prefers-reduced-motion:reduce){.toast,.prog i{transition:none}}
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="bar">
+    <div class="brand"><h1>TLH Simulator</h1><p>Total laparoscopic hysterectomy, bilateral salpingectomy</p></div>
+    <div class="bar-ctl">
+      <button type="button" id="btnGuide" class="tog" title="On-screen targets, hover names and ureter distance (G)">Guidance</button>
+      <button type="button" id="btnLabels" class="tog" title="Name the visible anatomy (L)">Labels</button>
+      <button type="button" id="btnSound" class="tog" title="Generator tones and alerts (M)">Sound</button>
+      <button type="button" id="btnRestart" class="ghost">Restart case</button>
+    </div>
+  </header>
+  <main>
+    <section class="stage">
+      <div id="view" class="view">
+        <canvas id="gl"></canvas>
+        <div id="haze"></div>
+        <div class="vignette"></div>
+        <canvas id="ov"></canvas>
+        <div class="hud tl"><div class="hudline" id="hudDev">R  BIPOLAR  READY</div><div class="hudline" id="hudProx" hidden></div></div>
+        <div class="hud tr">
+          <div class="hudline"><span class="lab">TIME</span><span id="hudT">0:00</span></div>
+          <div class="hudline"><span class="lab">EBL</span><span id="hudEBL">0 mL</span></div>
+          <div class="hudline"><span class="lab">CO2</span><span id="hudP">15 mmHg</span></div>
+        </div>
+        <div id="toast" class="toast" role="status" aria-live="polite"></div>
+        <div id="nogl" hidden>This simulator needs WebGL, which is not available in this browser.</div>
+        <div id="startCard" class="modal">
+          <div class="sheet">
+            <h2>Total laparoscopic hysterectomy</h2>
+            <p class="sub">With bilateral salpingectomy. Ovaries conserved.</p>
+            <p>46-year-old with heavy menstrual bleeding and fibroids after failed medical management. Mobile 10-week uterus, no previous abdominal surgery.</p>
+            <p>She is in lithotomy and Trendelenburg with a uterine manipulator and colpotomy cup in place. 10 mm umbilical scope, two 5 mm lateral ports, pneumoperitoneum at 15 mmHg. You are looking toward the pelvis: her right is on the right of the screen.</p>
+            <h3>Controls</h3>
+            <ul class="keys">
+              <li><b>Move mouse</b><span>Steers the active instrument</span></li>
+              <li><b>Click / hold</b><span>Grasp, seal, cut with the hook, aspirate, place a bite</span></li>
+              <li><b>Right-click or C</b><span>Fire the bipolar cut blade</span></li>
+              <li><b>Space or X</b><span>Switch hands; the other hand holds its position</span></li>
+              <li><b>1 to 5</b><span>Change the instrument in the active hand</span></li>
+              <li><b>W A S D, Q E</b><span>Uterine manipulator: tilt, deviate, push the cup</span></li>
+              <li><b>Scroll, arrows</b><span>Advance and aim the scope</span></li>
+              <li><b>G, L, M</b><span>Guidance, anatomy labels, sound</span></li>
+            </ul>
+            <div class="cta"><button type="button" class="primary" id="btnBegin">Begin case</button><span class="fine" style="margin:0">21 steps, about 10 to 15 minutes</span></div>
+            <p class="fine">An educational rehearsal tool with simplified anatomy and tissue behaviour. It is not a validated assessment and does not replace supervised training.</p>
+          </div>
+        </div>
+        <div id="debrief" class="modal" hidden>
+          <div class="sheet">
+            <div class="db-top"><div><h2>Case debrief</h2><p class="sub" id="dbGrade" style="margin:0"></p></div><div class="db-score"><span id="dbScore">0</span><small> / 100</small></div></div>
+            <h3>Deductions</h3><ul id="dbNotes"></ul>
+            <h3>Efficiency</h3><div class="db-grid" id="dbA"></div>
+            <h3>Safety</h3><div class="db-grid" id="dbB"></div>
+            <h3>Technique</h3><div class="db-grid" id="dbC"></div>
+            <h3>Event log</h3><ul class="log" id="dbLog"></ul>
+            <div class="cta"><button type="button" class="primary" id="dbRestart">Run the case again</button><button type="button" class="ghost" id="dbClose">Look at the field</button></div>
+            <p class="fine">The score is a training aid built from this simulator's own rules, not a validated competency measure.</p>
+          </div>
+        </div>
+      </div>
+      <div class="tray">
+        <div class="manip" id="manip">
+          <div class="pad" id="pad" tabindex="0" aria-label="Uterine manipulator: drag to tilt and deviate the uterus" title="Drag to tilt and deviate the uterus (W A S D)">
+            <span class="n">Antevert</span><span class="s">Retrovert</span><span class="w">Pt L</span><span class="e">Pt R</span><div id="knob"></div>
+          </div>
+          <div class="manip-r">
+            <h3 id="manipNote">Uterine manipulator</h3>
+            <label for="push">Push cup cephalad <kbd>Q</kbd> <kbd>E</kbd><input type="range" id="push" min="0" max="100" value="0"></label>
+            <div class="presets">
+              <button type="button" class="mini" data-pose='{"yaw":0,"pitch":0.17,"push":0}'>Neutral</button>
+              <button type="button" class="mini" data-pose='{"yaw":-0.5}'>Expose right</button>
+              <button type="button" class="mini" data-pose='{"yaw":0.5}'>Expose left</button>
+              <button type="button" class="mini" data-pose='{"pitch":0.85}'>Antevert</button>
+            </div>
+          </div>
+        </div>
+        <div class="tools">
+          <div class="grp">
+            <button type="button" class="hand" id="handL"><small>Left hand</small><b>Grasper</b></button>
+            <button type="button" class="hand on" id="handR"><small>Right hand</small><b>Bipolar</b></button>
+            <button type="button" class="act" id="btnSwitch" title="Switch the active hand">Switch <kbd>Space</kbd></button>
+            <button type="button" class="act" id="btnCut" title="Fire the bipolar cut blade (right-click)">Cut blade <kbd>C</kbd></button>
+          </div>
+          <div class="grp" id="insts"></div>
+        </div>
+      </div>
+    </section>
+    <aside class="side" id="side">
+      <section class="stepcard">
+        <div class="eyebrow"><span id="stepNo">Step 1 of 21</span><span id="stepPhase"></span></div>
+        <h2 id="stepTitle"></h2>
+        <ol id="stepText"></ol>
+        <div class="chips" id="stepChips"></div>
+        <button type="button" class="mini" id="btnExpo" hidden>Set this exposure for me</button>
+        <div class="prog"><div class="track"><i id="stepBar"></i></div><span id="stepProg"></span></div>
+        <div class="btnrow"><button type="button" class="primary" id="stepBtn1" hidden></button><button type="button" class="primary" id="stepBtn2" hidden></button></div>
+        <p class="pearl"><b>Pearl</b><span id="stepPearl"></span></p>
+      </section>
+      <section class="block">
+        <h3>Running record</h3>
+        <div class="metrics">
+          <div><b id="mAct">0</b><span>Energy activations</span></div><div><b id="mEnergy">0 s</b><span>Energy time</span></div>
+          <div><b id="mInj">0</b><span>Injuries</span></div><div><b id="mNear">0</b><span>Near misses</span></div>
+        </div>
+        <ul class="log" id="log"></ul>
+      </section>
+      <section class="block checklist" id="checklist"><h3>Procedure</h3></section>
+    </aside>
+  </main>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function () {
+'use strict';
+if (!window.THREE) { document.getElementById('nogl').hidden = false; document.getElementById('nogl').textContent = 'The 3D library could not be loaded. Check the network connection and reload.'; return; }
+/*__JS__*/
+})();
+</script>
+</body>
+</html>

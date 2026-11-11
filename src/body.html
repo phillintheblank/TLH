@@ -1,0 +1,76 @@
+<div class="app" id="app">
+  <header class="bar">
+    <div class="brand">
+      <p class="eyebrow">Simulated case · TLH with bilateral salpingectomy</p>
+      <h1>Laparoscopic hysterectomy simulator</h1>
+    </div>
+    <dl class="vitals" aria-label="Anesthesia monitor">
+      <div class="v ecg"><dt>HR</dt><dd id="vHR">72</dd></div>
+      <div class="v art"><dt>NIBP</dt><dd id="vBP">118/72</dd></div>
+      <div class="v pleth"><dt>SpO₂</dt><dd id="vSP">99</dd></div>
+      <div class="v capno"><dt>EtCO₂</dt><dd id="vCO">34</dd></div>
+    </dl>
+    <dl class="meters" aria-label="Case meters">
+      <div><dt>Case time</dt><dd id="mTime">00:00</dd></div>
+      <div id="mEBLbox"><dt>Blood loss</dt><dd id="mEBL">0 mL</dd></div>
+    </dl>
+    <div class="toggles">
+      <button class="tg" id="btnGuide" type="button" aria-pressed="true">Guidance</button>
+      <button class="tg" id="btnSound" type="button" aria-pressed="true">Sound</button>
+    </div>
+  </header>
+
+  <div class="stage">
+    <section class="monitor" id="monitor" aria-label="Laparoscope monitor">
+      <div class="scopewrap" id="wrap">
+        <canvas id="cv" width="1000" height="1000" aria-label="Operative field. Move the mouse to steer the active instrument."></canvas>
+        <div class="osd tl" id="osdTL"></div>
+        <div class="osd tr" id="osdTR"></div>
+        <div class="osd bl" id="osdBL"></div>
+        <div class="osd br" id="osdBR"></div>
+        <div class="edge l" id="edgeL">Patient right</div>
+        <div class="edge r" id="edgeR">Patient left</div>
+        <div class="flash" id="flash"></div>
+        <div class="toast" id="toast" role="status" aria-live="polite"></div>
+        <div class="sheet" id="sheet" hidden></div>
+      </div>
+    </section>
+
+    <aside class="tower" aria-label="Guide and equipment">
+      <section class="unit guide" id="guide" aria-live="polite"></section>
+      <section class="unit steps">
+        <h2><span>Procedure</span><span id="stepsNote"></span></h2>
+        <ol id="steps"></ol>
+      </section>
+      <section class="unit insuff">
+        <h2><span>Insufflator</span><span id="insState">Standby</span></h2>
+        <div class="read">
+          <div><b id="insP">0</b><small>mmHg</small></div>
+          <div><b id="insF">0.0</b><small>L/min</small></div>
+          <div><b id="insV">0.0</b><small>L CO₂</small></div>
+        </div>
+      </section>
+      <section class="unit log">
+        <h2><span>Event log</span></h2>
+        <ul id="log"></ul>
+      </section>
+    </aside>
+
+    <section class="tray" aria-label="Instruments and controls">
+      <div class="tools" id="tools" role="group" aria-label="Instruments"></div>
+      <div class="pedals" role="group" aria-label="Instrument actions">
+        <button class="pedal a" id="pedA" type="button"><b id="pedAt">Seal</b><span id="pedAk">HOLD LEFT BUTTON</span></button>
+        <button class="pedal b" id="pedB" type="button"><b id="pedBt">Cut blade</b><span>RIGHT CLICK · SPACE</span></button>
+      </div>
+      <div class="manip" id="manip" role="group" aria-label="Uterine manipulator">
+        <span class="lab">Uterine manipulator</span>
+        <button class="u" type="button" data-m="u" title="Antevert (W)" aria-label="Antevert the uterus">▲</button>
+        <button class="l" type="button" data-m="l" title="Deviate to patient's right (A)" aria-label="Deviate uterus to the patient's right">◀</button>
+        <button class="c" type="button" data-m="c" title="Midline (X)" aria-label="Return uterus to midline">●</button>
+        <button class="r" type="button" data-m="r" title="Deviate to patient's left (D)" aria-label="Deviate uterus to the patient's left">▶</button>
+        <button class="d" type="button" data-m="d" title="Retrovert (S)" aria-label="Retrovert the uterus">▼</button>
+      </div>
+      <p class="hint"><span><kbd>1</kbd>–<kbd>5</kbd> instruments</span><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> manipulator, <kbd>X</kbd> midline</span><span><kbd>Space</kbd> blade</span><span><kbd>Enter</kbd> confirm</span><span>Scroll to zoom</span></p>
+    </section>
+  </div>
+</div>
