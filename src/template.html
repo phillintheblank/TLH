@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Laparoscopic Hysterectomy Simulator</title>
+<title>TLH Simulator: Hand Control</title>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -35,13 +35,14 @@ kbd{font:500 11px var(--mono);padding:1px 5px;border:1px solid var(--line);borde
 main{display:grid;grid-template-columns:minmax(0,1fr) 352px;min-height:0}
 .stage{display:flex;flex-direction:column;gap:10px;min-width:0;min-height:0;padding:12px 0 12px 16px}
 .view{position:relative;flex:1;min-height:260px;border-radius:8px;overflow:hidden;background:#050101;border:1px solid #000;cursor:none;touch-action:none;user-select:none}
-.view canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.view>canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 #haze{position:absolute;inset:0;pointer-events:none;opacity:0;background:radial-gradient(ellipse at 50% 55%,rgba(226,226,232,.9),rgba(196,196,206,.55))}
 .vignette{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,rgba(0,0,0,0) 52%,rgba(0,0,0,.62) 100%)}
 .hud{position:absolute;pointer-events:none;display:flex;flex-direction:column;gap:4px;font:500 12px/1.2 var(--mono);letter-spacing:.03em}
 .hud.tl{left:12px;top:10px}.hud.tr{right:12px;top:10px;align-items:flex-end}
 .hudline{background:rgba(6,9,11,.62);padding:4px 8px;border-radius:4px;color:#cfe0e6;white-space:pre}
 .hudline.hot{background:rgba(240,178,74,.92);color:#221402}
+.hudline.dim{opacity:.55}
 .hudline.safe{color:var(--ok)}.hudline.warn{color:var(--warn)}.hudline.crit{color:#fff;background:rgba(190,40,36,.9)}
 .hud .lab{color:var(--muted);margin-right:8px}
 .toast{position:absolute;left:50%;bottom:18px;transform:translate(-50%,8px);max-width:min(560px,86%);padding:8px 14px;border-radius:6px;background:rgba(8,12,15,.88);border-left:3px solid var(--accent);font-size:13.5px;opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;text-wrap:balance}
@@ -54,8 +55,9 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 352px;min-height:0}
 .sheet h3{margin:16px 0 6px;font:600 13px var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
 .sheet p{margin:0 0 8px;max-width:64ch}
 .keys{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:5px 18px;margin:0;padding:0;list-style:none;font-size:13.5px}
-.keys li{display:flex;gap:8px;align-items:baseline}.keys b{font-weight:500;color:var(--muted);min-width:98px;flex:none}
-.cta{margin-top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.keys li{display:flex;gap:8px;align-items:baseline}.keys b{font-weight:500;color:var(--muted);min-width:118px;flex:none}
+.cta{margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.cta .ghost{padding:9px 14px;color:var(--text)}
 .primary{background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:10px 18px;font-weight:600}
 .primary:hover{filter:brightness(1.08)}
 .fine{color:var(--muted);font-size:12.5px;max-width:60ch;margin:12px 0 0}
@@ -128,6 +130,19 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 .row.warn b{color:var(--warn)}.row.crit b{color:var(--crit)}.row.ok b{color:var(--ok)}
 .sheet ul{margin:0;padding-left:18px}.sheet ul .good{color:var(--ok)}
 .sheet .log{max-height:150px;overflow:auto}
+.sheet.cal{width:min(860px,100%);display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:20px;align-items:start}
+.cal-cam{width:100%;aspect-ratio:4/3;border-radius:8px;background:#05080a;border:1px solid var(--line);display:block}
+.cal-side h2{font-size:26px;margin-top:8px}
+.cal-note{min-height:2.9em;color:var(--warn);font-size:13px;margin:0}
+.cam-video{position:absolute;width:2px;height:2px;opacity:0;pointer-events:none}
+.cam-prev{width:100%;aspect-ratio:4/3;border-radius:6px;background:#05080a;border:1px solid var(--line);display:block;margin-bottom:8px}
+.ht-status{margin:0 0 8px;font-size:13px;color:#b9c8cf}.ht-status.err{color:var(--warn)}
+.tune{font-size:12.5px;color:var(--muted);margin:2px 0 8px}
+.tune summary{cursor:pointer;color:var(--text);font-size:13px;padding:2px 0}
+.tune label{display:block;margin-top:8px}
+.tray-note{margin:0;color:var(--muted);font-size:12px}
+.ghost{white-space:nowrap}
+@media (max-width:700px){.sheet.cal{grid-template-columns:minmax(0,1fr)}}
 #nogl{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;color:var(--muted)}
 @media (max-width:940px){
   html,body{height:auto}
@@ -145,8 +160,9 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 <body>
 <div id="app">
   <header class="bar">
-    <div class="brand"><h1>TLH Simulator</h1><p>Total laparoscopic hysterectomy, bilateral salpingectomy</p></div>
+    <div class="brand"><h1>TLH Simulator</h1><p>Hand-control build 0.1 &middot; total laparoscopic hysterectomy, bilateral salpingectomy</p></div>
     <div class="bar-ctl">
+      <button type="button" id="btnHands" class="tog" title="Drive both instruments with your hands through this device's camera">Hand control</button>
       <button type="button" id="btnGuide" class="tog" title="On-screen targets, hover names and ureter distance (G)">Guidance</button>
       <button type="button" id="btnLabels" class="tog" title="Name the visible anatomy (L)">Labels</button>
       <button type="button" id="btnSound" class="tog" title="Generator tones and alerts (M)">Sound</button>
@@ -160,7 +176,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
         <div id="haze"></div>
         <div class="vignette"></div>
         <canvas id="ov"></canvas>
-        <div class="hud tl"><div class="hudline" id="hudDev">R  BIPOLAR  READY</div><div class="hudline" id="hudProx" hidden></div></div>
+        <div class="hud tl"><div class="hudline dim" id="hudDevL">L  GRASPER  OPEN</div><div class="hudline" id="hudDevR">R  BIPOLAR  READY</div><div class="hudline" id="hudProx" hidden></div></div>
         <div class="hud tr">
           <div class="hudline"><span class="lab">TIME</span><span id="hudT">0:00</span></div>
           <div class="hudline"><span class="lab">EBL</span><span id="hudEBL">0 mL</span></div>
@@ -174,21 +190,52 @@ input[type=range]{width:100%;accent-color:var(--accent)}
             <p class="sub">With bilateral salpingectomy. Ovaries conserved.</p>
             <p>46-year-old with heavy menstrual bleeding and fibroids after failed medical management. Mobile 10-week uterus, no previous abdominal surgery.</p>
             <p>She is in lithotomy and Trendelenburg with a uterine manipulator and colpotomy cup in place. 10 mm umbilical scope, two 5 mm lateral ports, pneumoperitoneum at 15 mmHg. You are looking toward the pelvis: her right is on the right of the screen.</p>
-            <h3>Controls</h3>
+            <div class="cta"><button type="button" class="primary" id="btnBeginHands">Begin with hand control</button><button type="button" class="ghost" id="btnBegin">Begin with the mouse</button></div>
+            <p class="fine">Hand control uses this device's camera. The video is analysed in your browser and is never recorded or sent anywhere. A short calibration sets directions and your pinch, so the lid can be upright or tilted down at your hands.</p>
+            <h3>With your hands</h3>
             <ul class="keys">
-              <li><b>Move mouse</b><span>Steers the active instrument</span></li>
-              <li><b>Click / hold</b><span>Grasp, seal, cut with the hook, aspirate, place a bite</span></li>
-              <li><b>Right-click or C</b><span>Fire the bipolar cut blade</span></li>
-              <li><b>Space or X</b><span>Switch hands; the other hand holds its position</span></li>
-              <li><b>1 to 5</b><span>Change the instrument in the active hand</span></li>
-              <li><b>W A S D, Q E</b><span>Uterine manipulator: tilt, deviate, push the cup</span></li>
-              <li><b>Scroll, arrows</b><span>Advance and aim the scope</span></li>
-              <li><b>G, L, M</b><span>Guidance, anatomy labels, sound</span></li>
+              <li><b>Move a hand</b><span>Steers that hand's instrument; both work at once</span></li>
+              <li><b>Pinch</b><span>Thumb to first two fingers: grasp and hold, seal, cut with the hook, aspirate, place a bite</span></li>
+              <li><b>Pinch again</b><span>On a sealed pedicle, after relaxing: fires the cut blade</span></li>
+              <li><b>Open hand flat</b><span>Clutch: that instrument holds still until you curl the hand again</span></li>
             </ul>
-            <div class="cta"><button type="button" class="primary" id="btnBegin">Begin case</button><span class="fine" style="margin:0">21 steps, about 10 to 15 minutes</span></div>
+            <h3>With the mouse</h3>
+            <ul class="keys">
+              <li><b>Move, click, hold</b><span>Steers and works the selected hand's instrument</span></li>
+              <li><b>Right-click</b><span>Fires the bipolar cut blade</span></li>
+              <li><b>Space or X</b><span>Switch hands; the other holds its position</span></li>
+            </ul>
+            <h3>Keyboard, either way</h3>
+            <ul class="keys">
+              <li><b>1 to 5</b><span>Change the selected hand's instrument</span></li>
+              <li><b>W A S D, Q E</b><span>Uterine manipulator: tilt, deviate, push the cup</span></li>
+              <li><b>C</b><span>Cut blade</span></li>
+              <li><b>Scroll, arrows</b><span>Advance and aim the scope</span></li>
+            </ul>
             <p class="fine">An educational rehearsal tool with simplified anatomy and tissue behaviour. It is not a validated assessment and does not replace supervised training.</p>
           </div>
         </div>
+        <div id="calModal" class="modal" hidden>
+          <div class="sheet cal">
+            <canvas id="calCanvas" class="cal-cam"></canvas>
+            <div class="cal-side">
+              <div class="eyebrow"><span>Hand control setup</span><span id="calCount"></span></div>
+              <h2 id="calTitle">Getting ready</h2>
+              <p id="calText"></p>
+              <div class="prog"><div class="track"><i id="calBar"></i></div></div>
+              <p class="cal-note" id="calNote"></p>
+              <div class="cta">
+                <button type="button" class="primary" id="calSaved" hidden>Use my last calibration</button>
+                <button type="button" class="ghost" id="calRetry" hidden>Try again</button>
+                <button type="button" class="ghost" id="calRedo" hidden>Start over</button>
+                <button type="button" class="ghost" id="calStd" hidden>Skip: standard webcam</button>
+                <button type="button" class="ghost" id="calCancel">Use the mouse instead</button>
+              </div>
+              <p class="fine">The preview is mirrored, like a mirror. Once it knows your hands, the right is drawn in amber and the left in teal.</p>
+            </div>
+          </div>
+        </div>
+        <video id="camVideo" class="cam-video" playsinline muted></video>
         <div id="debrief" class="modal" hidden>
           <div class="sheet">
             <div class="db-top"><div><h2>Case debrief</h2><p class="sub" id="dbGrade" style="margin:0"></p></div><div class="db-score"><span id="dbScore">0</span><small> / 100</small></div></div>
@@ -226,6 +273,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
             <button type="button" class="act" id="btnCut" title="Fire the bipolar cut blade (right-click)">Cut blade <kbd>C</kbd></button>
           </div>
           <div class="grp" id="insts"></div>
+          <p class="tray-note" id="trayNote"></p>
         </div>
       </div>
     </section>
@@ -240,6 +288,22 @@ input[type=range]{width:100%;accent-color:var(--accent)}
         <div class="btnrow"><button type="button" class="primary" id="stepBtn1" hidden></button><button type="button" class="primary" id="stepBtn2" hidden></button></div>
         <p class="pearl"><b>Pearl</b><span id="stepPearl"></span></p>
       </section>
+      <section class="block handpanel">
+        <h3>Hand control</h3>
+        <p class="ht-status" id="htStatus">Off. The mouse controls the instruments.</p>
+        <div id="htLive" hidden>
+          <canvas id="camPrev" class="cam-prev"></canvas>
+          <div class="chips"><span class="chip" id="htL">Left</span><span class="chip" id="htR">Right</span></div>
+          <details class="tune">
+            <summary>Tuning</summary>
+            <label for="tGain">Sensitivity: instrument travel per hand movement<input type="range" id="tGain" min="8" max="45" value="20"></label>
+            <label for="tSmooth">Smoothing: steadier, but slower to follow<input type="range" id="tSmooth" min="0" max="100" value="50"></label>
+            <label for="tPinch">Pinch: right triggers sooner, left needs a firmer pinch<input type="range" id="tPinch" min="-100" max="100" value="0"></label>
+            <label for="tOpen">Clutch: right triggers on a less open hand<input type="range" id="tOpen" min="-100" max="100" value="0"></label>
+          </details>
+        </div>
+        <div class="btnrow"><button type="button" class="mini" id="htOn">Turn on hand control</button><button type="button" class="mini" id="htRecal" hidden>Recalibrate</button><button type="button" class="mini" id="htOff" hidden>Turn off</button></div>
+      </section>
       <section class="block">
         <h3>Running record</h3>
         <div class="metrics">
@@ -252,7 +316,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
     </aside>
   </main>
 </div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="./vendor/three.min.js"></script>
 <script>
 (function () {
 'use strict';

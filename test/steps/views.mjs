@@ -1,5 +1,5 @@
 // Jump to chosen stages and take full-size screenshots.
-const OUT = '/home/claude/sim/test/out/';
+const OUT = new URL('../out/', import.meta.url).pathname;
 export default async function (page) {
   await page.click('#btnBegin');
   await page.evaluate(() => { window.__simPause = true; });

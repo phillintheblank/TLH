@@ -1,5 +1,5 @@
 // Exercise the complication paths with real mouse input.
-const OUT = '/home/claude/sim/test/out/';
+const OUT = new URL('../out/', import.meta.url).pathname;
 export default async function (page) {
   await page.click('#btnBegin');
   await page.evaluate(() => { window.__simPause = true; });

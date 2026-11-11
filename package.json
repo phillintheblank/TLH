@@ -1,0 +1,15 @@
+{
+  "name": "tlh-simulator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Browser-based total laparoscopic hysterectomy simulator with camera hand control",
+  "type": "module",
+  "scripts": {
+    "fetch-model": "mkdir -p models && curl -sSfL -o models/hand_landmarker.task https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+    "build": "node build.mjs"
+  },
+  "devDependencies": {
+    "@mediapipe/tasks-vision": "1.1.1",
+    "three": "0.128.0"
+  }
+}

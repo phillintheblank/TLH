@@ -46,8 +46,9 @@ const ACT_COL = { seal: '#f0b24a', cut: '#ffffff', trace: '#43c6c0', push: '#43c
 function drawOverlay(time) {
   const c = OV.getContext('2d'), pr = OV.width / VW;
   c.setTransform(pr, 0, 0, pr, 0, 0); c.clearRect(0, 0, VW, VH);
-  if (INP.inside) { c.strokeStyle = 'rgba(255,255,255,0.75)'; c.lineWidth = 1.2; c.beginPath(); c.arc(INP.x, INP.y, 5, 0, TAU); c.stroke(); }
+  if (CTRL.mode === 'mouse' && INP.inside) { c.strokeStyle = 'rgba(255,255,255,0.75)'; c.lineWidth = 1.2; c.beginPath(); c.arc(INP.x, INP.y, 5, 0, TAU); c.stroke(); }
   if (!S.running) return;
+  if (CTRL.mode === 'hands') drawHandPointers(c);
   const st = STEPS[S.step], pulseR = 1 + 0.12 * Math.sin(time * 5);
   if (S.guided) {
     if (S.bleeders.length) {
@@ -91,7 +92,23 @@ function drawOverlay(time) {
       pill(c, dx < 0 ? lx - w : lx, ly - 10, l[0]);
     });
   }
-  if (INP.inside && S.guided && PICK.hit && ENT_NAME[PICK.ent] && !activeHand().firing) pill(c, INP.x + 14, INP.y + 12, ENT_NAME[PICK.ent](PICK.side));
+  if (S.guided) for (const h of HANDS) { const P = h.pick; if (h.ptr.on && P.hit && ENT_NAME[P.ent] && !h.firing && !h.grab) pill(c, h.ptr.x + 14, h.ptr.y + 12, ENT_NAME[P.ent](P.side)); }
+}
+// hand control: one reticle per hand, plus a marker on an instrument that is on hold
+function drawHandPointers(c) {
+  for (const h of HANDS) {
+    const s = HT.slot[h.key], col = HCOL[h.key];
+    if (h.ptr.on) {
+      c.strokeStyle = col; c.lineWidth = 1.6; c.beginPath(); c.arc(h.ptr.x, h.ptr.y, s.pinch ? 4 : 7, 0, TAU); c.stroke();
+      if (s.pinch) { c.fillStyle = col; c.beginPath(); c.arc(h.ptr.x, h.ptr.y, 2.2, 0, TAU); c.fill(); }
+      c.font = '600 10px "IBM Plex Mono", ui-monospace, monospace'; c.fillStyle = col; c.textBaseline = 'middle'; c.fillText(h.key, h.ptr.x + 10, h.ptr.y - 9);
+    } else if (HT.status === 'ready') {
+      project(h.tip, _ps); if (_ps.z >= 1) continue;
+      const x = clamp(_ps.x, 14, VW - 14), y = clamp(_ps.y, 14, VH - 14);
+      c.setLineDash([3, 4]); c.strokeStyle = col; c.lineWidth = 1.4; c.beginPath(); c.arc(x, y, 9, 0, TAU); c.stroke(); c.setLineDash([]);
+      pill(c, x + 12, y - 24, h.key + (HT.clock - s.tSeen < 0.3 ? ' on hold' : ' no hand'), col);
+    }
+  }
 }
 
 // ---------- suture ----------
@@ -107,7 +124,7 @@ function updateSuture() {
     m.set(s.x - 0.06, 0.24, 0).applyMatrix4(VG.M);
     spline([a, m, b], SUT.arr); t.set(SUT.arr, 0, 1, () => 0.035, null);
   }
-  let nh = null; for (const k of ['L', 'R']) if (HAND[k].inst === 'needle' && HAND[k].exch <= 0) nh = HAND[k];
+  let nh = null; for (const x of HANDS) if (x.inst === 'needle' && x.exch <= 0 && (!nh || x.ptr.on)) nh = x;
   const active = STEPS[S.step].id === 'cuff' && !c.done && nh;
   SUT.tail.mesh.visible = !!active;
   if (active) {
@@ -148,10 +165,13 @@ function renderUI(dt) {
   if (UI_FULL) { renderStepCard(); UI_FULL = false; UI_DIRTY = true; }
   if (!UI_DIRTY && uiClock > 0) return;
   uiClock = 0.12; UI_DIRTY = false;
-  const st = STEPS[S.step], h = activeHand();
+  const st = STEPS[S.step], h = activeHand(), hm = CTRL.mode === 'hands';
   // chips
   let chips = '';
-  if (st.tool !== 'any') { const ok = h.inst === st.tool || (st.id === 'flap' && h.inst === 'suction'); chips += '<span class="chip ' + (ok ? 'ok' : 'no') + '">' + TOOL_NAME[st.tool] + ' in the active hand</span>'; }
+  if (st.tool !== 'any') {
+    const has = x => x.inst === st.tool || (st.id === 'flap' && x.inst === 'suction'), ok = hm ? HANDS.some(has) : has(h);
+    chips += '<span class="chip ' + (ok ? 'ok' : 'no') + '">' + TOOL_NAME[st.tool] + (hm ? ' in either hand' : ' in the active hand') + '</span>';
+  }
   let allOk = true;
   for (const e of st.expo || []) { const ok = e.ok(); allOk = allOk && ok; chips += '<span class="chip ' + (ok ? 'ok' : 'no') + '">' + e.label + '</span>'; }
   if (S.bleeders.length) chips += '<span class="chip crit">Active bleeding: control it first</span>';
@@ -167,18 +187,26 @@ function renderUI(dt) {
   // tray
   for (const k of ['L', 'R']) { const e = $('hand' + k); e.classList.toggle('on', ACTIVE === k); e.querySelector('b').textContent = INST[HAND[k].exchTo || HAND[k].inst].short + (HAND[k].grab && HAND[k].grab.pull ? ' (holding)' : ''); }
   for (const t in INST) $('inst-' + t).classList.toggle('on', (h.exchTo || h.inst) === t);
-  $('btnCut').disabled = h.inst !== 'bipolar';
+  $('btnCut').disabled = hm ? !HANDS.some(x => x.inst === 'bipolar') : h.inst !== 'bipolar';
+  $('trayNote').textContent = hm ? 'Number keys and these buttons change the selected hand\'s instrument' : 'The mouse drives the selected hand; the other holds its position';
   // HUD
   $('hudT').textContent = fmtT(S.t); $('hudEBL').textContent = Math.round(S.ebl) + ' mL'; $('hudP').textContent = S.pressure.toFixed(0) + ' mmHg';
-  const dev = { bipolar: 'BIPOLAR', hook: 'MONOPOLAR CUT', suction: 'SUCTION', grasper: 'GRASPER', needle: 'NEEDLE DRIVER' }[h.inst];
-  let state = h.firing ? 'ON' : 'READY';
+  const devName = { bipolar: 'BIPOLAR', hook: 'MONOPOLAR CUT', suction: 'SUCTION', grasper: 'GRASPER', needle: 'NEEDLE DRIVER' };
   const tg = st.seal ? S.side[st.seal.side][st.seal.ent] : null;
-  if (h.inst === 'bipolar' && h.firing && tg && tg.act) state = 'SEAL ' + Math.round(tg.act.p * 100) + '%';
-  if (h.inst === 'grasper') state = h.grab ? 'CLOSED' : 'OPEN';
-  if (h.inst === 'needle') state = '';
-  const hd = $('hudDev'); hd.textContent = (ACTIVE === 'L' ? 'L  ' : 'R  ') + dev + (state ? '  ' + state : ''); hd.className = 'hudline' + (h.firing && h.inst !== 'suction' ? ' hot' : '');
+  let prox = null;
+  for (const x of HANDS) {
+    let state = x.firing ? 'ON' : 'READY';
+    if (x.inst === 'bipolar' && x.firing && tg && tg.act && tg.act.by === x.key) state = 'SEAL ' + Math.round(tg.act.p * 100) + '%';
+    if (x.inst === 'grasper') state = x.grab ? (x.grab.pull ? 'HOLDING' : 'CLOSED') : 'OPEN';
+    if (x.inst === 'needle') state = '';
+    let tail = '';
+    if (hm && HT.status === 'ready' && S.running) { const sl = HT.slot[x.key]; tail = sl.engaged ? '' : HT.clock - sl.tSeen < 0.3 ? '  ON HOLD' : '  NO HAND'; }
+    const e = $('hudDev' + x.key); e.textContent = x.key + '  ' + devName[x.inst] + (state ? '  ' + state : '') + tail;
+    e.className = 'hudline' + (x.firing && x.inst !== 'suction' ? ' hot' : '') + (!hm && x.key !== ACTIVE ? ' dim' : '');
+    if ((hm || x === h) && (x.inst === 'bipolar' || x.inst === 'hook')) { const n = nearestUreter(x.tip); if (!prox || n.d < prox.d) prox = n; }
+  }
   const px = $('hudProx');
-  if (S.guided && S.running && (h.inst === 'bipolar' || h.inst === 'hook')) { const n = nearestUreter(h.tip); px.hidden = false; px.textContent = 'URETER ' + n.d.toFixed(1) + ' cm ' + (n.k === 'R' ? 'right' : 'left'); px.className = 'hudline ' + (n.d < 1 ? 'crit' : n.d < 1.5 ? 'warn' : 'safe'); } else px.hidden = true;
+  if (S.guided && S.running && prox) { px.hidden = false; px.textContent = 'URETER ' + prox.d.toFixed(1) + ' cm ' + (prox.k === 'R' ? 'right' : 'left'); px.className = 'hudline ' + (prox.d < 1 ? 'crit' : prox.d < 1.5 ? 'warn' : 'safe'); } else px.hidden = true;
   // metrics + log
   $('mAct').textContent = S.stats.activations; $('mEnergy').textContent = S.stats.energyTime.toFixed(0) + ' s'; $('mInj').textContent = Object.keys(S.injuries).length; $('mNear').textContent = S.stats.nearMiss;
   const ev = S.events.slice(-4).reverse().map(e => '<li class="' + e.type + '"><time>' + fmtT(e.t) + '</time>' + e.text + '</li>').join('');
@@ -213,8 +241,9 @@ function resetHands() {
   for (const [k, sx, inst] of [['L', -1, 'grasper'], ['R', 1, 'bipolar']]) {
     const h = HAND[k]; h.sub[h.inst].g.visible = false; h.inst = inst; h.sub[inst].g.visible = true;
     h.tip.set(3.4 * sx, -0.4, 4.6); h.goal.copy(h.tip); h.surf.copy(h.tip); h.grab = null; h.exch = 0; h.exchTo = null; h.firing = false; h.open = h.openGoal = 0.7; h.roll = 0;
+    h.ptr.on = false; h.pick.hit = false; h.pick.ent = null; h.nearFlag = false; h.lastUp = -9;
   }
-  ACTIVE = 'R';
+  ACTIVE = 'R'; htResetSlots();
 }
 function resetWorld(running) {
   const keep = S ? { guided: S.guided, labels: S.labels } : { guided: true, labels: false };
@@ -228,123 +257,5 @@ function resetWorld(running) {
   stopSustain(); $('toast').className = 'toast'; $('debrief').hidden = true;
   enterStep(0);
 }
-function startCase() { auInit(); resetWorld(true); $('startCard').hidden = true; sfx.ok(); }
+function startCase(withHands) { auInit(); resetWorld(true); $('startCard').hidden = true; sfx.ok(); if (withHands) { if (HT.status === 'off' || HT.status === 'error') htEnable(); } else if (CTRL.mode === 'hands') htDisable(); }
 
-// ---------- input wiring ----------
-function wire() {
-  const pos = e => { const r = OV.getBoundingClientRect(); INP.x = e.clientX - r.left; INP.y = e.clientY - r.top; INP.ndc.set((INP.x / r.width) * 2 - 1, -((INP.y / r.height) * 2 - 1)); INP.inside = true; };
-  OV.addEventListener('pointermove', pos);
-  OV.addEventListener('pointerdown', e => {
-    pos(e); if (e.button === 2) { cutAction(); return; }
-    if (e.button !== 0) return;
-    try { OV.setPointerCapture(e.pointerId); } catch (_) {}
-    INP.down = true; doPick(); snapPick(); primaryDown();
-  });
-  const up = () => { if (INP.down) { INP.down = false; primaryUp(); } };
-  OV.addEventListener('pointerup', up); OV.addEventListener('pointercancel', up);
-  OV.addEventListener('pointerleave', () => { INP.inside = false; up(); });
-  OV.addEventListener('contextmenu', e => e.preventDefault());
-  OV.addEventListener('wheel', e => { e.preventDefault(); CAM.userIns = clamp(CAM.userIns - e.deltaY * 0.006, -5, 6); }, { passive: false });
-  $('handL').addEventListener('click', () => setActive('L')); $('handR').addEventListener('click', () => setActive('R'));
-  $('btnCut').addEventListener('click', cutAction);
-  $('btnSwitch').addEventListener('click', () => setActive(ACTIVE === 'L' ? 'R' : 'L'));
-  $('btnBegin').addEventListener('click', startCase);
-  $('btnRestart').addEventListener('click', () => { resetWorld(false); $('startCard').hidden = false; });
-  $('dbRestart').addEventListener('click', () => { resetWorld(false); $('startCard').hidden = false; });
-  $('dbClose').addEventListener('click', () => { $('debrief').hidden = true; });
-  const tog = (id, get, set) => { const b = $(id); const sync = () => { b.classList.toggle('on', get()); b.setAttribute('aria-pressed', get() ? 'true' : 'false'); }; b.addEventListener('click', () => { set(!get()); sync(); uiDirty(); }); sync(); return sync; };
-  const syncG = tog('btnGuide', () => S.guided, v => (S.guided = v)), syncL = tog('btnLabels', () => S.labels, v => (S.labels = v)), syncS = tog('btnSound', () => AU.on, v => { AU.on = v; if (!v) stopSustain(); });
-  $('btnExpo').addEventListener('click', () => { const r = STEPS[S.step].rec; if (r) setPoseGoal(r); });
-  $('stepBtn1').addEventListener('click', () => { const b = STEPS[S.step].button; if (b && S.running) b.fn(); });
-  $('stepBtn2').addEventListener('click', () => { const b = STEPS[S.step].button2; if (b && S.running) b.fn(); });
-  // a mouse click on a control must not leave it focused, or Space would re-fire it instead of switching hands
-  document.addEventListener('mousedown', e => { if (e.target.closest && e.target.closest('button')) e.preventDefault(); });
-  // manipulator pad
-  const pad = $('pad'); let padOn = false;
-  const padSet = e => {
-    const r = pad.getBoundingClientRect(), nx = clamp(((e.clientX - r.left) / r.width - 0.5) / 0.42, -1, 1), ny = clamp(((e.clientY - r.top) / r.height - 0.5) / 0.42, -1, 1), t = (1 - ny) / 2;
-    setPoseGoal({ yaw: nx * LIM.yaw, pitch: t < 0.5 ? lerp(LIM.pMin, PITCH0, t * 2) : lerp(PITCH0, LIM.pMax, (t - 0.5) * 2) });
-  };
-  pad.addEventListener('pointerdown', e => { padOn = true; try { pad.setPointerCapture(e.pointerId); } catch (_) {} padSet(e); });
-  pad.addEventListener('pointermove', e => { if (padOn) padSet(e); });
-  pad.addEventListener('pointerup', () => (padOn = false)); pad.addEventListener('pointercancel', () => (padOn = false));
-  $('push').addEventListener('input', e => setPoseGoal({ push: e.target.value / 100 }));
-  document.querySelectorAll('[data-pose]').forEach(b => b.addEventListener('click', () => setPoseGoal(JSON.parse(b.getAttribute('data-pose')))));
-  // keyboard
-  const held = {};
-  window.addEventListener('keydown', e => {
-    if (e.metaKey || e.ctrlKey || e.altKey) return;
-    const k = e.key.toLowerCase();
-    if (['w', 'a', 's', 'd', 'q', 'e', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) { held[k] = true; if (k.startsWith('arrow') && S.running) e.preventDefault(); return; }
-    if (!S.running) return;
-    if (k >= '1' && k <= '5') { const t = Object.keys(INST)[+k - 1]; setInst(ACTIVE, t); }
-    else if (k === ' ' || k === 'x') { if (e.target && /^(BUTTON|INPUT)$/.test(e.target.tagName) && k === ' ') return; e.preventDefault(); setActive(ACTIVE === 'L' ? 'R' : 'L'); }
-    else if (k === 'c') cutAction();
-    else if (k === 'l') { S.labels = !S.labels; syncL(); }
-    else if (k === 'g') { S.guided = !S.guided; syncG(); uiDirty(); }
-    else if (k === 'm') { AU.on = !AU.on; if (!AU.on) stopSustain(); syncS(); }
-    else if (k === '=' || k === '+') CAM.userIns = clamp(CAM.userIns + 0.8, -5, 6);
-    else if (k === '-') CAM.userIns = clamp(CAM.userIns - 0.8, -5, 6);
-  });
-  window.addEventListener('keyup', e => { held[e.key.toLowerCase()] = false; });
-  window.addEventListener('blur', () => { for (const k in held) held[k] = false; });
-  wire.keys = dt => {
-    if (!S.running) return;
-    const G = S.poseGoal, r = 0.9 * dt;
-    if (held.a) setPoseGoal({ yaw: G.yaw - r }); if (held.d) setPoseGoal({ yaw: G.yaw + r });
-    if (held.w) setPoseGoal({ pitch: G.pitch + r * 1.2 }); if (held.s) setPoseGoal({ pitch: G.pitch - r * 1.2 });
-    if (held.e) setPoseGoal({ push: G.push + r * 1.4 }); if (held.q) setPoseGoal({ push: G.push - r * 1.4 });
-    const pr = 5 * dt;
-    if (held.arrowleft) CAM.pan.x = clamp(CAM.pan.x - pr, -5, 5); if (held.arrowright) CAM.pan.x = clamp(CAM.pan.x + pr, -5, 5);
-    if (held.arrowup) CAM.pan.y = clamp(CAM.pan.y + pr, -4, 4); if (held.arrowdown) CAM.pan.y = clamp(CAM.pan.y - pr, -4, 4);
-  };
-  if (window.ResizeObserver) new ResizeObserver(resize).observe(VIEW); else window.addEventListener('resize', resize);
-}
-
-// ---------- main loop ----------
-let lastNow = performance.now(), simTime = 0;
-function tick(dt) {
-  simTime += dt;
-  wire.keys(dt);
-  updateAnatomy(dt, simTime);
-  updateCamera(dt, simTime);
-  scene.updateMatrixWorld();
-  doPick(); snapPick(); updateHands(dt);
-  if (S.running) { actionTick(dt); updateSteps(dt); }
-  updateFX(dt, simTime); updateSuture();
-}
-function frame(now) {
-  const dt = Math.min(0.05, Math.max(0.001, (now - lastNow) / 1000)); lastNow = now;
-  requestAnimationFrame(frame);
-  if (window.__simPause) return; // automated checks drive tick() and render() themselves
-  tick(dt);
-  renderer.render(scene, camera);
-  drawOverlay(simTime); renderUI(dt);
-}
-S = freshState();
-buildStatic(); wire(); resize();
-resetWorld(false);
-requestAnimationFrame(frame);
-
-// hooks for automated checks
-function forceStep() {
-  const st = STEPS[S.step], k = st.side, sd = k && S.side[k];
-  if (st.id === 'survey') S.ureterID.R = S.ureterID.L = true;
-  else if (st.seal && st.kind !== 'meso') { const e = sd[st.ent]; e.seals.push({ u: st.uT, w: SEALSPEC[st.ent].w }); e.cut = true; e.uc = st.uT; if (st.ent === 'uo') sd.roofCut = true; if (st.ent === 'ua' || st.ent === 'card') startRelease(AN.side[k], st.ent); }
-  else if (st.kind === 'meso') { S.mesoBite[k] = 2; sd.meso.pGoal = 1; sd.tubeGoal = 1; }
-  else if (st.which === 'ant') sd.antGoal = 1;
-  else if (st.which === 'post') { sd.postGoal = 1; startRelease(AN.side[k], 'upper'); }
-  else if (st.id === 'vuf') S.vufGoal = 1;
-  else if (st.id === 'flap') { st.cnt = 6; S.flapGoal = 1; }
-  else if (st.id === 'colp') { S.colp.fill(1); S.colpDone = true; VG.dirty = true; }
-  else if (st.id === 'deliver') deliverSpecimen();
-  else if (st.id === 'cuff') { for (const x of [1.5, 0.9, 0.3, -0.3, -0.9, -1.5]) S.cuff.stitches.push({ x, da: 0.8, dp: 0.8 }); S.cuff.frontGoal = -2.8; S.cuff.done = true; }
-  else if (st.id === 'final') { S.lowP = true; S.ureterOK.R = S.ureterOK.L = true; endCase(); }
-}
-window.__sim = { forceStep, visibleAt, colpPt, SEALSPEC, URETER, VG, UT, BL,
-  get S() { return S; }, STEPS, HAND, PICK, CAM, AN, INP, tick, setPoseGoal, setInst, setActive, cutAction, startCase,
-  get active() { return ACTIVE; },
-  next() { const st = STEPS[S.step]; if (S.bleeders.length) { const p = S.bleeders[0].pt(new V3()); project(p, _ps); return { act: 'bleed', x: _ps.x, y: _ps.y }; } const n = st.next && st.next(); if (!n) return null; project(n.p, _ps); return { act: n.act, label: n.label, x: _ps.x, y: _ps.y, z: _ps.z, hidden: !!n.hidden, vis: visibleAt(n.p, 0.8), p: n.p.toArray() }; },
-  proj(p) { project(new V3(p[0], p[1], p[2]), _ps); return { x: _ps.x, y: _ps.y }; },
-  render() { renderer.render(scene, camera); drawOverlay(simTime); renderUI(1); }
-};

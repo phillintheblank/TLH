@@ -9,6 +9,7 @@ const exAnt = { label: 'Uterus anteverted', ok: () => S.pose.pitch > 0.5 };
 const exMid = { label: 'Uterus in the midline', ok: () => Math.abs(S.pose.yaw) < 0.2 };
 const TRACK_URETER = () => ['ua', 'card', 'colp'].includes(STEPS[S.step].kind);
 const KI = 6;
+const cutLabel = () => (CTRL.mode === 'hands' ? 'Cut: relax, then pinch again' : 'Cut');
 
 function sealStep(o) {
   const k = o.side, ent = o.ent;
@@ -23,7 +24,7 @@ function sealStep(o) {
     kind: ent, tool: 'bipolar', seal: { ent, side: k },
     next() {
       const e = S.side[k][ent]; if (e.cut) return null;
-      if (e.seals.length) return { p: pointAt(e.seals[e.seals.length - 1].u, new V3()), act: 'cut', label: 'Cut' };
+      if (e.seals.length) return { p: pointAt(e.seals[e.seals.length - 1].u, new V3()), act: 'cut', label: cutLabel() };
       return { p: pointAt(e.act ? e.act.u : o.uT, new V3()), act: 'seal', label: 'Seal', prog: e.act ? e.act.p : 0 };
     },
     done() { return S.side[k][ent].cut; },
@@ -40,7 +41,7 @@ function mesoStep(o) {
     next() {
       const b = S.mesoBite[k]; if (b >= 2) return null;
       const e = S.side[k].meso, w = b === 0 ? 0.78 : 0.3;
-      if (e.seals.length) return { p: pt(e.seals[e.seals.length - 1].u, new V3()), act: 'cut', label: 'Cut' };
+      if (e.seals.length) return { p: pt(e.seals[e.seals.length - 1].u, new V3()), act: 'cut', label: cutLabel() };
       return { p: pt(e.act ? e.act.u : w, new V3()), act: 'seal', label: b === 0 ? 'Seal: fimbrial bite' : 'Seal: bite toward cornu', prog: e.act ? e.act.p : 0 };
     },
     done() { return S.mesoBite[k] >= 2; },
@@ -72,7 +73,7 @@ function inciseStep(o) {
         }
         return true;
       }
-      if (PICK.hit && (PICK.ent === which || PICK.ent === 'roof' || PICK.ent === 'areolar')) { if (S.guided) hint('line', 'Follow the marked line from the divided pedicle'); return true; }
+      if (h.pick.hit && (h.pick.ent === which || h.pick.ent === 'roof' || h.pick.ent === 'areolar')) { if (S.guided) hint('line', 'Follow the marked line from the divided pedicle'); return true; }
       return false;
     },
     done() { return count() >= KI; },
@@ -82,10 +83,10 @@ function inciseStep(o) {
   }, o);
 }
 function clickUreter(h) {
-  if (PICK.hit && h.near && PICK.ent === 'ureter') {
+  if (h.pick.hit && h.near && h.pick.ent === 'ureter') {
     const st = STEPS[S.step], map = st.id === 'survey' ? S.ureterID : S.ureterOK;
     if (st.id === 'final' && (!S.lowP || S.bleeders.length)) return false;
-    if (!map[PICK.side]) { map[PICK.side] = true; sfx.ok(); toast(CAP[PICK.side] + ' ureter ' + (st.id === 'survey' ? 'identified' : 'peristalsing, not dilated'), 'ok'); uiDirty(); }
+    if (!map[h.pick.side]) { map[h.pick.side] = true; sfx.ok(); toast(CAP[h.pick.side] + ' ureter ' + (st.id === 'survey' ? 'identified' : 'peristalsing, not dilated'), 'ok'); uiDirty(); }
     return true;
   }
   return false;
@@ -155,7 +156,7 @@ const STEPS = [
   {
     id: 'survey', kind: 'survey', tool: 'any', phase: 'Survey', short: 'Identify both ureters', title: 'Survey the pelvis and identify both ureters', dist: 17,
     rec: { yaw: 0, pitch: 0.6, push: 0.3 }, expo: [],
-    text: ['Before any energy is used, find each ureter through the peritoneum.', 'It crosses the pelvic brim and runs down the sidewall below the infundibulopelvic ligament. Look for peristalsis.', 'Touch each ureter with an instrument tip and click to confirm it.'],
+    text: ['Before any energy is used, find each ureter through the peritoneum.', 'It crosses the pelvic brim and runs down the sidewall below the infundibulopelvic ligament. Look for peristalsis.', 'Touch each ureter with an instrument tip and click or pinch to confirm it.'],
     pearl: 'Deviating and anteverting the uterus opens each sidewall. At the cervix the ureter passes under the uterine artery about 1.5 to 2 cm lateral.',
     click: clickUreter,
     next() { for (const k of ['R', 'L']) if (!S.ureterID[k]) return { p: ureterMarker(k), act: 'click', label: 'Identify ' + WORD[k] + ' ureter' }; return null; },
@@ -174,8 +175,8 @@ const STEPS = [
     targets() { const n = this.n(), a = []; for (let i = n; i < Math.min(5, n + 2); i++) a.push(this.cp(i, new V3())); return a; },
     hook(h, dt) {
       const n = this.n(); if (n >= 5) return true;
-      if (nearTarget(h, this.cp(n, _w2), 0.8) && PICK.ent !== 'bladder') { this.acc += dt; if (this.acc > 0.11) { this.acc = 0; S.vufGoal = (n + 1) / 5; S.ebl += 0.4; sfx.click(); uiDirty(); } return true; }
-      return PICK.ent === 'vuf';
+      if (nearTarget(h, this.cp(n, _w2), 0.8) && h.pick.ent !== 'bladder') { this.acc += dt; if (this.acc > 0.11) { this.acc = 0; S.vufGoal = (n + 1) / 5; S.ebl += 0.4; sfx.click(); uiDirty(); } return true; }
+      return h.pick.ent === 'vuf';
     },
     done() { return this.n() >= 5; }, progress() { return 'Incision ' + this.n() + ' / 5'; }, frac() { return this.n() / 5; }, focus(o) { return vufPt(0.5, o); }
   },
@@ -189,7 +190,7 @@ const STEPS = [
     next() { return this.cnt >= 6 ? null : { p: flapEdgePt(this.order[this.cnt], new V3()), act: 'push', label: 'Sweep the bladder down', prog: this.acc / 0.4 }; },
     sweep(h, dt, T) {
       if (this.cnt >= 6) return true;
-      if (PICK.ent === 'bladder') return false;
+      if (h.pick.ent === 'bladder') return false;
       if (nearTarget(h, flapEdgePt(this.order[this.cnt], _w2), 0.9)) { this.acc += dt; if (this.acc > T) { this.acc = 0; this.cnt++; S.flapGoal = this.cnt / 6; S.ebl += 0.6; sfx.click(); uiDirty(); } return true; }
       return false;
     },
@@ -207,7 +208,7 @@ const STEPS = [
     refresh() { if (S.t < this.visT) return; this.visT = S.t + 0.18; for (let k = 0; k < 16; k++) this.vis[k] = S.colp[k] >= 1 ? false : visibleAt(colpPt(k, _w2), 0.7); },
     next() {
       this.refresh(); let best = -1, bd = 1e9;
-      const h = activeHand();
+      const h = HANDS.find(x => x.inst === 'hook') || activeHand();
       for (let k = 0; k < 16; k++) if (S.colp[k] < 1 && this.vis[k]) { const d = colpPt(k, _w2).distanceTo(h.tip); if (d < bd) { bd = d; best = k; } }
       if (best >= 0) return { p: colpPt(best, new V3()), act: 'trace', label: 'Cut on the cup rim' };
       for (let k = 0; k < 16; k++) if (S.colp[k] < 1) return { p: colpPt(k, new V3()), act: 'trace', label: 'Reposition the uterus to expose the rest', hidden: true };
@@ -222,7 +223,7 @@ const STEPS = [
         if (S.colp[k] >= 1) { S.ebl += 0.8; sfx.click(); if (!this.entered) { this.entered = true; S.pressure = 10.5; toast('Vagina entered. The occluder holds the pneumoperitoneum.', 'info'); } uiDirty(); }
       }
       if (S.colp.every(c => c >= 1) && !S.colpDone) { S.colpDone = true; VG.dirty = true; toast('Colpotomy complete: the uterus is free', 'ok'); }
-      return any || PICK.ent === 'uterus' || PICK.ent === 'vagina';
+      return any || h.pick.ent === 'uterus' || h.pick.ent === 'vagina';
     },
     done() { return S.colpDone; }, progress() { return S.colp.filter(c => c >= 1).length + ' / 16 segments'; }, frac() { return S.colp.filter(c => c >= 1).length / 16; },
     focus(o) { return o.set(0, 0.2, 0).applyMatrix4(UT.M); }
@@ -237,7 +238,7 @@ const STEPS = [
   },
   {
     id: 'cuff', kind: 'cuff', tool: 'needle', phase: 'Colpotomy and closure', short: 'Close the vaginal cuff', title: 'Close the vaginal cuff', dist: 6.3, rec: null, expo: [],
-    text: ['Take the needle driver. Run a barbed suture from the patient\'s right angle to the left.', 'For each stitch click the anterior edge, then the posterior edge.', 'Take full-thickness bites about 1 cm from the cut edge and about 1 cm apart, with mucosa in every bite. Secure both angles.'],
+    text: ['Take the needle driver. Run a barbed suture from the patient\'s right angle to the left.', 'For each stitch click or pinch on the anterior edge, then the posterior edge.', 'Take full-thickness bites about 1 cm from the cut edge and about 1 cm apart, with mucosa in every bite. Secure both angles.'],
     pearl: 'Shallow bites and missed mucosa are how cuffs dehisce. A deep anterior bite risks the bladder; lateral to the angle lies the ureter.',
     nextX() { const c = S.cuff; return c.stitches.length ? Math.max(-1.3, c.stitches[c.stitches.length - 1].x - 0.62) : 1.3; },
     next() {
@@ -247,9 +248,9 @@ const STEPS = [
     },
     click(h) {
       if (h.inst !== 'needle') return false;
-      if (!PICK.hit || !h.near || PICK.ent !== 'vagina') { hint('cuffmiss', 'Place the bite on the vaginal edge'); return true; }
+      if (!h.pick.hit || !h.near || h.pick.ent !== 'vagina') { hint('cuffmiss', 'Place the bite on the vaginal edge'); return true; }
       const c = S.cuff; if (c.done) return true;
-      const lp = _w.copy(PICK.point).applyMatrix4(_m4.copy(VG.M).invert()), x = lp.x, edge = lp.z < 0 ? 'ant' : 'post', depth = Math.max(0, -lp.y);
+      const lp = _w.copy(h.pick.point).applyMatrix4(_m4.copy(VG.M).invert()), x = lp.x, edge = lp.z < 0 ? 'ant' : 'post', depth = Math.max(0, -lp.y);
       if (!c.pending) {
         if (edge !== 'ant') { hint('cuffant', 'Anterior edge first, then the posterior'); return true; }
         const last = c.stitches.length ? c.stitches[c.stitches.length - 1].x : null;
@@ -275,7 +276,7 @@ const STEPS = [
   },
   {
     id: 'final', kind: 'final', tool: 'any', phase: 'Colpotomy and closure', short: 'Low-pressure inspection', title: 'Inspect at low pressure and confirm the ureters', dist: 12, rec: null, expo: [],
-    text: ['Drop the pneumoperitoneum to 8 mmHg and inspect the pedicles and cuff.', 'Control any ooze with short bipolar bursts, away from the ureter at the cuff angle.', 'Aspirate pooled blood, then touch each ureter and click to confirm peristalsis.'],
+    text: ['Drop the pneumoperitoneum to 8 mmHg and inspect the pedicles and cuff.', 'Control any ooze with short bipolar bursts, away from the ureter at the cuff angle.', 'Aspirate pooled blood, then touch each ureter and click or pinch to confirm peristalsis.'],
     pearl: 'Venous bleeding that 15 mmHg tamponades shows itself at 8. Cystoscopy follows according to your institution\'s practice.',
     click: clickUreter,
     button: { label: 'Lower pressure to 8 mmHg', fn() { if (S.lowP) return; S.lowP = true; S.pressureGoal = 8; addBleeder(o => cuffPt(1.7, 'ant', 0.5, o), 14, false, 'cuff angle'); S.oozeDone = true; toast('Pressure down: venous ooze at the right cuff angle', 'bleed'); uiDirty(); }, hide: () => S.lowP },
@@ -317,8 +318,8 @@ function updateSteps(dt) {
   if (!S.running || S.ended) return;
   S.t += dt;
   S.pressure = damp(S.pressure, S.pressureGoal, 1.2, dt);
-  const st = STEPS[S.step], h = activeHand();
-  if (h.firing && stepPressed && h.inst !== 'suction') checkExposure();
+  const st = STEPS[S.step];
+  if (stepPressed && HANDS.some(h => h.firing && h.inst !== 'suction')) checkExposure();
   if (!S.bleeders.length && st.done()) {
     if (S.step < STEPS.length - 1) { sfx.ok(); toast('Done: ' + st.short, 'ok'); enterStep(S.step + 1); }
   }
