@@ -230,16 +230,21 @@ UT.g.matrixAutoUpdate = false; scene.add(UT.g);
     UT.g.add(t.mesh);
   }
   // colpotomy cup (visible once the uterus is free) and colpotomy cut segments
-  const cup = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 1.6, 1.0, 40, 1, true), new THREE.MeshStandardMaterial({ color: 0x7db4d8, roughness: 0.38, metalness: 0.05, side: THREE.DoubleSide, envMapIntensity: 0.6 }));
+  const cup = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 1.6, 1.0, 40, 1, true), new THREE.MeshStandardMaterial({ color: 0x4f97d8, roughness: 0.32, metalness: 0.05, side: THREE.DoubleSide, envMapIntensity: 0.9 }));
   cup.position.y = -0.22; UT.g.add(cup);
   const cap = new THREE.Mesh(new THREE.CircleGeometry(1.7, 32), new THREE.MeshStandardMaterial({ color: 0xc66a74, roughness: 0.6 }));
   cap.rotation.x = Math.PI / 2; cap.position.y = 0.26; UT.g.add(cap);
+  // where the colpotomy has been cut, the scorched vaginal edge parts and the cup's rim shows through
   UT.segs = [];
-  const sm = new THREE.MeshBasicMaterial({ color: 0x1c0b08 });
+  const charM = new THREE.MeshStandardMaterial({ color: 0x1e0d08, roughness: 0.95 }), rimM = new THREE.MeshStandardMaterial({ color: 0x4f97d8, roughness: 0.32, envMapIntensity: 0.9 });
   for (let k = 0; k < 16; k++) {
-    const sg = new THREE.TorusGeometry(1.95, 0.085, 6, 5, TAU / 16);
-    sg.rotateZ((k / 16) * TAU - TAU / 32); sg.rotateX(Math.PI / 2);
-    const m = new THREE.Mesh(sg, sm); m.scale.z = 0.94; m.position.y = 0.08; m.visible = false; UT.g.add(m); UT.segs.push(m);
+    const grp = new THREE.Group();
+    for (const [r, tube, mat, y] of [[1.95, 0.105, charM, 0.08], [1.93, 0.06, rimM, 0.12]]) {
+      const sg = new THREE.TorusGeometry(r, tube, 8, 6, TAU / 16);
+      sg.rotateZ((k / 16) * TAU - TAU / 32); sg.rotateX(Math.PI / 2);
+      const m = new THREE.Mesh(sg, mat); m.scale.z = 0.94; m.position.y = y; grp.add(m);
+    }
+    grp.visible = false; UT.g.add(grp); UT.segs.push(grp);
   }
 })();
 function colpPt(k, out) { const a = (k / 16) * TAU; return out.set(1.95 * Math.cos(a), 0.1, 1.95 * Math.sin(a) * 0.94).applyMatrix4(UT.M); }

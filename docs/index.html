@@ -1261,16 +1261,21 @@ UT.g.matrixAutoUpdate = false; scene.add(UT.g);
     UT.g.add(t.mesh);
   }
   // colpotomy cup (visible once the uterus is free) and colpotomy cut segments
-  const cup = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 1.6, 1.0, 40, 1, true), new THREE.MeshStandardMaterial({ color: 0x7db4d8, roughness: 0.38, metalness: 0.05, side: THREE.DoubleSide, envMapIntensity: 0.6 }));
+  const cup = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 1.6, 1.0, 40, 1, true), new THREE.MeshStandardMaterial({ color: 0x4f97d8, roughness: 0.32, metalness: 0.05, side: THREE.DoubleSide, envMapIntensity: 0.9 }));
   cup.position.y = -0.22; UT.g.add(cup);
   const cap = new THREE.Mesh(new THREE.CircleGeometry(1.7, 32), new THREE.MeshStandardMaterial({ color: 0xc66a74, roughness: 0.6 }));
   cap.rotation.x = Math.PI / 2; cap.position.y = 0.26; UT.g.add(cap);
+  // where the colpotomy has been cut, the scorched vaginal edge parts and the cup's rim shows through
   UT.segs = [];
-  const sm = new THREE.MeshBasicMaterial({ color: 0x1c0b08 });
+  const charM = new THREE.MeshStandardMaterial({ color: 0x1e0d08, roughness: 0.95 }), rimM = new THREE.MeshStandardMaterial({ color: 0x4f97d8, roughness: 0.32, envMapIntensity: 0.9 });
   for (let k = 0; k < 16; k++) {
-    const sg = new THREE.TorusGeometry(1.95, 0.085, 6, 5, TAU / 16);
-    sg.rotateZ((k / 16) * TAU - TAU / 32); sg.rotateX(Math.PI / 2);
-    const m = new THREE.Mesh(sg, sm); m.scale.z = 0.94; m.position.y = 0.08; m.visible = false; UT.g.add(m); UT.segs.push(m);
+    const grp = new THREE.Group();
+    for (const [r, tube, mat, y] of [[1.95, 0.105, charM, 0.08], [1.93, 0.06, rimM, 0.12]]) {
+      const sg = new THREE.TorusGeometry(r, tube, 8, 6, TAU / 16);
+      sg.rotateZ((k / 16) * TAU - TAU / 32); sg.rotateX(Math.PI / 2);
+      const m = new THREE.Mesh(sg, mat); m.scale.z = 0.94; m.position.y = y; grp.add(m);
+    }
+    grp.visible = false; UT.g.add(grp); UT.segs.push(grp);
   }
 })();
 function colpPt(k, out) { const a = (k / 16) * TAU; return out.set(1.95 * Math.cos(a), 0.1, 1.95 * Math.sin(a) * 0.94).applyMatrix4(UT.M); }
@@ -1592,50 +1597,75 @@ const INST = {
   suction: { name: 'Suction-irrigator', short: 'Suction', key: '4', use: 'Hold to aspirate blood and smoke. Doubles as a blunt dissector.' },
   needle: { name: 'Needle driver, barbed suture', short: 'Needle driver', key: '5', use: 'Click or pinch on the vaginal edge to place a bite.' }
 };
+// Instruments carry the environment map themselves so each can mirror the lit tissue around it at its own strength
+// (the scene-wide setting is kept low, because for tissue it is only fill light).
 const IM = {
-  steel: new THREE.MeshStandardMaterial({ color: 0xcfd4da, metalness: 0.85, roughness: 0.28, envMapIntensity: 1.5 }),
-  shaft: new THREE.MeshStandardMaterial({ color: 0x15171a, metalness: 0.25, roughness: 0.42, envMapIntensity: 0.7 }),
-  ceramic: new THREE.MeshStandardMaterial({ color: 0xece8dc, roughness: 0.42, envMapIntensity: 0.4 }),
-  blue: new THREE.MeshStandardMaterial({ color: 0x2d6fb3, roughness: 0.4, metalness: 0.1, envMapIntensity: 0.5 }),
-  thread: new THREE.MeshStandardMaterial({ color: 0x6a3fb0, roughness: 0.5, vertexColors: false })
+  steel: new THREE.MeshStandardMaterial({ color: 0xb4cbdb, metalness: 0.85, roughness: 0.3, envMap: ENV, envMapIntensity: 1.5 }),
+  shaft: new THREE.MeshStandardMaterial({ color: 0x0d0e10, metalness: 0, roughness: 0.5, envMap: ENV, envMapIntensity: 0.6 }),
+  dark: new THREE.MeshStandardMaterial({ color: 0x070809, metalness: 0.3, roughness: 0.7, envMap: ENV, envMapIntensity: 0.2 }),
+  ceramic: new THREE.MeshStandardMaterial({ color: 0xf0ece0, roughness: 0.34, envMap: ENV, envMapIntensity: 0.5 }),
+  blue: new THREE.MeshStandardMaterial({ color: 0x2a6db5, roughness: 0.36, metalness: 0.1, envMap: ENV, envMapIntensity: 0.5 }),
+  thread: new THREE.MeshStandardMaterial({ color: 0x4b2e83, roughness: 0.55 })
 };
-function zCyl(r0, r1, len, z0, mat, seg) { const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, len, seg || 14), mat); m.rotation.x = Math.PI / 2; m.position.z = z0 + len / 2; return m; }
-function jawGeo(w, h, len, taper) {
-  const g = new THREE.BoxGeometry(w, h, len, 1, 1, 6); g.translate(0, 0, -len / 2);
+// parts are built along +z, which runs from the tip back up the shaft
+function zCyl(r0, r1, len, z0, mat, seg) { const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, len, seg || 20), mat); m.rotation.x = Math.PI / 2; m.position.z = z0 + len / 2; return m; }
+function zBox(w, h, len, z0, mat, x, y) { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, len), mat); m.position.set(x || 0, y || 0, z0 + len / 2); return m; }
+function xPin(r, len, z, mat) { const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 12), mat); m.rotation.z = Math.PI / 2; m.position.z = z; return m; }
+// one jaw: a bar that narrows to the tip, with transverse serrations on the face that meets the other jaw (side sg)
+function jawGeo(w, h, len, taper, sg, teeth) {
+  const g = new THREE.BoxGeometry(w, h, len, 2, 1, 36); g.translate(0, 0, -len / 2);
   const p = g.attributes.position;
-  for (let i = 0; i < p.count; i++) { const k = 1 - taper * Math.pow(-p.getZ(i) / len, 1.5); p.setX(i, p.getX(i) * k); p.setY(i, p.getY(i) * lerp(1, k, 0.5)); }
+  for (let i = 0; i < p.count; i++) {
+    const q = -p.getZ(i) / len, k = 1 - taper * Math.pow(q, 1.5), inner = p.getY(i) * sg < 0;
+    p.setX(i, p.getX(i) * k);
+    let y = p.getY(i) * lerp(1, k, 0.5);
+    if (inner && teeth) y += sg * teeth * (Math.abs(((q * 15) % 1) - 0.5) * 2 - 0.5) * sstep(0.1, 0.2, q);
+    else if (!inner) y *= 1 - 0.5 * sstep(0.85, 1, q); // the nose rounds off
+    p.setY(i, y);
+  }
   g.computeVertexNormals(); return g;
 }
 function buildInst(type) {
   const g = new THREE.Group(), o = { g, jaws: [], needle: null };
-  const addJaws = (w, h, len, taper, mat) => {
+  const addJaws = (w, h, len, taper, mat, teeth) => {
     for (const sg of [1, -1]) {
       const piv = new THREE.Group(); piv.position.set(0, 0, len);
-      const j = new THREE.Mesh(jawGeo(w, h, len, taper), mat); j.position.y = sg * h * 0.5; piv.add(j);
+      const j = new THREE.Mesh(jawGeo(w, h, len, taper, sg, teeth), mat); j.position.y = sg * h * 0.5; piv.add(j);
       piv.userData.sg = sg; g.add(piv); o.jaws.push(piv);
     }
   };
+  // hinge: pin through a forked yoke, as on any jawed instrument
+  const yoke = (z, wide) => { g.add(xPin(0.065, wide + 0.1, z, IM.steel)); for (const sx of [1, -1]) g.add(zBox(0.05, 0.36, 0.8, z - 0.18, IM.steel, sx * wide / 2)); };
+  // ribbed joint between the jaws and the shaft
+  const ribs = (z, n, mat) => { for (let i = 0; i < n; i++) { g.add(zCyl(0.255, 0.255, 0.1, z + i * 0.16, mat, 24)); g.add(zCyl(0.19, 0.19, 0.06, z + 0.1 + i * 0.16, IM.dark, 16)); } return z + n * 0.16; };
+  const shaft = z => { g.add(zCyl(0.262, 0.262, 0.07, z, IM.steel, 24)); g.add(zCyl(0.25, 0.25, 40, z + 0.07, IM.shaft, 24)); };
   if (type === 'grasper') {
-    addJaws(0.36, 0.11, 1.9, 0.45, IM.steel);
-    g.add(zCyl(0.25, 0.25, 0.7, 1.9, IM.steel)); g.add(zCyl(0.25, 0.25, 40, 2.6, IM.shaft));
+    addJaws(0.36, 0.11, 1.9, 0.45, IM.steel, 0.03);
+    for (const piv of o.jaws) { const w = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.014, 0.85), IM.dark); w.position.set(0, piv.userData.sg * 0.108, -0.95); piv.add(w); } // fenestration
+    yoke(1.9, 0.4); g.add(zCyl(0.2, 0.25, 0.3, 2.5, IM.steel, 24)); shaft(ribs(2.8, 4, IM.steel));
   } else if (type === 'bipolar') {
-    addJaws(0.5, 0.17, 2.1, 0.3, IM.steel);
-    for (const piv of o.jaws) { const e = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.03, 1.7), IM.ceramic); e.position.set(0, piv.userData.sg * 0.02, -0.95); piv.add(e); }
-    g.add(zCyl(0.27, 0.27, 1.2, 2.1, IM.blue)); g.add(zCyl(0.25, 0.25, 40, 3.3, IM.shaft));
+    addJaws(0.5, 0.17, 2.1, 0.3, IM.steel, 0.012);
+    for (const piv of o.jaws) {
+      const sg = piv.userData.sg;
+      const e = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.03, 1.7), IM.ceramic); e.position.set(0, sg * 0.02, -0.95); piv.add(e);
+      const slot = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.034, 1.5), IM.dark); slot.position.set(0, sg * 0.02, -0.9); piv.add(slot); // blade track
+    }
+    yoke(2.1, 0.52); g.add(zCyl(0.27, 0.27, 1.1, 2.7, IM.blue, 24)); shaft(ribs(3.8, 3, IM.ceramic));
   } else if (type === 'hook') {
-    g.add(zCyl(0.05, 0.05, 1.0, 0, IM.steel, 8));
-    const b = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.46, 8), IM.steel); b.position.set(0, 0.21, 0.02); g.add(b);
-    g.add(zCyl(0.13, 0.19, 1.1, 0.9, IM.ceramic)); g.add(zCyl(0.25, 0.25, 40, 2.0, IM.shaft));
+    g.add(zCyl(0.05, 0.05, 1.0, 0, IM.steel, 10));
+    const b = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.46, 10), IM.steel); b.position.set(0, 0.21, 0.02); g.add(b);
+    for (const y of [0, 0.44]) { const k = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 8), IM.steel); k.position.set(0, y, 0.02); g.add(k); }
+    g.add(zCyl(0.11, 0.2, 1.2, 0.9, IM.ceramic, 24)); shaft(2.1);
   } else if (type === 'suction') {
-    g.add(zCyl(0.26, 0.26, 1.6, 0, IM.steel, 18)); g.add(zCyl(0.25, 0.25, 40, 1.6, IM.shaft, 18));
-    const hole = new THREE.MeshBasicMaterial({ color: 0x08090a });
+    g.add(zCyl(0.26, 0.26, 1.6, 0, IM.steel, 24)); g.add(zCyl(0.25, 0.25, 40, 1.6, IM.shaft, 24));
+    const hole = new THREE.MeshBasicMaterial({ color: 0x020203 });
     for (const a of [0, 2.1, 4.2]) { const h = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), hole); h.position.set(Math.cos(a) * 0.24, Math.sin(a) * 0.24, 0.5 + a * 0.12); g.add(h); }
-    const end = new THREE.Mesh(new THREE.CircleGeometry(0.2, 14), hole); end.position.z = -0.005; end.rotation.y = Math.PI; g.add(end);
+    const end = new THREE.Mesh(new THREE.CircleGeometry(0.2, 18), hole); end.position.z = -0.005; end.rotation.y = Math.PI; g.add(end);
   } else if (type === 'needle') {
-    addJaws(0.32, 0.13, 1.3, 0.35, IM.steel);
-    g.add(zCyl(0.25, 0.25, 0.9, 1.3, IM.steel)); g.add(zCyl(0.25, 0.25, 40, 2.2, IM.shaft));
+    addJaws(0.32, 0.13, 1.3, 0.35, IM.steel, 0.01);
+    yoke(1.3, 0.36); g.add(zCyl(0.2, 0.25, 0.3, 1.9, IM.steel, 24)); shaft(ribs(2.2, 4, IM.steel));
     const ng = new THREE.Group(), arc = Math.PI * 0.9;
-    const nd = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.035, 6, 26, arc), IM.steel);
+    const nd = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.035, 8, 30, arc), IM.steel);
     nd.rotation.z = Math.PI - 0.3 * arc; nd.position.set(0.6, 0, 0); ng.add(nd); ng.position.z = 0.2; g.add(ng); o.needle = ng;
   }
   return o;
