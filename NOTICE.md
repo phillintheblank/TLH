@@ -2,9 +2,10 @@
 
 The published site in `docs/` includes these components, unmodified.
 
-## three.js r128
+## three.js r187
 
-`docs/vendor/three.min.js`. Copyright 2010-2021 three.js authors. MIT License:
+`docs/vendor/three.module.min.js` (bundled and minified from the published ES modules; `docs/v0.1/vendor/three.min.js`
+is r128 for the archived build). Copyright 2010-2026 three.js authors. MIT License:
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
 documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
