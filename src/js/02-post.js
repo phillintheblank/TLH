@@ -95,7 +95,7 @@ const PM = {
       float r = length(q) / (0.5 * length(vec2(res.x / res.y, 1.0)));
       c *= 1.0 - vig * smoothstep(0.5, 1.08, r);
       float n = hash(gl_FragCoord.xy + fract(time * 7.0) * vec2(1373.0, 719.0)) + hash(gl_FragCoord.yx + fract(time * 3.0) * vec2(311.0, 977.0)) - 1.0;
-      c += n * grain * (0.006 + 0.009 * (1.0 - l)) * (1.0 + 0.35 * log2(max(ev, 1.0)));
+      c += n * grain * (0.005 + 0.005 * (1.0 - l)) * (1.0 + 0.2 * log2(max(ev, 1.0)));
       c = clamp(c, 0.0, 1.0);
       gl_FragColor = vec4(mix(pow(c, vec3(0.41666)) * 1.055 - 0.055, c * 12.92, vec3(lessThanEqual(c, vec3(0.0031308)))), 1.0);
     }`, { tMain: U(null), tD1: U(null), tD2: U(null), tBloom: U(null), tLum: U(null), tDepth: U(null), res: U(new V2(1, 1)), nf: U(new V2()), evLim: U(new V2(0.25, 6)),
