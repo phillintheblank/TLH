@@ -211,44 +211,99 @@ const sfx = {
   bite: () => tone(300, 0.06, 'triangle', 0.06), click: () => tone(1200, 0.03, 'square', 0.025)
 };
 
-// ---------- effects: smoke, blood, char marks ----------
-const FX = { smoke: [], blood: [], sm: 0, bl: 0 };
+// ---------- effects: smoke, steam, sparks, blood, burn marks ----------
+const FX = { puff: [], blood: [], spark: [], blob: [], trail: [], pi: 0, bi: 0, si: 0, trailT: 0 };
+// how brightly the scope lights a point: smoke and blood in the air are lit like everything else
+const litAt = p => clamp(Math.pow(LIGHT.ref / Math.max(1.5, p.distanceTo(camera.position)), LIGHT.decay), 0.04, 5);
 (function () {
-  const st = dotTex('rgba(235,235,240,0.55)', 'rgba(235,235,240,0)'), bt = dotTex('rgba(150,4,10,1)', 'rgba(110,0,6,0)');
-  for (let i = 0; i < 46; i++) { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: st, transparent: true, depthWrite: false, opacity: 0 })); s.visible = false; scene.add(s); FX.smoke.push({ s, life: 0, v: new V3() }); }
-  for (let i = 0; i < 90; i++) { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: bt, transparent: true, depthWrite: false })); s.visible = false; scene.add(s); FX.blood.push({ s, life: 0, v: new V3() }); }
-  FX.src = [];
-  for (let i = 0; i < 5; i++) { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: bt, transparent: true, depthWrite: false, depthTest: false, opacity: 0.9 })); s.visible = false; s.renderOrder = 5; scene.add(s); FX.src.push(s); }
+  const N = 128, cv = mkCanvas(N), g = cv.getContext('2d'), img = g.createImageData(N, N), n = fbmTile(4, 4, 77);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { // a soft, ragged puff
+    const r = Math.hypot(x / N - 0.5, y / N - 0.5) * 2, a = clamp((1 - sstep(0.1, 1, r)) * (0.2 + 1.5 * n(x / N, y / N)), 0, 1), i = (y * N + x) * 4;
+    img.data[i] = img.data[i + 1] = img.data[i + 2] = 255; img.data[i + 3] = a * 255;
+  }
+  g.putImageData(img, 0, 0);
+  const pt = new THREE.CanvasTexture(cv), dt = dotTex('rgba(255,255,255,1)', 'rgba(255,255,255,0)');
+  const spr = (map, extra) => { const s = new THREE.Sprite(new THREE.SpriteMaterial(Object.assign({ map, transparent: true, depthWrite: false, opacity: 0 }, extra))); s.visible = false; scene.add(s); return { s, life: 0, v: new V3() }; };
+  for (let i = 0; i < 60; i++) FX.puff.push(spr(pt));
+  for (let i = 0; i < 90; i++) FX.blood.push(spr(dt));
+  for (let i = 0; i < 28; i++) FX.spark.push(spr(dt, { blending: THREE.AdditiveBlending }));
+  for (let i = 0; i < 5; i++) { // a bleeding point: a welling bead of blood and the trickle running down from it
+    const m = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 10), MAT.bloodWet); m.visible = false; scene.add(m); FX.blob.push(m);
+    const t = new Tube(14, 6, MAT.bloodWet, 1, 1); t.mesh.visible = false; scene.add(t.mesh); FX.trail.push({ t, arr: vecArr(14), n: 0 });
+  }
 })();
-function emitSmoke(p) {
-  const f = FX.smoke[FX.sm++ % FX.smoke.length];
-  f.s.position.copy(p); f.s.visible = true; f.life = 1; f.v.set((Math.random() - 0.5) * 0.8, 0.9 + Math.random() * 0.8, 0.5 + Math.random() * 0.8); f.s.scale.setScalar(0.35);
+function emitPuff(p, steam) { // steam: white, quick, from tissue being desiccated. Otherwise smoke: greyer, slower, lingers.
+  const f = FX.puff[FX.pi++ % FX.puff.length];
+  f.s.position.copy(p); f.s.visible = true; f.life = 1; f.steam = steam; f.dur = steam ? 0.8 + Math.random() * 0.4 : 2.2 + Math.random();
+  f.v.set((Math.random() - 0.5) * (steam ? 2.6 : 0.9), (steam ? 2.0 : 0.9) + Math.random(), 0.3 + Math.random() * 0.9);
+  f.s.material.rotation = Math.random() * TAU; f.s.scale.setScalar(0.2);
+}
+function emitSpark(p) {
+  const f = FX.spark[FX.si++ % FX.spark.length];
+  f.s.position.set(p.x + (Math.random() - 0.5) * 0.16, p.y + (Math.random() - 0.5) * 0.16, p.z + (Math.random() - 0.5) * 0.16);
+  f.s.visible = true; f.life = 1; f.dur = 0.05 + Math.random() * 0.1; f.s.scale.setScalar(0.1 + Math.random() * 0.26);
+  f.s.material.color.setRGB(18, 10 + 5 * Math.random(), 3);
 }
 function emitBlood(p, speed) {
-  const f = FX.blood[FX.bl++ % FX.blood.length];
-  f.s.position.copy(p); f.s.visible = true; f.life = 1; f.v.set((Math.random() - 0.5) * speed * 0.7, speed * (0.5 + Math.random() * 0.5), speed * (0.25 + Math.random() * 0.5)); f.s.scale.setScalar(0.14 + Math.random() * 0.12);
+  const f = FX.blood[FX.bi++ % FX.blood.length];
+  f.s.position.copy(p); f.s.visible = true; f.life = 1; f.v.set((Math.random() - 0.5) * speed * 0.7, speed * (0.5 + Math.random() * 0.5), speed * (0.25 + Math.random() * 0.5)); f.s.scale.setScalar(0.1 + Math.random() * 0.1);
 }
-const _bp = new V3();
+const _bp = new V3(), _bq = new V3(), _bc = new V3(), _b1 = new V3(), _b2 = new V3(), _b3 = new V3(), _bn = new V2(), RAYB = new THREE.Raycaster();
+// the visible surface in front of world point p, if it lies within maxD of p
+function surfaceNear(p, maxD, out) {
+  _bq.copy(p).project(camera); if (_bq.z > 1 || Math.abs(_bq.x) > 1.05 || Math.abs(_bq.y) > 1.05) return false;
+  _bn.set(_bq.x, _bq.y); RAYB.setFromCamera(_bn, camera);
+  const hits = RAYB.intersectObjects(PICKS, false);
+  for (let i = 0; i < hits.length; i++) if (shown(hits[i].object)) { if (hits[i].point.distanceTo(p) > maxD) return false; out.copy(hits[i].point); return true; }
+  return false;
+}
+// Blood runs downhill: step down from the bleeding point, each time dropping back onto the surface seen there.
+function bloodPath(b, tr) {
+  const p0 = b.pt(_bp);
+  if (!b.surf) b.surf = new V3();
+  if (!surfaceNear(p0, 1.2, b.surf)) b.surf.copy(p0);
+  _bc.copy(camera.position).sub(b.surf).normalize();
+  tr.arr[0].copy(b.surf).addScaledVector(_bc, 0.03); tr.n = 0;
+  _b1.copy(b.surf);
+  for (let i = 1; i < tr.arr.length; i++) {
+    _b2.copy(_b1); _b2.y -= 0.4;
+    if (!surfaceNear(_b2, 1.3, _b3) || _b3.y > _b1.y + 0.05) break;
+    _b1.copy(_b3); tr.arr[i].copy(_b1).addScaledVector(_bc, 0.03); tr.n = i;
+  }
+  for (let i = tr.n + 1; i < tr.arr.length; i++) tr.arr[i].copy(tr.arr[tr.n]);
+  b.surf.addScaledVector(_bc, 0.05);
+}
 function updateFX(dt, time) {
-  for (const f of FX.smoke) if (f.life > 0) {
-    f.life -= dt / 2.2; f.s.position.addScaledVector(f.v, dt); f.s.scale.setScalar(0.35 + (1 - f.life) * 2.4); f.s.material.opacity = 0.16 * Math.max(0, f.life) * (f.life > 0.85 ? (1 - f.life) / 0.15 : 1);
+  for (const f of FX.puff) if (f.life > 0) {
+    f.life -= dt / f.dur; f.s.position.addScaledVector(f.v, dt); f.v.multiplyScalar(Math.exp(-1.1 * dt));
+    const age = 1 - Math.max(0, f.life), l = litAt(f.s.position);
+    f.s.scale.setScalar(f.steam ? 0.2 + 1.3 * age : 0.3 + 2.6 * Math.sqrt(age));
+    f.s.material.opacity = (f.steam ? 0.34 : 0.2) * Math.max(0, f.life) * Math.min(1, age / 0.12);
+    if (f.steam) f.s.material.color.setRGB(0.95 * l, 0.96 * l, l); else f.s.material.color.setRGB(0.74 * l, 0.77 * l, 0.84 * l);
     if (f.life <= 0) f.s.visible = false;
   }
+  for (const f of FX.spark) if (f.life > 0) { f.life -= dt / f.dur; f.s.material.opacity = Math.max(0, f.life); if (f.life <= 0) f.s.visible = false; }
   for (const f of FX.blood) if (f.life > 0) {
     f.life -= dt / 0.75; f.v.y -= 22 * dt; f.s.position.addScaledVector(f.v, dt); f.s.material.opacity = Math.min(1, f.life * 3);
+    const l = litAt(f.s.position); f.s.material.color.setRGB(0.36 * l, 0.012 * l, 0.018 * l);
     if (f.life <= 0) f.s.visible = false;
   }
   for (let i = S.bleeders.length - 1; i >= 0; i--) {
     const b = S.bleeders[i]; b.t += dt;
     const vol = (b.rate * dt) / 60; S.ebl += vol; S.pool += vol;
-    const p = b.pt(_bp);
+    const p = b.surf || b.pt(_bp);
     if (b.arterial) { if (pulse(time) > 0.35) { emitBlood(p, 6 + Math.random() * 3); if (Math.random() < 0.5) emitBlood(p, 5); } }
-    else if (Math.random() < 0.45 + b.rate / 120) emitBlood(p, 1.6 + b.rate / 50);
+    else if (Math.random() < 0.3 + b.rate / 160) emitBlood(p, 1.2 + b.rate / 60);
     if (b.auto && b.t > b.auto) { S.bleeders.splice(i, 1); logEvent('info', b.autoMsg || 'Bleeding controlled'); }
   }
-  for (let i = 0; i < FX.src.length; i++) {
-    const b = S.bleeders[i], s = FX.src[i]; s.visible = !!b;
-    if (b) { s.position.copy(b.pt(_bp)); s.scale.setScalar((0.32 + Math.min(0.5, b.rate / 400)) * (1 + 0.25 * pulse(time))); }
+  FX.trailT -= dt; const due = FX.trailT <= 0; if (due) FX.trailT = 0.3;
+  for (let i = 0; i < FX.blob.length; i++) {
+    const b = S.bleeders[i], m = FX.blob[i], tr = FX.trail[i];
+    if (!b) { m.visible = false; tr.t.mesh.visible = false; continue; }
+    if (due || !b.surf) bloodPath(b, tr);
+    const r = (0.15 + Math.min(0.2, b.rate / 900)) * (1 + 0.22 * pulse(time)) * Math.min(1, 0.35 + b.t);
+    m.visible = true; m.position.copy(b.surf); m.quaternion.copy(camera.quaternion); m.scale.set(r, r, r * 0.4);
+    if (tr.n > 0) tr.t.set(tr.arr, 0, Math.min(1, b.t / 1.5) * (tr.n / (tr.arr.length - 1)), u => 0.085 - 0.04 * u, null); else tr.t.mesh.visible = false;
   }
   S.haze = Math.max(0, S.haze - dt * (HANDS.some(h => h.firing && h.inst === 'suction') ? 0.6 : 0.07));
   $('haze').style.opacity = (S.haze * 0.75).toFixed(3);
@@ -257,9 +312,22 @@ function addBleeder(pt, rate, arterial, label, extra) {
   const b = Object.assign({ pt, rate, arterial: !!arterial, seal: 0, t: 0, label }, extra || {});
   S.bleeders.push(b); return b;
 }
-const DECALS = [], decalGeo = new THREE.CircleGeometry(0.17, 10);
-const decalMat = new THREE.MeshBasicMaterial({ color: 0x2c160d, transparent: true, opacity: 0.7, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
-const holeMat = new THREE.MeshBasicMaterial({ color: 0x100404, transparent: true, opacity: 0.92, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
+// Burn marks darken whatever is under them (they multiply it), so they sit correctly in light and in shadow.
+function burnTex(hole) {
+  const N = 64, cv = mkCanvas(N), g = cv.getContext('2d'), img = g.createImageData(N, N), n = fbmTile(5, 3, hole ? 91 : 83);
+  const core = hole ? [22, 8, 8] : [70, 44, 28], rim = [226, 196, 150];
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const r = Math.hypot(x / N - 0.5, y / N - 0.5) * 2 + (n(x / N, y / N) - 0.5) * 0.5, i = (y * N + x) * 4;
+    const kr = 1 - sstep(0.55, 0.98, r), kc = 1 - sstep(hole ? 0.3 : 0.12, hole ? 0.75 : 0.62, r);
+    for (let c = 0; c < 3; c++) img.data[i + c] = lerp(lerp(255, rim[c], kr * 0.8), core[c], kc);
+    img.data[i + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+const mulMat = (tex, off) => new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, toneMapped: false, blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.DstColorFactor, blendDst: THREE.ZeroFactor, polygonOffset: true, polygonOffsetFactor: off, polygonOffsetUnits: off });
+const DECALS = [], decalGeo = new THREE.CircleGeometry(0.26, 14);
+const decalMat = mulMat(burnTex(false), -3), holeMat = mulMat(burnTex(true), -4);
 let lastDecal = new V3(1e3, 0, 0);
 function addDecal(h, big) {
   const P = h.pick;
@@ -267,8 +335,8 @@ function addDecal(h, big) {
   if (!big && lastDecal.distanceTo(P.point) < 0.14) return;
   lastDecal.copy(P.point);
   const m = new THREE.Mesh(decalGeo, big ? holeMat : decalMat);
-  m.position.copy(P.point).addScaledVector(P.normal, 0.025); m.lookAt(_bp.copy(m.position).add(P.normal));
-  if (big) m.scale.setScalar(2.2);
+  m.position.copy(P.point).addScaledVector(P.normal, 0.025); m.lookAt(_bp.copy(m.position).add(P.normal)); m.rotateZ(Math.random() * TAU);
+  m.scale.setScalar(big ? 2.2 : 0.8 + Math.random() * 0.5);
   scene.add(m); P.mesh.attach(m); DECALS.push(m);
   if (DECALS.length > 80) { const o = DECALS.shift(); o.parent && o.parent.remove(o); }
 }
@@ -363,7 +431,7 @@ function canCleanCut(h) {
 function bipolarTick(h, dt) {
   const P = h.pick;
   S.stats.energyTime += dt; S.haze = Math.min(0.6, S.haze + dt * 0.05);
-  if (Math.random() < dt * 9) emitSmoke(h.tip);
+  if (h.near && Math.random() < dt * 16) emitPuff(h.tip, true);
   thermal(h, dt, 0.5);
   if (controlBleeders(h, dt)) { sustain('bip', 520, 'sine', 0.06); return; }
   const tg = sealTarget(h);
@@ -440,7 +508,7 @@ function cutAction(hand) {
 function hookTick(h, dt) {
   const P = h.pick;
   S.stats.energyTime += dt; S.haze = Math.min(0.6, S.haze + dt * 0.09);
-  if (Math.random() < dt * 14) emitSmoke(h.tip);
+  if (h.near) { if (Math.random() < dt * 11) emitPuff(h.tip, false); if (Math.random() < dt * 40) emitSpark(h.tip); if (Math.random() < dt * 25) emitSpark(h.tip); }
   sustain('mono', 310, 'sawtooth', 0.022);
   thermal(h, dt, 0.35);
   const st = STEPS[S.step];

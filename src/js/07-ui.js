@@ -250,7 +250,7 @@ function resetWorld(running) {
   S = freshState(); S.guided = keep.guided; S.labels = keep.labels; S.running = running;
   resetSteps(); resetHands();
   for (const m of DECALS) m.parent && m.parent.remove(m); DECALS.length = 0;
-  for (const f of FX.smoke.concat(FX.blood)) { f.life = 0; f.s.visible = false; }
+  for (const f of FX.puff.concat(FX.blood, FX.spark)) { f.life = 0; f.s.visible = false; }
   VG.dirty = true; VG.pose.yaw = 0; VG.pose.pitch = PITCH0; VG.pose.push = 0;
   CAM.userIns = 0; CAM.pan.set(0, 0, 0);
   for (const k in hintT) delete hintT[k];

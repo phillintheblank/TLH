@@ -932,6 +932,17 @@ const NRM = (function () {
     fiber: normalTex(512, (u, v) => stretch(u, v) + 0.25 * fc(u, v), 7)
   };
 })();
+// lacy web for loose areolar tissue: strands along cell borders plus a few solid lobules; used as an alpha map
+const WEB = (function () {
+  const N = 256, cv = mkCanvas(N), g = cv.getContext('2d'), img = g.createImageData(N, N), c1 = cellTile(6, 511), c2 = cellTile(13, 512), f = fbmTile(4, 3, 513), o = [0, 0];
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const u = x / N, v = y / N; c1(u, v, o); let a = 1 - sstep(0.05, 0.14, o[1] - o[0]);
+    c2(u, v, o); a = Math.max(a, 0.8 * (1 - sstep(0.04, 0.1, o[1] - o[0])), sstep(0.56, 0.66, f(u, v)));
+    const i = (y * N + x) * 4; img.data[i] = img.data[i + 1] = img.data[i + 2] = a * 255; img.data[i + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
+})();
 function rep(t, x, y) { const c = t.clone(); c.repeat.set(x, y); c.needsUpdate = true; return c; }
 
 const TEX = {
@@ -1008,8 +1019,10 @@ const MAT = {
   fat: wet({ map: TEX.fat, side: THREE.DoubleSide, mr: [4, 3], relief: NRM.fat, br: [2.5, 2], bs: 1.2, roughness: 0.55 }),
   card: wet({ map: TEX.card, side: THREE.DoubleSide, mr: [4, 3], relief: NRM.fiber, br: [1, 1], bs: 0.8, transmission: 0.35, transmissionMap: TEX.card.userData.trans, thickness: 0, ior: 1.4 }),
   vag: wet({ map: TEX.vag, side: THREE.DoubleSide, mr: [4, 6], bs: 0.6 }),
+  areolar: wet({ map: TEX.card, side: THREE.DoubleSide, mr: [4, 3], relief: NRM.fiber, bs: 0.8, alphaMap: rep(WEB, 2, 1.6), alphaTest: 0.45, alphaToCoverage: true, color: 0xfff2d8 }),
   cord: wet({ map: TEX.cord, mr: [1.2, 1.8], relief: NRM.fiber, br: [1, 0.6], bs: 0.7 }),
-  blood: new THREE.MeshPhysicalMaterial({ color: 0x6a0a0e, roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.03, transparent: true, opacity: 0.94 })
+  blood: new THREE.MeshPhysicalMaterial({ color: 0x5e080c, roughness: 0.14, clearcoat: 1, clearcoatRoughness: 0.1, transparent: true, opacity: 0.95, clearcoatNormalMap: rep(NRM.micro, 5, 5), clearcoatNormalScale: new V2(0.9, 0.9), normalMap: rep(NRM.micro, 2, 2), normalScale: new V2(0.5, 0.5) }),
+  bloodWet: new THREE.MeshPhysicalMaterial({ color: 0x6e0a10, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.14 })
 };
 const TRANSLUCENT = [[MAT.leaf, 0.45], [MAT.card, 0.35]];
 function matQuality(q) {
@@ -1068,7 +1081,7 @@ const COL = {
   lig: C(214, 150, 140), tube: C(222, 152, 146), fim: C(190, 70, 80), uo: C(214, 150, 140), ip: C(190, 120, 130),
   art: C(186, 66, 62), vein: C(112, 100, 152), ureter: C(232, 204, 184), usl: C(200, 128, 120),
   iliacA: C(204, 112, 102), iliacV: C(146, 116, 146), fold: C(210, 132, 114),
-  seal: C(238, 218, 186), char: C(128, 84, 58), edge: C(150, 96, 80)
+  seal: C(216, 184, 132), blanch: C(238, 220, 206), char: C(92, 56, 34), edge: C(150, 96, 80)
 };
 const SIDEK = {};
 for (const s of [1, -1]) {
@@ -1315,10 +1328,10 @@ function cuffPt(x, edge, depth, out) {
 function mkSide(name, s) {
   const sd = { name, s, cur: new SideGeom(s), t: {}, st: {} };
   const T = (k, n, m, ent, extra) => { const t = new Tube(n, m, MAT.cord, 1, 3); reg(t.mesh, ent, name, Object.assign({ tube: t, piece: k }, extra)); t.mesh.matrixAutoUpdate = false; scene.add(t.mesh); sd.t[k] = t; return t; };
-  T('roundA', 16, 8, 'round'); T('roundB', 16, 8, 'round');
-  T('uoA', 8, 8, 'uo'); T('uoB', 8, 8, 'uo'); T('ip', 16, 10, 'ip');
+  T('roundA', 26, 10, 'round'); T('roundB', 26, 10, 'round');
+  T('uoA', 12, 10, 'uo'); T('uoB', 12, 10, 'uo'); T('ip', 16, 10, 'ip');
   T('tube', 30, 10, 'tube');
-  T('uaA', 10, 8, 'ua'); T('uaB', 22, 8, 'ua'); T('uvA', 10, 8, 'ua'); T('uvB', 22, 8, 'ua');
+  T('uaA', 14, 8, 'ua'); T('uaB', 32, 8, 'ua'); T('uvA', 14, 8, 'ua'); T('uvB', 32, 8, 'ua');
   T('usl', 14, 8, 'usl');
   const P = (k, ns, nt, mat, ent, uvS, uvT) => { const p = new Strip(ns, nt, mat, uvS, uvT); reg(p.mesh, ent, name, { strip: p, piece: k }); p.mesh.matrixAutoUpdate = false; scene.add(p.mesh); sd.st[k] = p; return p; };
   P('antM', 8, 9, MAT.leaf, 'ant', 0.5, 1); P('antL', 12, 9, MAT.leaf, 'ant', 1, 1);
@@ -1326,7 +1339,7 @@ function mkSide(name, s) {
   P('postM', 8, 9, MAT.leaf, 'post', 0.5, 1); P('postL', 12, 9, MAT.leaf, 'post', 1.4, 1.2);
   P('mesoM', 5, 6, MAT.leaf, 'meso', 0.3, 0.5); P('mesoL', 14, 6, MAT.leaf, 'meso', 1, 0.5);
   P('cardM', 6, 8, MAT.card, 'card', 0.4, 1); P('cardL', 12, 8, MAT.card, 'card', 1, 1);
-  P('areolar', 14, 8, MAT.fat, 'areolar', 1.5, 1.2);
+  P('areolar', 14, 8, MAT.areolar, 'areolar', 1.5, 1.2);
   const og = paramSurface(28, 20, (u, v, p) => {
     const th = u * TAU, sv = Math.sin(Math.PI * v), cv = Math.cos(Math.PI * v);
     const k = 1 + 0.16 * (fbm3(sv * Math.sin(th) * 2.2 + s * 4, cv * 2.2 + 1, sv * Math.cos(th) * 2.2, 2) - 0.5);
@@ -1366,28 +1379,49 @@ function stripPt(E0, u0, E1, u1, v, sag, out) {
   if (sag) out.y -= sag * Math.sin(Math.PI * v);
   return out;
 }
+// A bipolar seal on a cord: the band the jaws compressed is desiccated to tan and loses its wet film, its margins
+// are scorched, and heat blanches the tissue a little way beyond. p is seal progress, 0..1.
+function sealPaint(c, d, p, fleck) {
+  const halo = (1 - sstep(1.0, 2.3, d)) * 0.5 * p, k = (1 - sstep(0.9, 1.08, d)) * p, edge = Math.exp(-Math.pow((d - 0.98) / 0.13, 2)) * p * (0.7 + 0.3 * fleck);
+  c[0] = lerp(c[0], COL.blanch[0], halo); c[1] = lerp(c[1], COL.blanch[1], halo); c[2] = lerp(c[2], COL.blanch[2], halo);
+  const t = k * (0.82 + 0.18 * fleck);
+  c[0] = lerp(c[0], COL.seal[0], t); c[1] = lerp(c[1], COL.seal[1], t); c[2] = lerp(c[2], COL.seal[2], t);
+  c[0] = lerp(c[0], COL.char[0], edge); c[1] = lerp(c[1], COL.char[1], edge); c[2] = lerp(c[2], COL.char[2], edge);
+  c[3] = Math.max(c[3], k, edge);
+}
+const fleckAt = u => 0.5 + 0.5 * Math.sin(u * 733.1) * Math.sin(u * 291.7 + 1.3);
+// how much of a cord at u has been sealed (0..1), counting a seal in progress: sealed tissue shrinks
+function sealK(e, u) {
+  let k = 0;
+  for (let i = 0; i < e.seals.length; i++) { const z = e.seals[i]; k = Math.max(k, 1 - sstep(z.w * 0.85, z.w * 1.15, Math.abs(u - z.u))); }
+  if (e.act) k = Math.max(k, (1 - sstep(e.act.w * 0.85, e.act.w * 1.15, Math.abs(u - e.act.u))) * e.act.p);
+  return k;
+}
 function cordCol(e, base, gapHalf) {
   return (u, c) => {
-    let r = base[0], g = base[1], b = base[2];
-    for (let i = 0; i < e.seals.length; i++) {
-      const z = e.seals[i], k = 1 - sstep(z.w * 0.7, z.w * 1.5, Math.abs(u - z.u));
-      r = lerp(r, COL.seal[0], k); g = lerp(g, COL.seal[1], k); b = lerp(b, COL.seal[2], k);
-    }
-    if (e.act) {
-      const k = (1 - sstep(e.act.w * 0.7, e.act.w * 1.5, Math.abs(u - e.act.u))) * e.act.p;
-      r = lerp(r, COL.seal[0], k); g = lerp(g, COL.seal[1], k); b = lerp(b, COL.seal[2], k);
-    }
+    c[0] = base[0]; c[1] = base[1]; c[2] = base[2];
+    const fl = fleckAt(u);
+    for (let i = 0; i < e.seals.length; i++) { const z = e.seals[i]; sealPaint(c, Math.abs(u - z.u) / z.w, 1, fl); }
+    if (e.act) sealPaint(c, Math.abs(u - e.act.u) / e.act.w, e.act.p, fl);
     if (e.cut) {
-      const k = (1 - sstep(0, 0.03, Math.abs(u - e.uc) - gapHalf * e.gk)) * 0.75;
-      r = lerp(r, COL.char[0], k); g = lerp(g, COL.char[1], k); b = lerp(b, COL.char[2], k);
+      const k = (1 - sstep(0, 0.03, Math.abs(u - e.uc) - gapHalf * e.gk)) * 0.8;
+      c[0] = lerp(c[0], COL.char[0], k); c[1] = lerp(c[1], COL.char[1], k); c[2] = lerp(c[2], COL.char[2], k); c[3] = Math.max(c[3], k);
     }
-    c[0] = r; c[1] = g; c[2] = b;
   };
 }
 const taper = (u, uEnd, gk, w) => { const q = clamp(1 - Math.abs(uEnd - u) / (w || 0.035), 0, 1); return lerp(1, Math.sqrt(Math.max(0.03, 1 - q * q)), gk); };
+// Edge of peritoneum cut with energy: a pale, dry margin with a scorched rim
 function edgeCol(c, m, prox) {
-  const k = m * sstep(0.72, 1, prox);
-  c[0] = lerp(1, 0.62, k); c[1] = lerp(1, 0.4, k); c[2] = lerp(1, 0.34, k);
+  const k1 = m * sstep(0.55, 0.9, prox), k2 = m * sstep(0.88, 1, prox);
+  c[0] = lerp(lerp(1, 1.1, k1), 0.5, k2); c[1] = lerp(lerp(1, 1.04, k1), 0.33, k2); c[2] = lerp(lerp(1, 0.96, k1), 0.24, k2); c[3] = Math.max(k1 * 0.8, k2);
+}
+// a seal across a sheet of tissue (mesosalpinx, cardinal web); colours multiply the sheet's own texture
+function sheetSeal(c, d, p) {
+  const halo = (1 - sstep(1.0, 2.0, d)) * 0.4 * p, k = (1 - sstep(0.88, 1.06, d)) * p, edge = Math.exp(-Math.pow((d - 0.97) / 0.14, 2)) * p * 0.7;
+  c[0] = lerp(c[0], 1.14, halo); c[1] = lerp(c[1], 1.14, halo); c[2] = lerp(c[2], 1.14, halo);
+  c[0] = lerp(c[0], 1.06, k); c[1] = lerp(c[1], 0.98, k); c[2] = lerp(c[2], 0.76, k);
+  c[0] = lerp(c[0], 0.46, edge); c[1] = lerp(c[1], 0.3, edge); c[2] = lerp(c[2], 0.2, edge);
+  c[3] = Math.max(c[3], k, edge);
 }
 const pulse = t => { const x = (t * 1.25) % 1; return Math.exp(-Math.pow((x - 0.15) / 0.09, 2)) + 0.35 * Math.exp(-Math.pow((x - 0.42) / 0.12, 2)); };
 
@@ -1412,22 +1446,22 @@ function updateSide(sd, time) {
 
   // round ligament
   const rd = st.round, uR = rd.uc, gR = 0.07 * rd.gk;
-  t.roundA.set(Um.round, 0, uR - gR, u => 0.2 * taper(u, uR - gR, rd.gk), cordCol(rd, COL.lig, 0.07)); setM(t.roundA.mesh, UT_);
-  t.roundB.set(Ul.round, uR + gR, 1, u => 0.2 * taper(u, uR + gR, rd.gk), cordCol(rd, COL.lig, 0.07));
+  t.roundA.set(Um.round, 0, uR - gR, u => 0.2 * taper(u, uR - gR, rd.gk) * (1 - 0.3 * sealK(rd, u)), cordCol(rd, COL.lig, 0.07)); setM(t.roundA.mesh, UT_);
+  t.roundB.set(Ul.round, uR + gR, 1, u => 0.2 * taper(u, uR + gR, rd.gk) * (1 - 0.3 * sealK(rd, u)), cordCol(rd, COL.lig, 0.07));
   // utero-ovarian ligament, ovary, IP ligament (ridge)
   const uo = st.uo, uU = uo.uc, gU = 0.035 * uo.gk;
-  t.uoA.set(Um.ridge, 0, uU - gU, u => 0.23 * taper(u, uU - gU, uo.gk, 0.02), cordCol(uo, COL.uo, 0.035)); setM(t.uoA.mesh, UT_);
-  t.uoB.set(Ul.ridge, uU + gU, 0.22, u => 0.23 * taper(u, uU + gU, uo.gk, 0.02), cordCol(uo, COL.uo, 0.035));
+  t.uoA.set(Um.ridge, 0, uU - gU, u => 0.23 * taper(u, uU - gU, uo.gk, 0.02) * (1 - 0.3 * sealK(uo, u)), cordCol(uo, COL.uo, 0.035)); setM(t.uoA.mesh, UT_);
+  t.uoB.set(Ul.ridge, uU + gU, 0.22, u => 0.23 * taper(u, uU + gU, uo.gk, 0.02) * (1 - 0.3 * sealK(uo, u)), cordCol(uo, COL.uo, 0.035));
   t.ip.set(Ul.ridge, 0.56, 1, u => 0.3 + 0.06 * Math.sin(u * 40), (u, c) => { const k = 0.5 + 0.5 * Math.sin(u * 55); c[0] = lerp(COL.ip[0], COL.lig[0], k); c[1] = lerp(COL.ip[1], COL.lig[1], k); c[2] = lerp(COL.ip[2], COL.lig[2], k); });
   sd.ovary.position.copy(Ul.ovC); sd.ovary.quaternion.setFromUnitVectors(_a.set(1, 0, 0), Ul.ovA);
   // fallopian tube
   t.tube.set(cur.tubeCur, 0, 1, u => lerp(0.15, 0.27, sstep(0.15, 0.8, u)) + 0.2 * sstep(0.9, 1, u), (u, c) => { const k = sstep(0.86, 1, u); c[0] = lerp(COL.tube[0], COL.fim[0], k); c[1] = lerp(COL.tube[1], COL.fim[1], k); c[2] = lerp(COL.tube[2], COL.fim[2], k); });
   // uterine artery + vein
   const ua = st.ua, uA = ua.uc, gA = 0.045 * ua.gk, pl = 1 + 0.07 * pulse(time), dead = ua.cut ? 1 : pl;
-  t.uaA.set(Am.ua, 0, uA - gA, u => 0.17 * dead * taper(u, uA - gA, ua.gk, 0.03), cordCol(ua, COL.art, 0.045)); setM(t.uaA.mesh, AT);
-  t.uaB.set(Al.ua, uA + gA, 1, u => 0.17 * pl * taper(u, uA + gA, ua.gk, 0.03), cordCol(ua, COL.art, 0.045));
-  t.uvA.set(Am.uv, 0, uA - gA, u => 0.22 * taper(u, uA - gA, ua.gk, 0.03), cordCol(ua, COL.vein, 0.045)); setM(t.uvA.mesh, AT);
-  t.uvB.set(Al.uv, uA + gA, 1, u => 0.22 * taper(u, uA + gA, ua.gk, 0.03), cordCol(ua, COL.vein, 0.045));
+  t.uaA.set(Am.ua, 0, uA - gA, u => 0.17 * dead * taper(u, uA - gA, ua.gk, 0.03) * (1 - 0.3 * sealK(ua, u)), cordCol(ua, COL.art, 0.045)); setM(t.uaA.mesh, AT);
+  t.uaB.set(Al.ua, uA + gA, 1, u => 0.17 * pl * taper(u, uA + gA, ua.gk, 0.03) * (1 - 0.3 * sealK(ua, u)), cordCol(ua, COL.art, 0.045));
+  t.uvA.set(Am.uv, 0, uA - gA, u => 0.22 * taper(u, uA - gA, ua.gk, 0.03) * (1 - 0.35 * sealK(ua, u)), cordCol(ua, COL.vein, 0.045)); setM(t.uvA.mesh, AT);
+  t.uvB.set(Al.uv, uA + gA, 1, u => 0.22 * taper(u, uA + gA, ua.gk, 0.03) * (1 - 0.35 * sealK(ua, u)), cordCol(ua, COL.vein, 0.045));
   // uterosacral ligament (stays with the vaginal cuff)
   _a.set(1.0 * s, -0.2, 1.5).applyMatrix4(VG.M); _b.lerpVectors(_a, SIDEK[s].uslSac, 0.5); _b.y -= 0.35; _b.x += 0.3 * s;
   spline([_a, _b, SIDEK[s].uslSac], sd.uslArr);
@@ -1452,17 +1486,20 @@ function updateSide(sd, time) {
   // mesosalpinx fin (ridge up to the tube)
   const wU = uU / 0.6, me = st.meso;
   const mesoMask = w => (me.p > 0 ? sstep(1 - me.p - 0.07, 1 - me.p + 0.02, w) : 0);
-  const mesoFn = (G, w, v, o, c) => { const m = mesoMask(w), vv = v * (1 - 0.55 * m); stripPt(G.ridge, 0.6 * w, G.tubeAtt, w, vv, 0, o); const k = m * sstep(0.7, 1, v); c[0] = lerp(1, 0.62, k); c[1] = lerp(1, 0.4, k); c[2] = lerp(1, 0.34, k); };
+  const mesoFn = (G, w, v, o, c) => {
+    const m = mesoMask(w), vv = v * (1 - 0.55 * m); stripPt(G.ridge, 0.6 * w, G.tubeAtt, w, vv, 0, o); edgeCol(c, m, v);
+    for (const z of me.seals) sheetSeal(c, Math.abs(w - z.u) / (z.w * 0.55), 1);
+    if (me.act) sheetSeal(c, Math.abs(w - me.act.u) / (me.act.w * 0.55), me.act.p);
+  };
   p.mesoM.update((sx, v, o, c) => mesoFn(Um, sx * Math.max(0, wU - 0.05 * uo.gk), v, o, c)); setM(p.mesoM.mesh, UT_);
   p.mesoL.update((sx, v, o, c) => mesoFn(Ul, lerp(wU + 0.05 * uo.gk, 1, sx), v, o, c));
   p.mesoM.map = (sx, v) => [sx * wU, v]; p.mesoL.map = (sx, v) => [lerp(wU, 1, sx), v];
   // cardinal ligament / parametrium web
   const cd = st.card, uC = cd.uc, gC = 0.06 * cd.gk;
   const cardCol = (c, u, prox) => {
-    let k = cd.gk * sstep(0.7, 1, prox) * 0.8, r = lerp(1, 0.6, k), g = lerp(1, 0.4, k), b = lerp(1, 0.34, k);
-    for (const z of cd.seals) { const q = 1 - sstep(z.w * 0.7, z.w * 1.5, Math.abs(u - z.u)); r = lerp(r, 1.25, q); g = lerp(g, 1.3, q); b = lerp(b, 1.25, q); }
-    if (cd.act) { const q = (1 - sstep(cd.act.w * 0.7, cd.act.w * 1.5, Math.abs(u - cd.act.u))) * cd.act.p; r = lerp(r, 1.25, q); g = lerp(g, 1.3, q); b = lerp(b, 1.25, q); }
-    c[0] = r; c[1] = g; c[2] = b;
+    edgeCol(c, cd.gk * 0.9, prox);
+    for (const z of cd.seals) sheetSeal(c, Math.abs(u - z.u) / z.w, 1);
+    if (cd.act) sheetSeal(c, Math.abs(u - cd.act.u) / cd.act.w, cd.act.p);
   };
   p.cardM.update((sx, v, o, c) => { const u = sx * Math.max(0, uC - gC); stripPt(Cm.cardLow, u, Cm.ua, u, v, 0.08, o); cardCol(c, u, sx); }); setM(p.cardM.mesh, CT);
   p.cardL.update((sx, v, o, c) => { const u = lerp(uC + gC, 1, sx); stripPt(Cl.cardLow, u, Cl.ua, u, v, 0.08, o); cardCol(c, u, 1 - sx); });
@@ -1760,44 +1797,99 @@ const sfx = {
   bite: () => tone(300, 0.06, 'triangle', 0.06), click: () => tone(1200, 0.03, 'square', 0.025)
 };
 
-// ---------- effects: smoke, blood, char marks ----------
-const FX = { smoke: [], blood: [], sm: 0, bl: 0 };
+// ---------- effects: smoke, steam, sparks, blood, burn marks ----------
+const FX = { puff: [], blood: [], spark: [], blob: [], trail: [], pi: 0, bi: 0, si: 0, trailT: 0 };
+// how brightly the scope lights a point: smoke and blood in the air are lit like everything else
+const litAt = p => clamp(Math.pow(LIGHT.ref / Math.max(1.5, p.distanceTo(camera.position)), LIGHT.decay), 0.04, 5);
 (function () {
-  const st = dotTex('rgba(235,235,240,0.55)', 'rgba(235,235,240,0)'), bt = dotTex('rgba(150,4,10,1)', 'rgba(110,0,6,0)');
-  for (let i = 0; i < 46; i++) { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: st, transparent: true, depthWrite: false, opacity: 0 })); s.visible = false; scene.add(s); FX.smoke.push({ s, life: 0, v: new V3() }); }
-  for (let i = 0; i < 90; i++) { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: bt, transparent: true, depthWrite: false })); s.visible = false; scene.add(s); FX.blood.push({ s, life: 0, v: new V3() }); }
-  FX.src = [];
-  for (let i = 0; i < 5; i++) { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: bt, transparent: true, depthWrite: false, depthTest: false, opacity: 0.9 })); s.visible = false; s.renderOrder = 5; scene.add(s); FX.src.push(s); }
+  const N = 128, cv = mkCanvas(N), g = cv.getContext('2d'), img = g.createImageData(N, N), n = fbmTile(4, 4, 77);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { // a soft, ragged puff
+    const r = Math.hypot(x / N - 0.5, y / N - 0.5) * 2, a = clamp((1 - sstep(0.1, 1, r)) * (0.2 + 1.5 * n(x / N, y / N)), 0, 1), i = (y * N + x) * 4;
+    img.data[i] = img.data[i + 1] = img.data[i + 2] = 255; img.data[i + 3] = a * 255;
+  }
+  g.putImageData(img, 0, 0);
+  const pt = new THREE.CanvasTexture(cv), dt = dotTex('rgba(255,255,255,1)', 'rgba(255,255,255,0)');
+  const spr = (map, extra) => { const s = new THREE.Sprite(new THREE.SpriteMaterial(Object.assign({ map, transparent: true, depthWrite: false, opacity: 0 }, extra))); s.visible = false; scene.add(s); return { s, life: 0, v: new V3() }; };
+  for (let i = 0; i < 60; i++) FX.puff.push(spr(pt));
+  for (let i = 0; i < 90; i++) FX.blood.push(spr(dt));
+  for (let i = 0; i < 28; i++) FX.spark.push(spr(dt, { blending: THREE.AdditiveBlending }));
+  for (let i = 0; i < 5; i++) { // a bleeding point: a welling bead of blood and the trickle running down from it
+    const m = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 10), MAT.bloodWet); m.visible = false; scene.add(m); FX.blob.push(m);
+    const t = new Tube(14, 6, MAT.bloodWet, 1, 1); t.mesh.visible = false; scene.add(t.mesh); FX.trail.push({ t, arr: vecArr(14), n: 0 });
+  }
 })();
-function emitSmoke(p) {
-  const f = FX.smoke[FX.sm++ % FX.smoke.length];
-  f.s.position.copy(p); f.s.visible = true; f.life = 1; f.v.set((Math.random() - 0.5) * 0.8, 0.9 + Math.random() * 0.8, 0.5 + Math.random() * 0.8); f.s.scale.setScalar(0.35);
+function emitPuff(p, steam) { // steam: white, quick, from tissue being desiccated. Otherwise smoke: greyer, slower, lingers.
+  const f = FX.puff[FX.pi++ % FX.puff.length];
+  f.s.position.copy(p); f.s.visible = true; f.life = 1; f.steam = steam; f.dur = steam ? 0.8 + Math.random() * 0.4 : 2.2 + Math.random();
+  f.v.set((Math.random() - 0.5) * (steam ? 2.6 : 0.9), (steam ? 2.0 : 0.9) + Math.random(), 0.3 + Math.random() * 0.9);
+  f.s.material.rotation = Math.random() * TAU; f.s.scale.setScalar(0.2);
+}
+function emitSpark(p) {
+  const f = FX.spark[FX.si++ % FX.spark.length];
+  f.s.position.set(p.x + (Math.random() - 0.5) * 0.16, p.y + (Math.random() - 0.5) * 0.16, p.z + (Math.random() - 0.5) * 0.16);
+  f.s.visible = true; f.life = 1; f.dur = 0.05 + Math.random() * 0.1; f.s.scale.setScalar(0.1 + Math.random() * 0.26);
+  f.s.material.color.setRGB(18, 10 + 5 * Math.random(), 3);
 }
 function emitBlood(p, speed) {
-  const f = FX.blood[FX.bl++ % FX.blood.length];
-  f.s.position.copy(p); f.s.visible = true; f.life = 1; f.v.set((Math.random() - 0.5) * speed * 0.7, speed * (0.5 + Math.random() * 0.5), speed * (0.25 + Math.random() * 0.5)); f.s.scale.setScalar(0.14 + Math.random() * 0.12);
+  const f = FX.blood[FX.bi++ % FX.blood.length];
+  f.s.position.copy(p); f.s.visible = true; f.life = 1; f.v.set((Math.random() - 0.5) * speed * 0.7, speed * (0.5 + Math.random() * 0.5), speed * (0.25 + Math.random() * 0.5)); f.s.scale.setScalar(0.1 + Math.random() * 0.1);
 }
-const _bp = new V3();
+const _bp = new V3(), _bq = new V3(), _bc = new V3(), _b1 = new V3(), _b2 = new V3(), _b3 = new V3(), _bn = new V2(), RAYB = new THREE.Raycaster();
+// the visible surface in front of world point p, if it lies within maxD of p
+function surfaceNear(p, maxD, out) {
+  _bq.copy(p).project(camera); if (_bq.z > 1 || Math.abs(_bq.x) > 1.05 || Math.abs(_bq.y) > 1.05) return false;
+  _bn.set(_bq.x, _bq.y); RAYB.setFromCamera(_bn, camera);
+  const hits = RAYB.intersectObjects(PICKS, false);
+  for (let i = 0; i < hits.length; i++) if (shown(hits[i].object)) { if (hits[i].point.distanceTo(p) > maxD) return false; out.copy(hits[i].point); return true; }
+  return false;
+}
+// Blood runs downhill: step down from the bleeding point, each time dropping back onto the surface seen there.
+function bloodPath(b, tr) {
+  const p0 = b.pt(_bp);
+  if (!b.surf) b.surf = new V3();
+  if (!surfaceNear(p0, 1.2, b.surf)) b.surf.copy(p0);
+  _bc.copy(camera.position).sub(b.surf).normalize();
+  tr.arr[0].copy(b.surf).addScaledVector(_bc, 0.03); tr.n = 0;
+  _b1.copy(b.surf);
+  for (let i = 1; i < tr.arr.length; i++) {
+    _b2.copy(_b1); _b2.y -= 0.4;
+    if (!surfaceNear(_b2, 1.3, _b3) || _b3.y > _b1.y + 0.05) break;
+    _b1.copy(_b3); tr.arr[i].copy(_b1).addScaledVector(_bc, 0.03); tr.n = i;
+  }
+  for (let i = tr.n + 1; i < tr.arr.length; i++) tr.arr[i].copy(tr.arr[tr.n]);
+  b.surf.addScaledVector(_bc, 0.05);
+}
 function updateFX(dt, time) {
-  for (const f of FX.smoke) if (f.life > 0) {
-    f.life -= dt / 2.2; f.s.position.addScaledVector(f.v, dt); f.s.scale.setScalar(0.35 + (1 - f.life) * 2.4); f.s.material.opacity = 0.16 * Math.max(0, f.life) * (f.life > 0.85 ? (1 - f.life) / 0.15 : 1);
+  for (const f of FX.puff) if (f.life > 0) {
+    f.life -= dt / f.dur; f.s.position.addScaledVector(f.v, dt); f.v.multiplyScalar(Math.exp(-1.1 * dt));
+    const age = 1 - Math.max(0, f.life), l = litAt(f.s.position);
+    f.s.scale.setScalar(f.steam ? 0.2 + 1.3 * age : 0.3 + 2.6 * Math.sqrt(age));
+    f.s.material.opacity = (f.steam ? 0.34 : 0.2) * Math.max(0, f.life) * Math.min(1, age / 0.12);
+    if (f.steam) f.s.material.color.setRGB(0.95 * l, 0.96 * l, l); else f.s.material.color.setRGB(0.74 * l, 0.77 * l, 0.84 * l);
     if (f.life <= 0) f.s.visible = false;
   }
+  for (const f of FX.spark) if (f.life > 0) { f.life -= dt / f.dur; f.s.material.opacity = Math.max(0, f.life); if (f.life <= 0) f.s.visible = false; }
   for (const f of FX.blood) if (f.life > 0) {
     f.life -= dt / 0.75; f.v.y -= 22 * dt; f.s.position.addScaledVector(f.v, dt); f.s.material.opacity = Math.min(1, f.life * 3);
+    const l = litAt(f.s.position); f.s.material.color.setRGB(0.36 * l, 0.012 * l, 0.018 * l);
     if (f.life <= 0) f.s.visible = false;
   }
   for (let i = S.bleeders.length - 1; i >= 0; i--) {
     const b = S.bleeders[i]; b.t += dt;
     const vol = (b.rate * dt) / 60; S.ebl += vol; S.pool += vol;
-    const p = b.pt(_bp);
+    const p = b.surf || b.pt(_bp);
     if (b.arterial) { if (pulse(time) > 0.35) { emitBlood(p, 6 + Math.random() * 3); if (Math.random() < 0.5) emitBlood(p, 5); } }
-    else if (Math.random() < 0.45 + b.rate / 120) emitBlood(p, 1.6 + b.rate / 50);
+    else if (Math.random() < 0.3 + b.rate / 160) emitBlood(p, 1.2 + b.rate / 60);
     if (b.auto && b.t > b.auto) { S.bleeders.splice(i, 1); logEvent('info', b.autoMsg || 'Bleeding controlled'); }
   }
-  for (let i = 0; i < FX.src.length; i++) {
-    const b = S.bleeders[i], s = FX.src[i]; s.visible = !!b;
-    if (b) { s.position.copy(b.pt(_bp)); s.scale.setScalar((0.32 + Math.min(0.5, b.rate / 400)) * (1 + 0.25 * pulse(time))); }
+  FX.trailT -= dt; const due = FX.trailT <= 0; if (due) FX.trailT = 0.3;
+  for (let i = 0; i < FX.blob.length; i++) {
+    const b = S.bleeders[i], m = FX.blob[i], tr = FX.trail[i];
+    if (!b) { m.visible = false; tr.t.mesh.visible = false; continue; }
+    if (due || !b.surf) bloodPath(b, tr);
+    const r = (0.15 + Math.min(0.2, b.rate / 900)) * (1 + 0.22 * pulse(time)) * Math.min(1, 0.35 + b.t);
+    m.visible = true; m.position.copy(b.surf); m.quaternion.copy(camera.quaternion); m.scale.set(r, r, r * 0.4);
+    if (tr.n > 0) tr.t.set(tr.arr, 0, Math.min(1, b.t / 1.5) * (tr.n / (tr.arr.length - 1)), u => 0.085 - 0.04 * u, null); else tr.t.mesh.visible = false;
   }
   S.haze = Math.max(0, S.haze - dt * (HANDS.some(h => h.firing && h.inst === 'suction') ? 0.6 : 0.07));
   $('haze').style.opacity = (S.haze * 0.75).toFixed(3);
@@ -1806,9 +1898,22 @@ function addBleeder(pt, rate, arterial, label, extra) {
   const b = Object.assign({ pt, rate, arterial: !!arterial, seal: 0, t: 0, label }, extra || {});
   S.bleeders.push(b); return b;
 }
-const DECALS = [], decalGeo = new THREE.CircleGeometry(0.17, 10);
-const decalMat = new THREE.MeshBasicMaterial({ color: 0x2c160d, transparent: true, opacity: 0.7, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
-const holeMat = new THREE.MeshBasicMaterial({ color: 0x100404, transparent: true, opacity: 0.92, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
+// Burn marks darken whatever is under them (they multiply it), so they sit correctly in light and in shadow.
+function burnTex(hole) {
+  const N = 64, cv = mkCanvas(N), g = cv.getContext('2d'), img = g.createImageData(N, N), n = fbmTile(5, 3, hole ? 91 : 83);
+  const core = hole ? [22, 8, 8] : [70, 44, 28], rim = [226, 196, 150];
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const r = Math.hypot(x / N - 0.5, y / N - 0.5) * 2 + (n(x / N, y / N) - 0.5) * 0.5, i = (y * N + x) * 4;
+    const kr = 1 - sstep(0.55, 0.98, r), kc = 1 - sstep(hole ? 0.3 : 0.12, hole ? 0.75 : 0.62, r);
+    for (let c = 0; c < 3; c++) img.data[i + c] = lerp(lerp(255, rim[c], kr * 0.8), core[c], kc);
+    img.data[i + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+const mulMat = (tex, off) => new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, toneMapped: false, blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.DstColorFactor, blendDst: THREE.ZeroFactor, polygonOffset: true, polygonOffsetFactor: off, polygonOffsetUnits: off });
+const DECALS = [], decalGeo = new THREE.CircleGeometry(0.26, 14);
+const decalMat = mulMat(burnTex(false), -3), holeMat = mulMat(burnTex(true), -4);
 let lastDecal = new V3(1e3, 0, 0);
 function addDecal(h, big) {
   const P = h.pick;
@@ -1816,8 +1921,8 @@ function addDecal(h, big) {
   if (!big && lastDecal.distanceTo(P.point) < 0.14) return;
   lastDecal.copy(P.point);
   const m = new THREE.Mesh(decalGeo, big ? holeMat : decalMat);
-  m.position.copy(P.point).addScaledVector(P.normal, 0.025); m.lookAt(_bp.copy(m.position).add(P.normal));
-  if (big) m.scale.setScalar(2.2);
+  m.position.copy(P.point).addScaledVector(P.normal, 0.025); m.lookAt(_bp.copy(m.position).add(P.normal)); m.rotateZ(Math.random() * TAU);
+  m.scale.setScalar(big ? 2.2 : 0.8 + Math.random() * 0.5);
   scene.add(m); P.mesh.attach(m); DECALS.push(m);
   if (DECALS.length > 80) { const o = DECALS.shift(); o.parent && o.parent.remove(o); }
 }
@@ -1912,7 +2017,7 @@ function canCleanCut(h) {
 function bipolarTick(h, dt) {
   const P = h.pick;
   S.stats.energyTime += dt; S.haze = Math.min(0.6, S.haze + dt * 0.05);
-  if (Math.random() < dt * 9) emitSmoke(h.tip);
+  if (h.near && Math.random() < dt * 16) emitPuff(h.tip, true);
   thermal(h, dt, 0.5);
   if (controlBleeders(h, dt)) { sustain('bip', 520, 'sine', 0.06); return; }
   const tg = sealTarget(h);
@@ -1989,7 +2094,7 @@ function cutAction(hand) {
 function hookTick(h, dt) {
   const P = h.pick;
   S.stats.energyTime += dt; S.haze = Math.min(0.6, S.haze + dt * 0.09);
-  if (Math.random() < dt * 14) emitSmoke(h.tip);
+  if (h.near) { if (Math.random() < dt * 11) emitPuff(h.tip, false); if (Math.random() < dt * 40) emitSpark(h.tip); if (Math.random() < dt * 25) emitSpark(h.tip); }
   sustain('mono', 310, 'sawtooth', 0.022);
   thermal(h, dt, 0.35);
   const st = STEPS[S.step];
@@ -2651,7 +2756,7 @@ function resetWorld(running) {
   S = freshState(); S.guided = keep.guided; S.labels = keep.labels; S.running = running;
   resetSteps(); resetHands();
   for (const m of DECALS) m.parent && m.parent.remove(m); DECALS.length = 0;
-  for (const f of FX.smoke.concat(FX.blood)) { f.life = 0; f.s.visible = false; }
+  for (const f of FX.puff.concat(FX.blood, FX.spark)) { f.life = 0; f.s.visible = false; }
   VG.dirty = true; VG.pose.yaw = 0; VG.pose.pitch = PITCH0; VG.pose.push = 0;
   CAM.userIns = 0; CAM.pan.set(0, 0, 0);
   for (const k in hintT) delete hintT[k];

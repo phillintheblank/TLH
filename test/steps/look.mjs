@@ -18,6 +18,7 @@ export default async function (page) {
   let i = 0;
   for (const spec of want) {
     const [id, act] = spec.split(':');
+    await ev(() => { const S = window.__sim.S; S.bleeders.length = 0; if (S.pool < 40) S.pool = 0; });
     await skip(id); await pose();
     const st = await ev(() => { const s = window.__sim, t = s.STEPS[s.S.step]; return { tool: t.tool }; });
     if (st.tool !== 'any') { await ev(t => window.__sim.setInst('R', t), st.tool); await T(1.0); }
@@ -26,11 +27,15 @@ export default async function (page) {
     if (act === 'fire' || act === 'seal') {
       await aim(); await page.mouse.down(); await T(act === 'seal' ? 3.2 : 1.2);
       if (act === 'seal') { await page.mouse.up(); await T(0.3); await page.mouse.move(box.x + n.x + 90, box.y + n.y - 70, { steps: 2 }); await T(0.8); }
+    } else if (act === 'bleed') { // cut without sealing
+      await aim(); await page.mouse.click(box.x + n.x, box.y + n.y, { button: 'right' }); await T(1.6); await page.mouse.move(box.x + n.x + 120, box.y + n.y - 90, { steps: 2 }); await T(0.5);
     } else if (act === 'done') {
       await ev(() => { const s = window.__sim; s.forceStep(); }); await T(2.5); await aim(70, 50);
     } else await aim(60, 40);
     await ev(() => { for (let k = 0; k < 4; k++) window.__sim.render(0.5); }); await page.waitForTimeout(200);
-    await page.locator('#view').screenshot({ path: OUT + tag + '-' + (i++) + '-' + id + '.png' });
+    await page.locator('#view').screenshot({ path: OUT + tag + '-' + i + '-' + id + '.png' });
+    if (process.env.CROP && n) { const cw = 520, ch = 360; await page.screenshot({ path: OUT + tag + '-' + i + '-' + id + '-c.png', clip: { x: Math.max(box.x, Math.min(box.x + box.width - cw, box.x + n.x - cw / 2)), y: Math.max(box.y, Math.min(box.y + box.height - ch, box.y + n.y - ch / 2)), width: cw, height: ch } }); }
+    i++;
     if (act === 'fire') { await page.mouse.up(); await T(0.3); }
   }
 }

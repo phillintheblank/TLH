@@ -142,6 +142,17 @@ const NRM = (function () {
     fiber: normalTex(512, (u, v) => stretch(u, v) + 0.25 * fc(u, v), 7)
   };
 })();
+// lacy web for loose areolar tissue: strands along cell borders plus a few solid lobules; used as an alpha map
+const WEB = (function () {
+  const N = 256, cv = mkCanvas(N), g = cv.getContext('2d'), img = g.createImageData(N, N), c1 = cellTile(6, 511), c2 = cellTile(13, 512), f = fbmTile(4, 3, 513), o = [0, 0];
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const u = x / N, v = y / N; c1(u, v, o); let a = 1 - sstep(0.05, 0.14, o[1] - o[0]);
+    c2(u, v, o); a = Math.max(a, 0.8 * (1 - sstep(0.04, 0.1, o[1] - o[0])), sstep(0.56, 0.66, f(u, v)));
+    const i = (y * N + x) * 4; img.data[i] = img.data[i + 1] = img.data[i + 2] = a * 255; img.data[i + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
+})();
 function rep(t, x, y) { const c = t.clone(); c.repeat.set(x, y); c.needsUpdate = true; return c; }
 
 const TEX = {
@@ -218,8 +229,10 @@ const MAT = {
   fat: wet({ map: TEX.fat, side: THREE.DoubleSide, mr: [4, 3], relief: NRM.fat, br: [2.5, 2], bs: 1.2, roughness: 0.55 }),
   card: wet({ map: TEX.card, side: THREE.DoubleSide, mr: [4, 3], relief: NRM.fiber, br: [1, 1], bs: 0.8, transmission: 0.35, transmissionMap: TEX.card.userData.trans, thickness: 0, ior: 1.4 }),
   vag: wet({ map: TEX.vag, side: THREE.DoubleSide, mr: [4, 6], bs: 0.6 }),
+  areolar: wet({ map: TEX.card, side: THREE.DoubleSide, mr: [4, 3], relief: NRM.fiber, bs: 0.8, alphaMap: rep(WEB, 2, 1.6), alphaTest: 0.45, alphaToCoverage: true, color: 0xfff2d8 }),
   cord: wet({ map: TEX.cord, mr: [1.2, 1.8], relief: NRM.fiber, br: [1, 0.6], bs: 0.7 }),
-  blood: new THREE.MeshPhysicalMaterial({ color: 0x6a0a0e, roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.03, transparent: true, opacity: 0.94 })
+  blood: new THREE.MeshPhysicalMaterial({ color: 0x5e080c, roughness: 0.14, clearcoat: 1, clearcoatRoughness: 0.1, transparent: true, opacity: 0.95, clearcoatNormalMap: rep(NRM.micro, 5, 5), clearcoatNormalScale: new V2(0.9, 0.9), normalMap: rep(NRM.micro, 2, 2), normalScale: new V2(0.5, 0.5) }),
+  bloodWet: new THREE.MeshPhysicalMaterial({ color: 0x6e0a10, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.14 })
 };
 const TRANSLUCENT = [[MAT.leaf, 0.45], [MAT.card, 0.35]];
 function matQuality(q) {

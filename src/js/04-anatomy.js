@@ -50,7 +50,7 @@ const COL = {
   lig: C(214, 150, 140), tube: C(222, 152, 146), fim: C(190, 70, 80), uo: C(214, 150, 140), ip: C(190, 120, 130),
   art: C(186, 66, 62), vein: C(112, 100, 152), ureter: C(232, 204, 184), usl: C(200, 128, 120),
   iliacA: C(204, 112, 102), iliacV: C(146, 116, 146), fold: C(210, 132, 114),
-  seal: C(238, 218, 186), char: C(128, 84, 58), edge: C(150, 96, 80)
+  seal: C(216, 184, 132), blanch: C(238, 220, 206), char: C(92, 56, 34), edge: C(150, 96, 80)
 };
 const SIDEK = {};
 for (const s of [1, -1]) {
@@ -297,10 +297,10 @@ function cuffPt(x, edge, depth, out) {
 function mkSide(name, s) {
   const sd = { name, s, cur: new SideGeom(s), t: {}, st: {} };
   const T = (k, n, m, ent, extra) => { const t = new Tube(n, m, MAT.cord, 1, 3); reg(t.mesh, ent, name, Object.assign({ tube: t, piece: k }, extra)); t.mesh.matrixAutoUpdate = false; scene.add(t.mesh); sd.t[k] = t; return t; };
-  T('roundA', 16, 8, 'round'); T('roundB', 16, 8, 'round');
-  T('uoA', 8, 8, 'uo'); T('uoB', 8, 8, 'uo'); T('ip', 16, 10, 'ip');
+  T('roundA', 26, 10, 'round'); T('roundB', 26, 10, 'round');
+  T('uoA', 12, 10, 'uo'); T('uoB', 12, 10, 'uo'); T('ip', 16, 10, 'ip');
   T('tube', 30, 10, 'tube');
-  T('uaA', 10, 8, 'ua'); T('uaB', 22, 8, 'ua'); T('uvA', 10, 8, 'ua'); T('uvB', 22, 8, 'ua');
+  T('uaA', 14, 8, 'ua'); T('uaB', 32, 8, 'ua'); T('uvA', 14, 8, 'ua'); T('uvB', 32, 8, 'ua');
   T('usl', 14, 8, 'usl');
   const P = (k, ns, nt, mat, ent, uvS, uvT) => { const p = new Strip(ns, nt, mat, uvS, uvT); reg(p.mesh, ent, name, { strip: p, piece: k }); p.mesh.matrixAutoUpdate = false; scene.add(p.mesh); sd.st[k] = p; return p; };
   P('antM', 8, 9, MAT.leaf, 'ant', 0.5, 1); P('antL', 12, 9, MAT.leaf, 'ant', 1, 1);
@@ -308,7 +308,7 @@ function mkSide(name, s) {
   P('postM', 8, 9, MAT.leaf, 'post', 0.5, 1); P('postL', 12, 9, MAT.leaf, 'post', 1.4, 1.2);
   P('mesoM', 5, 6, MAT.leaf, 'meso', 0.3, 0.5); P('mesoL', 14, 6, MAT.leaf, 'meso', 1, 0.5);
   P('cardM', 6, 8, MAT.card, 'card', 0.4, 1); P('cardL', 12, 8, MAT.card, 'card', 1, 1);
-  P('areolar', 14, 8, MAT.fat, 'areolar', 1.5, 1.2);
+  P('areolar', 14, 8, MAT.areolar, 'areolar', 1.5, 1.2);
   const og = paramSurface(28, 20, (u, v, p) => {
     const th = u * TAU, sv = Math.sin(Math.PI * v), cv = Math.cos(Math.PI * v);
     const k = 1 + 0.16 * (fbm3(sv * Math.sin(th) * 2.2 + s * 4, cv * 2.2 + 1, sv * Math.cos(th) * 2.2, 2) - 0.5);
@@ -348,28 +348,49 @@ function stripPt(E0, u0, E1, u1, v, sag, out) {
   if (sag) out.y -= sag * Math.sin(Math.PI * v);
   return out;
 }
+// A bipolar seal on a cord: the band the jaws compressed is desiccated to tan and loses its wet film, its margins
+// are scorched, and heat blanches the tissue a little way beyond. p is seal progress, 0..1.
+function sealPaint(c, d, p, fleck) {
+  const halo = (1 - sstep(1.0, 2.3, d)) * 0.5 * p, k = (1 - sstep(0.9, 1.08, d)) * p, edge = Math.exp(-Math.pow((d - 0.98) / 0.13, 2)) * p * (0.7 + 0.3 * fleck);
+  c[0] = lerp(c[0], COL.blanch[0], halo); c[1] = lerp(c[1], COL.blanch[1], halo); c[2] = lerp(c[2], COL.blanch[2], halo);
+  const t = k * (0.82 + 0.18 * fleck);
+  c[0] = lerp(c[0], COL.seal[0], t); c[1] = lerp(c[1], COL.seal[1], t); c[2] = lerp(c[2], COL.seal[2], t);
+  c[0] = lerp(c[0], COL.char[0], edge); c[1] = lerp(c[1], COL.char[1], edge); c[2] = lerp(c[2], COL.char[2], edge);
+  c[3] = Math.max(c[3], k, edge);
+}
+const fleckAt = u => 0.5 + 0.5 * Math.sin(u * 733.1) * Math.sin(u * 291.7 + 1.3);
+// how much of a cord at u has been sealed (0..1), counting a seal in progress: sealed tissue shrinks
+function sealK(e, u) {
+  let k = 0;
+  for (let i = 0; i < e.seals.length; i++) { const z = e.seals[i]; k = Math.max(k, 1 - sstep(z.w * 0.85, z.w * 1.15, Math.abs(u - z.u))); }
+  if (e.act) k = Math.max(k, (1 - sstep(e.act.w * 0.85, e.act.w * 1.15, Math.abs(u - e.act.u))) * e.act.p);
+  return k;
+}
 function cordCol(e, base, gapHalf) {
   return (u, c) => {
-    let r = base[0], g = base[1], b = base[2];
-    for (let i = 0; i < e.seals.length; i++) {
-      const z = e.seals[i], k = 1 - sstep(z.w * 0.7, z.w * 1.5, Math.abs(u - z.u));
-      r = lerp(r, COL.seal[0], k); g = lerp(g, COL.seal[1], k); b = lerp(b, COL.seal[2], k);
-    }
-    if (e.act) {
-      const k = (1 - sstep(e.act.w * 0.7, e.act.w * 1.5, Math.abs(u - e.act.u))) * e.act.p;
-      r = lerp(r, COL.seal[0], k); g = lerp(g, COL.seal[1], k); b = lerp(b, COL.seal[2], k);
-    }
+    c[0] = base[0]; c[1] = base[1]; c[2] = base[2];
+    const fl = fleckAt(u);
+    for (let i = 0; i < e.seals.length; i++) { const z = e.seals[i]; sealPaint(c, Math.abs(u - z.u) / z.w, 1, fl); }
+    if (e.act) sealPaint(c, Math.abs(u - e.act.u) / e.act.w, e.act.p, fl);
     if (e.cut) {
-      const k = (1 - sstep(0, 0.03, Math.abs(u - e.uc) - gapHalf * e.gk)) * 0.75;
-      r = lerp(r, COL.char[0], k); g = lerp(g, COL.char[1], k); b = lerp(b, COL.char[2], k);
+      const k = (1 - sstep(0, 0.03, Math.abs(u - e.uc) - gapHalf * e.gk)) * 0.8;
+      c[0] = lerp(c[0], COL.char[0], k); c[1] = lerp(c[1], COL.char[1], k); c[2] = lerp(c[2], COL.char[2], k); c[3] = Math.max(c[3], k);
     }
-    c[0] = r; c[1] = g; c[2] = b;
   };
 }
 const taper = (u, uEnd, gk, w) => { const q = clamp(1 - Math.abs(uEnd - u) / (w || 0.035), 0, 1); return lerp(1, Math.sqrt(Math.max(0.03, 1 - q * q)), gk); };
+// Edge of peritoneum cut with energy: a pale, dry margin with a scorched rim
 function edgeCol(c, m, prox) {
-  const k = m * sstep(0.72, 1, prox);
-  c[0] = lerp(1, 0.62, k); c[1] = lerp(1, 0.4, k); c[2] = lerp(1, 0.34, k);
+  const k1 = m * sstep(0.55, 0.9, prox), k2 = m * sstep(0.88, 1, prox);
+  c[0] = lerp(lerp(1, 1.1, k1), 0.5, k2); c[1] = lerp(lerp(1, 1.04, k1), 0.33, k2); c[2] = lerp(lerp(1, 0.96, k1), 0.24, k2); c[3] = Math.max(k1 * 0.8, k2);
+}
+// a seal across a sheet of tissue (mesosalpinx, cardinal web); colours multiply the sheet's own texture
+function sheetSeal(c, d, p) {
+  const halo = (1 - sstep(1.0, 2.0, d)) * 0.4 * p, k = (1 - sstep(0.88, 1.06, d)) * p, edge = Math.exp(-Math.pow((d - 0.97) / 0.14, 2)) * p * 0.7;
+  c[0] = lerp(c[0], 1.14, halo); c[1] = lerp(c[1], 1.14, halo); c[2] = lerp(c[2], 1.14, halo);
+  c[0] = lerp(c[0], 1.06, k); c[1] = lerp(c[1], 0.98, k); c[2] = lerp(c[2], 0.76, k);
+  c[0] = lerp(c[0], 0.46, edge); c[1] = lerp(c[1], 0.3, edge); c[2] = lerp(c[2], 0.2, edge);
+  c[3] = Math.max(c[3], k, edge);
 }
 const pulse = t => { const x = (t * 1.25) % 1; return Math.exp(-Math.pow((x - 0.15) / 0.09, 2)) + 0.35 * Math.exp(-Math.pow((x - 0.42) / 0.12, 2)); };
 
@@ -394,22 +415,22 @@ function updateSide(sd, time) {
 
   // round ligament
   const rd = st.round, uR = rd.uc, gR = 0.07 * rd.gk;
-  t.roundA.set(Um.round, 0, uR - gR, u => 0.2 * taper(u, uR - gR, rd.gk), cordCol(rd, COL.lig, 0.07)); setM(t.roundA.mesh, UT_);
-  t.roundB.set(Ul.round, uR + gR, 1, u => 0.2 * taper(u, uR + gR, rd.gk), cordCol(rd, COL.lig, 0.07));
+  t.roundA.set(Um.round, 0, uR - gR, u => 0.2 * taper(u, uR - gR, rd.gk) * (1 - 0.3 * sealK(rd, u)), cordCol(rd, COL.lig, 0.07)); setM(t.roundA.mesh, UT_);
+  t.roundB.set(Ul.round, uR + gR, 1, u => 0.2 * taper(u, uR + gR, rd.gk) * (1 - 0.3 * sealK(rd, u)), cordCol(rd, COL.lig, 0.07));
   // utero-ovarian ligament, ovary, IP ligament (ridge)
   const uo = st.uo, uU = uo.uc, gU = 0.035 * uo.gk;
-  t.uoA.set(Um.ridge, 0, uU - gU, u => 0.23 * taper(u, uU - gU, uo.gk, 0.02), cordCol(uo, COL.uo, 0.035)); setM(t.uoA.mesh, UT_);
-  t.uoB.set(Ul.ridge, uU + gU, 0.22, u => 0.23 * taper(u, uU + gU, uo.gk, 0.02), cordCol(uo, COL.uo, 0.035));
+  t.uoA.set(Um.ridge, 0, uU - gU, u => 0.23 * taper(u, uU - gU, uo.gk, 0.02) * (1 - 0.3 * sealK(uo, u)), cordCol(uo, COL.uo, 0.035)); setM(t.uoA.mesh, UT_);
+  t.uoB.set(Ul.ridge, uU + gU, 0.22, u => 0.23 * taper(u, uU + gU, uo.gk, 0.02) * (1 - 0.3 * sealK(uo, u)), cordCol(uo, COL.uo, 0.035));
   t.ip.set(Ul.ridge, 0.56, 1, u => 0.3 + 0.06 * Math.sin(u * 40), (u, c) => { const k = 0.5 + 0.5 * Math.sin(u * 55); c[0] = lerp(COL.ip[0], COL.lig[0], k); c[1] = lerp(COL.ip[1], COL.lig[1], k); c[2] = lerp(COL.ip[2], COL.lig[2], k); });
   sd.ovary.position.copy(Ul.ovC); sd.ovary.quaternion.setFromUnitVectors(_a.set(1, 0, 0), Ul.ovA);
   // fallopian tube
   t.tube.set(cur.tubeCur, 0, 1, u => lerp(0.15, 0.27, sstep(0.15, 0.8, u)) + 0.2 * sstep(0.9, 1, u), (u, c) => { const k = sstep(0.86, 1, u); c[0] = lerp(COL.tube[0], COL.fim[0], k); c[1] = lerp(COL.tube[1], COL.fim[1], k); c[2] = lerp(COL.tube[2], COL.fim[2], k); });
   // uterine artery + vein
   const ua = st.ua, uA = ua.uc, gA = 0.045 * ua.gk, pl = 1 + 0.07 * pulse(time), dead = ua.cut ? 1 : pl;
-  t.uaA.set(Am.ua, 0, uA - gA, u => 0.17 * dead * taper(u, uA - gA, ua.gk, 0.03), cordCol(ua, COL.art, 0.045)); setM(t.uaA.mesh, AT);
-  t.uaB.set(Al.ua, uA + gA, 1, u => 0.17 * pl * taper(u, uA + gA, ua.gk, 0.03), cordCol(ua, COL.art, 0.045));
-  t.uvA.set(Am.uv, 0, uA - gA, u => 0.22 * taper(u, uA - gA, ua.gk, 0.03), cordCol(ua, COL.vein, 0.045)); setM(t.uvA.mesh, AT);
-  t.uvB.set(Al.uv, uA + gA, 1, u => 0.22 * taper(u, uA + gA, ua.gk, 0.03), cordCol(ua, COL.vein, 0.045));
+  t.uaA.set(Am.ua, 0, uA - gA, u => 0.17 * dead * taper(u, uA - gA, ua.gk, 0.03) * (1 - 0.3 * sealK(ua, u)), cordCol(ua, COL.art, 0.045)); setM(t.uaA.mesh, AT);
+  t.uaB.set(Al.ua, uA + gA, 1, u => 0.17 * pl * taper(u, uA + gA, ua.gk, 0.03) * (1 - 0.3 * sealK(ua, u)), cordCol(ua, COL.art, 0.045));
+  t.uvA.set(Am.uv, 0, uA - gA, u => 0.22 * taper(u, uA - gA, ua.gk, 0.03) * (1 - 0.35 * sealK(ua, u)), cordCol(ua, COL.vein, 0.045)); setM(t.uvA.mesh, AT);
+  t.uvB.set(Al.uv, uA + gA, 1, u => 0.22 * taper(u, uA + gA, ua.gk, 0.03) * (1 - 0.35 * sealK(ua, u)), cordCol(ua, COL.vein, 0.045));
   // uterosacral ligament (stays with the vaginal cuff)
   _a.set(1.0 * s, -0.2, 1.5).applyMatrix4(VG.M); _b.lerpVectors(_a, SIDEK[s].uslSac, 0.5); _b.y -= 0.35; _b.x += 0.3 * s;
   spline([_a, _b, SIDEK[s].uslSac], sd.uslArr);
@@ -434,17 +455,20 @@ function updateSide(sd, time) {
   // mesosalpinx fin (ridge up to the tube)
   const wU = uU / 0.6, me = st.meso;
   const mesoMask = w => (me.p > 0 ? sstep(1 - me.p - 0.07, 1 - me.p + 0.02, w) : 0);
-  const mesoFn = (G, w, v, o, c) => { const m = mesoMask(w), vv = v * (1 - 0.55 * m); stripPt(G.ridge, 0.6 * w, G.tubeAtt, w, vv, 0, o); const k = m * sstep(0.7, 1, v); c[0] = lerp(1, 0.62, k); c[1] = lerp(1, 0.4, k); c[2] = lerp(1, 0.34, k); };
+  const mesoFn = (G, w, v, o, c) => {
+    const m = mesoMask(w), vv = v * (1 - 0.55 * m); stripPt(G.ridge, 0.6 * w, G.tubeAtt, w, vv, 0, o); edgeCol(c, m, v);
+    for (const z of me.seals) sheetSeal(c, Math.abs(w - z.u) / (z.w * 0.55), 1);
+    if (me.act) sheetSeal(c, Math.abs(w - me.act.u) / (me.act.w * 0.55), me.act.p);
+  };
   p.mesoM.update((sx, v, o, c) => mesoFn(Um, sx * Math.max(0, wU - 0.05 * uo.gk), v, o, c)); setM(p.mesoM.mesh, UT_);
   p.mesoL.update((sx, v, o, c) => mesoFn(Ul, lerp(wU + 0.05 * uo.gk, 1, sx), v, o, c));
   p.mesoM.map = (sx, v) => [sx * wU, v]; p.mesoL.map = (sx, v) => [lerp(wU, 1, sx), v];
   // cardinal ligament / parametrium web
   const cd = st.card, uC = cd.uc, gC = 0.06 * cd.gk;
   const cardCol = (c, u, prox) => {
-    let k = cd.gk * sstep(0.7, 1, prox) * 0.8, r = lerp(1, 0.6, k), g = lerp(1, 0.4, k), b = lerp(1, 0.34, k);
-    for (const z of cd.seals) { const q = 1 - sstep(z.w * 0.7, z.w * 1.5, Math.abs(u - z.u)); r = lerp(r, 1.25, q); g = lerp(g, 1.3, q); b = lerp(b, 1.25, q); }
-    if (cd.act) { const q = (1 - sstep(cd.act.w * 0.7, cd.act.w * 1.5, Math.abs(u - cd.act.u))) * cd.act.p; r = lerp(r, 1.25, q); g = lerp(g, 1.3, q); b = lerp(b, 1.25, q); }
-    c[0] = r; c[1] = g; c[2] = b;
+    edgeCol(c, cd.gk * 0.9, prox);
+    for (const z of cd.seals) sheetSeal(c, Math.abs(u - z.u) / z.w, 1);
+    if (cd.act) sheetSeal(c, Math.abs(u - cd.act.u) / cd.act.w, cd.act.p);
   };
   p.cardM.update((sx, v, o, c) => { const u = sx * Math.max(0, uC - gC); stripPt(Cm.cardLow, u, Cm.ua, u, v, 0.08, o); cardCol(c, u, sx); }); setM(p.cardM.mesh, CT);
   p.cardL.update((sx, v, o, c) => { const u = lerp(uC + gC, 1, sx); stripPt(Cl.cardLow, u, Cl.ua, u, v, 0.08, o); cardCol(c, u, 1 - sx); });
