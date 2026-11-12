@@ -1,6 +1,6 @@
 {
   "name": "tlh-simulator",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Browser-based total laparoscopic hysterectomy simulator with camera hand control",
   "type": "module",

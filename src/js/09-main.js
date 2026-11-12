@@ -1,21 +1,53 @@
 // ---------- input wiring, main loop, start-up ----------
 function wire() {
   const pos = e => { const r = OV.getBoundingClientRect(); INP.x = e.clientX - r.left; INP.y = e.clientY - r.top; INP.ndc.set((INP.x / r.width) * 2 - 1, -((INP.y / r.height) * 2 - 1)); INP.inside = true; };
-  OV.addEventListener('pointermove', pos);
+  // Free depth: the mouse steers by its travel, not its position, so the cursor is locked to the picture while
+  // operating. Esc frees it. Where a browser will not lock the cursor, travel over the picture is used instead.
+  const freeOn = () => freeDepth() && S.running && !S.ended;
+  const lockReq = () => {
+    if (!OV.requestPointerLock) { INP.noLock = true; return; }
+    try { const p = OV.requestPointerLock(); if (p && p.catch) p.catch(() => { INP.noLock = true; }); } catch (_) { INP.noLock = true; }
+  };
+  const up = () => { if (INP.down) { INP.down = false; if (CTRL.mode === 'mouse') primaryUp(activeHand()); } };
+  document.addEventListener('pointerlockchange', () => { INP.lock = document.pointerLockElement === OV; if (!INP.lock) up(); });
+  document.addEventListener('pointerlockerror', () => { INP.noLock = true; });
+  OV.addEventListener('pointermove', e => {
+    pos(e);
+    if (freeOn() && (INP.lock || INP.noLock)) { const c = activeHand().cmd; c.dx += e.movementX || 0; c.dy += e.movementY || 0; }
+  });
   OV.addEventListener('pointerdown', e => {
     pos(e);
     if (CTRL.mode !== 'mouse') return; // with hand control on, the mouse only works the panels
-    const h = activeHand(); routeMouse(); doPick(h); snapPick(h);
+    const h = activeHand();
+    if (freeDepth()) {
+      if (freeOn() && !INP.lock && !INP.noLock) { lockReq(); return; } // the first click takes the instruments; it does not fire them
+      freePick(h, 0);
+    } else { routeMouse(); doPick(h); snapPick(h); }
     if (e.button === 2) { cutAction(); return; }
     if (e.button !== 0) return;
     try { OV.setPointerCapture(e.pointerId); } catch (_) {}
     INP.down = true; primaryDown(h);
   });
-  const up = () => { if (INP.down) { INP.down = false; if (CTRL.mode === 'mouse') primaryUp(activeHand()); } };
   OV.addEventListener('pointerup', up); OV.addEventListener('pointercancel', up);
-  OV.addEventListener('pointerleave', () => { INP.inside = false; up(); });
+  OV.addEventListener('pointerleave', () => { INP.inside = false; if (!INP.lock) up(); });
   OV.addEventListener('contextmenu', e => e.preventDefault());
-  OV.addEventListener('wheel', e => { e.preventDefault(); CAM.userIns = clamp(CAM.userIns - e.deltaY * 0.006, -5, 6); }, { passive: false });
+  OV.addEventListener('wheel', e => {
+    e.preventDefault();
+    if (freeOn()) { // the wheel slides the instrument along its shaft: a slow turn for fine control, a fast spin for travel
+      const d = e.deltaY * (e.deltaMode === 1 ? 30 : 1), step = Math.pow(Math.min(1, Math.abs(d) / 60), 0.6) * 0.34 * DEPTH.wheel;
+      activeHand().cmd.dz += (d < 0 ? 1 : -1) * (DEPTH.flip ? -1 : 1) * step;
+    } else if (!freeDepth()) CAM.userIns = clamp(CAM.userIns - e.deltaY * 0.006, -5, 6);
+  }, { passive: false });
+  wire.freeTick = () => { if (INP.lock && !freeOn() && document.exitPointerLock) document.exitPointerLock(); };
+  // mouse settings
+  // On a Mac the system default ("natural" scrolling) reverses the wheel, so start reversed there: wheel forward should push in.
+  DEPTH.flip = /Mac/i.test(navigator.platform || navigator.userAgent || '');
+  try { const d = JSON.parse(localStorage.getItem(DKEY) || 'null'); if (d) { DEPTH.auto = !!d.auto; DEPTH.fulcrum = !!d.fulcrum; DEPTH.flip = !!d.flip; if (d.wheel > 0.2 && d.wheel < 4) DEPTH.wheel = d.wheel; } } catch (_) {}
+  const saveD = () => { try { localStorage.setItem(DKEY, JSON.stringify({ auto: DEPTH.auto, fulcrum: DEPTH.fulcrum, flip: DEPTH.flip, wheel: DEPTH.wheel })); } catch (_) {} };
+  const dtog = (id, key) => { const b = $(id), sync = () => { b.classList.toggle('on', DEPTH[key]); b.setAttribute('aria-pressed', DEPTH[key] ? 'true' : 'false'); }; b.addEventListener('click', () => { DEPTH[key] = !DEPTH[key]; sync(); saveD(); uiDirty(); }); sync(); };
+  dtog('btnAuto', 'auto'); dtog('btnFulcrum', 'fulcrum'); dtog('btnFlip', 'flip');
+  $('mWheel').value = Math.round(DEPTH.wheel * 100);
+  $('mWheel').addEventListener('input', e => { DEPTH.wheel = e.target.value / 100; saveD(); });
   $('handL').addEventListener('click', () => setActive('L')); $('handR').addEventListener('click', () => setActive('R'));
   $('btnCut').addEventListener('click', () => cutAction());
   $('btnSwitch').addEventListener('click', () => setActive(ACTIVE === 'L' ? 'R' : 'L'));
@@ -46,7 +78,7 @@ function wire() {
   window.addEventListener('keydown', e => {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     const k = e.key.toLowerCase();
-    if (['w', 'a', 's', 'd', 'q', 'e', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) { held[k] = true; if (k.startsWith('arrow') && S.running) e.preventDefault(); return; }
+    if (['w', 'a', 's', 'd', 'q', 'e', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', '=', '+', '-', '_'].includes(k)) { held[k] = true; if (k.startsWith('arrow') && S.running) e.preventDefault(); return; }
     if (!S.running) return;
     if (k >= '1' && k <= '5') { const t = Object.keys(INST)[+k - 1]; setInst(ACTIVE, t); }
     else if (k === ' ' || k === 'x') { if (e.target && /^(BUTTON|INPUT)$/.test(e.target.tagName) && k === ' ') return; e.preventDefault(); setActive(ACTIVE === 'L' ? 'R' : 'L'); }
@@ -54,8 +86,6 @@ function wire() {
     else if (k === 'l') { S.labels = !S.labels; syncL(); }
     else if (k === 'g') { S.guided = !S.guided; syncG(); uiDirty(); }
     else if (k === 'm') { AU.on = !AU.on; if (!AU.on) stopSustain(); syncS(); }
-    else if (k === '=' || k === '+') CAM.userIns = clamp(CAM.userIns + 0.8, -5, 6);
-    else if (k === '-') CAM.userIns = clamp(CAM.userIns - 0.8, -5, 6);
   });
   window.addEventListener('keyup', e => { held[e.key.toLowerCase()] = false; });
   window.addEventListener('blur', () => { for (const k in held) held[k] = false; });
@@ -68,6 +98,7 @@ function wire() {
     const pr = 5 * dt;
     if (held.arrowleft) CAM.pan.x = clamp(CAM.pan.x - pr, -5, 5); if (held.arrowright) CAM.pan.x = clamp(CAM.pan.x + pr, -5, 5);
     if (held.arrowup) CAM.pan.y = clamp(CAM.pan.y + pr, -4, 4); if (held.arrowdown) CAM.pan.y = clamp(CAM.pan.y - pr, -4, 4);
+    if (held['='] || held['+']) CAM.userIns = clamp(CAM.userIns + 6 * dt, -5, 6); if (held['-'] || held['_']) CAM.userIns = clamp(CAM.userIns - 6 * dt, -5, 6);
   };
   if (window.ResizeObserver) new ResizeObserver(resize).observe(VIEW); else window.addEventListener('resize', resize);
 }
@@ -81,7 +112,13 @@ function tick(dt) {
   scene.updateMatrixWorld();
   const hm = CTRL.mode === 'hands';
   if (hm) htPointers(dt); else routeMouse();
-  for (const h of HANDS) { doPick(h); snapPick(h); }
+  const free = freeDepth(), live = S.running && !S.ended;
+  for (const h of HANDS) {
+    if (!free) { doPick(h); snapPick(h); continue; }
+    if (h.key === ACTIVE && live) freeDrive(h); else h.cmd.dx = h.cmd.dy = h.cmd.dz = 0;
+    freePick(h, dt);
+  }
+  wire.freeTick();
   if (hm) htActions(dt);
   updateHands(dt);
   if (S.running) { actionTick(dt); updateSteps(dt); }
@@ -98,7 +135,7 @@ function frame(now) {
 S = freshState();
 buildStatic(); wire(); htWire();
 // everything lit throws and takes shadows from the scope light, except flat marks painted on a surface and the blood pool
-scene.traverse(o => { if (o.isMesh && !o.material.isMeshBasicMaterial) { o.castShadow = o !== POOL; o.receiveShadow = true; } });
+scene.traverse(o => { if (o.isMesh && !o.material.isMeshBasicMaterial) { o.castShadow = o !== POOL; o.receiveShadow = true; if (o.material.userData.depth) o.customDepthMaterial = o.material.userData.depth; } });
 (function () {
   let q = null;
   try { q = new URLSearchParams(location.search).get('q') || localStorage.getItem(QKEY); } catch (e) {}
@@ -137,8 +174,9 @@ window.__sim = {
   forceStep, visibleAt, colpPt, SEALSPEC, URETER, VG, UT, BL, HT, HANDS, CTRL, fakeHand, htIngest, htEnable, htDisable, calibFinish,
   get S() { return S; }, STEPS, HAND, CAM, AN, INP, tick, setPoseGoal, setInst, setActive, cutAction, startCase,
   get active() { return ACTIVE; }, get PICK() { return activeHand().pick; },
-  next() { const st = STEPS[S.step]; if (S.bleeders.length) { const p = S.bleeders[0].pt(new V3()); project(p, _ps); return { act: 'bleed', x: _ps.x, y: _ps.y }; } const n = st.next && st.next(); if (!n) return null; project(n.p, _ps); return { act: n.act, label: n.label, x: _ps.x, y: _ps.y, z: _ps.z, hidden: !!n.hidden, vis: visibleAt(n.p, 0.8), p: n.p.toArray() }; },
+  next() { const st = STEPS[S.step]; if (S.bleeders.length) { const p = S.bleeders[0].pt(new V3()); project(p, _ps); return { act: 'bleed', x: _ps.x, y: _ps.y, p: p.toArray() }; } const n = st.next && st.next(); if (!n) return null; project(n.p, _ps); return { act: n.act, label: n.label, x: _ps.x, y: _ps.y, z: _ps.z, hidden: !!n.hidden, vis: visibleAt(n.p, 0.8), p: n.p.toArray() }; },
   proj(p) { project(new V3(p[0], p[1], p[2]), _ps); return { x: _ps.x, y: _ps.y }; },
   render(dt) { renderFrame(dt == null ? 0.5 : dt, simTime, S.haze); drawOverlay(simTime); renderUI(1); htRenderUI(1, simTime); },
-  setQuality, QUAL, GRADE, LIGHT, MAT, POST, head, scene, camera, renderer, THREE
+  setQuality, QUAL, GRADE, LIGHT, MAT, POST, head, scene, camera, renderer, THREE,
+  DEPTH, DENT, freeDepth, freePick, poseFromPoint, primaryDown, primaryUp, nearTarget, PICKS, shown
 };

@@ -18,13 +18,34 @@ does not replace supervised training. The score comes from the simulator's own r
 
 | | Hands | Mouse |
 |---|---|---|
-| Move an instrument | Move that hand; both work at once | Move the mouse (selected hand) |
+| Move an instrument | Move that hand; both work at once | Move the mouse: the selected instrument swings about its port |
+| Depth | Follows the tissue under the pointer (for now) | Wheel: slides the instrument in and out along its shaft |
 | Grasp, seal, cut with the hook, aspirate, place a bite | Pinch thumb to first two fingers, hold as needed | Click, hold as needed |
 | Fire the bipolar cut blade | Relax, then pinch again on the sealed zone, or `C` | Right-click or `C` |
 | Hold an instrument still | Open that hand flat (clutch); curl it again to carry on | `Space` or `X` switches hands; the other holds |
 
 Keyboard in either mode: `1` to `5` change the selected hand's instrument, `W A S D` tilt and deviate the uterus,
-`Q E` push the cup, scroll and arrow keys move the scope, `G` guidance, `L` anatomy labels, `M` sound.
+`Q E` push the cup, `+` and `-` advance and withdraw the scope, arrow keys aim it, `G` guidance, `L` anatomy labels,
+`M` sound. With the mouse, `Esc` frees the cursor for the panels and a click on the picture takes the instruments again.
+
+## Depth
+
+With the mouse, an instrument's tip is a point in space. It pivots about its port, the wheel slides it along its
+shaft, and it works only where the tip touches tissue: graspers need tissue in the jaws and energy needs contact.
+
+- **Contact:** the first tissue along the shaft is what the tip meets. Pushed further, the tissue dents about half a
+  centimetre and then stops the instrument; keep pressing and a warning appears.
+- **Seeing depth in a flat picture:** each instrument throws a shadow that closes up as its tip nears the tissue, a
+  ring appears at the tip on contact (amber when pressing in), and the tissue dents under pressure.
+- **Guidance on:** a ring round the step's target closes in as the tip nears it in space and turns green on arrival.
+  If tissue lies between the selected hand's port and the target and the other hand has a clear line, it says so.
+- **Ports matter:** a structure can be out of reach from one side. Switch hands and take the instrument you need in
+  the other hand.
+- **Mouse control panel:** *Auto depth* brings back the earlier behaviour (the tip follows the tissue under the
+  pointer and the wheel moves the scope). *Fulcrum effect* makes the tip move opposite to the mouse, as with a real
+  laparoscopic handle; it is off by default because the goal is robotic control, which has no fulcrum effect.
+  *Reverse wheel* swaps which way the wheel pushes in. *Wheel speed* scales the travel.
+- Hand control still uses auto depth. Depth from the hands is the next step.
 
 ## Picture
 
@@ -43,10 +64,12 @@ Keyboard in either mode: `1` to `5` change the selected hand's instrument, `W A 
 
 | Build | What changed | Play it |
 |---|---|---|
-| 0.2 | Realism update: lighting, camera, tissue, energy effects, instruments | https://phillintheblank.github.io/TLH/ |
+| 0.3a | Free-moving instrument tips with the mouse: wheel depth, contact, tissue give, fulcrum option | https://phillintheblank.github.io/TLH/ |
+| 0.2 | Realism update: lighting, camera, tissue, energy effects, instruments | https://phillintheblank.github.io/TLH/v0.2/ |
 | 0.1 | Hand control added to the mouse simulator | https://phillintheblank.github.io/TLH/v0.1/ |
 
-Each build's source is kept on a `checkpoint/…` branch (0.1 is `checkpoint/v0.1-hands`), and the built page of each
+Each build's source is kept on a `checkpoint/…` branch (`checkpoint/v0.1-hands`, `checkpoint/v0.2-realism`,
+`checkpoint/v0.3a-depth`), and the built page of each
 earlier build stays in `docs/` under its version number.
 
 ## Hand control
@@ -64,7 +87,9 @@ earlier build stays in `docs/` under its version number.
 
 ### Limits of this build
 
-- Only left-right and up-down are tracked. Depth still comes from the tissue under each pointer, and wrist angle is not used yet.
+- With the hands, only left-right and up-down are tracked: depth still comes from the tissue under each pointer, and
+  wrist angle is not used yet. With the mouse, depth is yours to control.
+- Contact is judged along the shaft: an instrument cannot pass through tissue, but its side does not push tissue away.
 - The instruments are the laparoscopic set, not wristed robotic instruments.
 - The uterine manipulator and instrument exchanges still use the keyboard or mouse.
 - Tissue movement is still simplified: a grasped ligament is pulled, but sheets of tissue do not tent or stretch.
@@ -75,13 +100,14 @@ earlier build stays in `docs/` under its version number.
 ## Roadmap
 
 1. Hand control, left-right and up-down, two hands (done)
-2. Realism: lighting, camera, tissue, energy effects, instruments (this build)
-3. Side-by-side stereo for XR glasses and 3D displays
-4. Depth from distance to the camera
-5. Wrist orientation driving a wristed instrument tip
-6. Robotic instrument set and multiport robotic case flow
-7. Voice commands for the uterine manipulator and instrument exchanges
-8. Wristed suturing
+2. Realism: lighting, camera, tissue, energy effects, instruments (done)
+3. Free-moving tips and depth with the mouse (this build)
+4. Depth from the hands: hand size in the laptop camera first, a second camera only if that is too coarse
+5. Side-by-side stereo for XR glasses and 3D displays
+6. Wrist orientation driving a wristed instrument tip
+7. Robotic instrument set and multiport robotic case flow
+8. Voice commands for the uterine manipulator and instrument exchanges
+9. Wristed suturing
 
 ## Working on it
 
@@ -96,7 +122,9 @@ numbered files in `src/js/`, concatenated in order). `docs/` is what GitHub Page
 
 Tests drive a headless Chrome through Playwright (`test/shot.mjs <screenshot> <script>`):
 
-- `test/steps/flow.mjs` plays the whole case, with real mouse events (`MODE=mouse`) or with synthetic hand landmarks
+- `test/steps/free.mjs` checks free depth through real mouse events: swing, fulcrum inversion, wheel travel, contact
+  and give, working only in contact, traction, complications.
+- `test/steps/flow.mjs` plays the whole case: in free depth (`MODE=free`), with real mouse events in auto depth (`MODE=mouse`) or with synthetic hand landmarks
   pushed through the full hand-control pipeline (`MODE=hands`).
 - `test/steps/bimanual.mjs` checks two-handed behaviour: simultaneous motion, traction with one hand while the other
   seals, the clutch, a lost hand, tracking jitter, and both camera orientations (`CAM=upright|tilted`).

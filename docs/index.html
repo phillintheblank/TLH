@@ -34,6 +34,7 @@ kbd{font:500 11px var(--mono);padding:1px 5px;border:1px solid var(--line);borde
 .ghost:hover,.tog:hover,.sel:hover{color:var(--text);border-color:#35505e}
 .sel{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:5px 8px;font:inherit;font-size:13px;color:var(--muted)}
 .view.post #haze,.view.post .vignette{display:none}
+.mousepanel .btnrow{flex-wrap:wrap}.mousepanel .tog{font-size:12.5px;padding:4px 9px}
 main{display:grid;grid-template-columns:minmax(0,1fr) 352px;min-height:0}
 .stage{display:flex;flex-direction:column;gap:10px;min-width:0;min-height:0;padding:12px 0 12px 16px}
 .view{position:relative;flex:1;min-height:260px;border-radius:8px;overflow:hidden;background:#050101;border:1px solid #000;cursor:none;touch-action:none;user-select:none}
@@ -162,7 +163,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 <body>
 <div id="app">
   <header class="bar">
-    <div class="brand"><h1>TLH Simulator</h1><p>Build 0.2 &middot; hand control &middot; total laparoscopic hysterectomy, bilateral salpingectomy</p></div>
+    <div class="brand"><h1>TLH Simulator</h1><p>Build 0.3a &middot; total laparoscopic hysterectomy, bilateral salpingectomy</p></div>
     <div class="bar-ctl">
       <select id="selQ" class="sel" title="Picture quality. Auto starts at High and steps down if the frame rate drops." aria-label="Picture quality"><option value="auto">Quality: auto</option><option value="high">Quality: high</option><option value="medium">Quality: medium</option><option value="low">Quality: low</option></select>
       <button type="button" id="btnHands" class="tog" title="Drive both instruments with your hands through this device's camera">Hand control</button>
@@ -204,16 +205,19 @@ input[type=range]{width:100%;accent-color:var(--accent)}
             </ul>
             <h3>With the mouse</h3>
             <ul class="keys">
-              <li><b>Move, click, hold</b><span>Steers and works the selected hand's instrument</span></li>
+              <li><b>Move</b><span>Swings the selected instrument about its port</span></li>
+              <li><b>Wheel</b><span>Slides it in and out along its shaft. It works only where its tip touches tissue.</span></li>
+              <li><b>Click, hold</b><span>Grasp, seal, cut with the hook, aspirate, place a bite</span></li>
               <li><b>Right-click</b><span>Fires the bipolar cut blade</span></li>
               <li><b>Space or X</b><span>Switch hands; the other holds its position</span></li>
+              <li><b>Esc</b><span>Frees the cursor for the panels. Click the picture to take the instruments again.</span></li>
             </ul>
             <h3>Keyboard, either way</h3>
             <ul class="keys">
               <li><b>1 to 5</b><span>Change the selected hand's instrument</span></li>
               <li><b>W A S D, Q E</b><span>Uterine manipulator: tilt, deviate, push the cup</span></li>
               <li><b>C</b><span>Cut blade</span></li>
-              <li><b>Scroll, arrows</b><span>Advance and aim the scope</span></li>
+              <li><b>+ and &minus;, arrows</b><span>Advance and aim the scope</span></li>
             </ul>
             <p class="fine">An educational rehearsal tool with simplified anatomy and tissue behaviour. It is not a validated assessment and does not replace supervised training.</p>
           </div>
@@ -290,6 +294,16 @@ input[type=range]{width:100%;accent-color:var(--accent)}
         <div class="prog"><div class="track"><i id="stepBar"></i></div><span id="stepProg"></span></div>
         <div class="btnrow"><button type="button" class="primary" id="stepBtn1" hidden></button><button type="button" class="primary" id="stepBtn2" hidden></button></div>
         <p class="pearl"><b>Pearl</b><span id="stepPearl"></span></p>
+      </section>
+      <section class="block mousepanel">
+        <h3>Mouse control</h3>
+        <p class="ht-status" id="msNote">The mouse swings the instrument about its port and the wheel slides it in and out.</p>
+        <div class="btnrow">
+          <button type="button" class="tog" id="btnAuto" title="The tip follows the tissue under the pointer, as in earlier builds, and the wheel moves the scope. Hand control always works this way for now.">Auto depth</button>
+          <button type="button" class="tog" id="btnFulcrum" title="The tip moves opposite to the mouse, as it does with a real laparoscopic handle outside the abdomen. Mouse only.">Fulcrum effect</button>
+          <button type="button" class="tog" id="btnFlip" title="Swap which way the wheel pushes the instrument in">Reverse wheel</button>
+        </div>
+        <div class="tune"><label for="mWheel">Wheel speed<input type="range" id="mWheel" min="30" max="300" value="100"></label></div>
       </section>
       <section class="block handpanel">
         <h3>Hand control</h3>
@@ -548,10 +562,10 @@ const head = new THREE.SpotLight(0xffffff, 1, 0, 1.0, 0.62, LIGHT.decay);
 head.intensity = Math.PI * Math.pow(LIGHT.ref, LIGHT.decay) * LIGHT.gain;
 // The light fibres sit beside the lens, not on its axis, so everything throws a thin shadow to one side. Those
 // shadows are the main depth cue in a flat picture: an instrument's shadow closes up as it nears the tissue.
-head.position.set(0.12, 0.42, 0); head.target.position.set(0.12, 0.42, -1);
+head.position.set(0.3, 0.9, 0); head.target.position.set(0.3, 0.9, -1);
 camera.add(head); camera.add(head.target);
 head.castShadow = true; head.shadow.mapSize.set(2048, 2048); head.shadow.camera.near = 0.6; head.shadow.camera.far = 60;
-head.shadow.bias = -0.0006; head.shadow.normalBias = 0.03; head.shadow.radius = 2.5;
+head.shadow.bias = -0.0006; head.shadow.normalBias = 0.03; head.shadow.radius = 1.8;
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
 
 // Everything else is light that has already bounced off lit tissue: dim and red, strongest from the deep pelvis.
@@ -980,10 +994,40 @@ const TRI_MAP = `
 	vec3 triON = normalize( vON );
 	vec3 triW = pow( abs( triON ), vec3( 4.0 ) ); triW /= triW.x + triW.y + triW.z;
 	diffuseColor *= texture2D( map, vOP.zy * triK.x ) * triW.x + texture2D( map, vOP.xz * triK.x + 0.37 ) * triW.y + texture2D( map, vOP.xy * triK.x + 0.71 ) * triW.z;`;
+// 3. Tissue dents under a pressing instrument tip: vertices near the contact are pushed along the shaft and their
+//    normals lean into the pit. One dent per hand: xyz = contact point, w = depth in cm (0 = none).
+const DENT = { pos: { value: [new THREE.Vector4(), new THREE.Vector4()] }, dir: { value: [new V3(0, 0, -1), new V3(0, 0, -1)] } };
+const DENT_PARS = `
+#define DENT_R2 0.9
+uniform vec4 dent[ 2 ]; uniform vec3 dentDir[ 2 ];
+void dentApply( vec3 p, inout vec3 off, inout vec3 nrm ) {
+	vec3 wp = ( modelMatrix * vec4( p, 1.0 ) ).xyz; mat3 m = mat3( modelMatrix );
+	for ( int i = 0; i < 2; i ++ ) {
+		float dep = dent[ i ].w;
+		if ( dep > 0.0 ) {
+			vec3 dv = wp - dent[ i ].xyz; float g = exp( - dot( dv, dv ) / DENT_R2 );
+			off += ( dentDir[ i ] * ( dep * g ) ) * m;
+			nrm += ( dv * ( - 2.0 * dep * g / DENT_R2 ) ) * m;
+		}
+	}
+}`;
+// the shadow pass must see the same dent, or the pit would fall inside the shadow of its own undented surface
+function dentDepth() {
+  const d = new THREE.MeshDepthMaterial();
+  d.onBeforeCompile = sh => {
+    sh.uniforms.dent = DENT.pos; sh.uniforms.dentDir = DENT.dir;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>' + DENT_PARS)
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvec3 dentOff = vec3( 0.0 ), dentN = vec3( 0.0 );\n\tdentApply( position, dentOff, dentN );\n\ttransformed += dentOff;');
+  };
+  d.customProgramCacheKey = () => 'dent-depth';
+  return d;
+}
 function tissueHook(tri) {
   return sh => {
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float dry;\nvarying float vDry;' + (tri ? '\nvarying vec3 vOP;\nvarying vec3 vON;' : ''))
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvDry = dry;' + (tri ? '\n\tvOP = position; vON = normal;' : ''));
+    sh.uniforms.dent = DENT.pos; sh.uniforms.dentDir = DENT.dir;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float dry;\nvarying float vDry;' + DENT_PARS + (tri ? '\nvarying vec3 vOP;\nvarying vec3 vON;' : ''))
+      .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\n\tvec3 dentOff = vec3( 0.0 );\n\tdentApply( position, dentOff, objectNormal );')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n\ttransformed += dentOff;\n\tvDry = dry;' + (tri ? '\n\tvOP = position; vON = normal;' : ''));
     let f = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vDry;' + (tri ? TRI_PARS : ''))
       .replace('#include <lights_physical_fragment>', '#include <lights_physical_fragment>\n\tmaterial.roughness = mix( material.roughness, 0.93, vDry );\n\t#ifdef USE_CLEARCOAT\n\t\tmaterial.clearcoat *= 1.0 - vDry;\n\t#endif');
     if (tri) {
@@ -1007,6 +1051,7 @@ function wet(o) {
   delete p.mr; delete p.ms; delete p.relief; delete p.bs; delete p.br; delete p.tri;
   const m = new THREE.MeshPhysicalMaterial(p);
   m.onBeforeCompile = tissueHook(o.tri); m.customProgramCacheKey = () => (o.tri ? 'tissue-tri' : 'tissue');
+  m.userData.depth = dentDepth();
   return m;
 }
 const MAT = {
@@ -1677,8 +1722,11 @@ for (const [k, sx, inst] of [['L', -1, 'grasper'], ['R', 1, 'bipolar']]) {
     key: k, inst, port: V(8.5 * sx, 3.5, 13.5), tip: V(3.4 * sx, -0.4, 4.6), goal: V(3.4 * sx, -0.4, 4.6), grp: new THREE.Group(), sub: {},
     open: 0.7, openGoal: 0.7, grab: null, exch: 0, exchTo: null, firing: false, depth: 12, roll: 0, near: false, surf: new V3(),
     // each hand has its own pointer, view ray and pick so both instruments can work at once
-    ptr: { x: 0, y: 0, on: false, ndc: new THREE.Vector2() }, ray: new THREE.Ray(), pick: newPick(), nearFlag: false, lastUp: -9
+    ptr: { x: 0, y: 0, on: false, ndc: new THREE.Vector2() }, ray: new THREE.Ray(), pick: newPick(), nearFlag: false, lastUp: -9,
+    // pose about the port: direction, commanded insertion, the length actually reached, and contact with tissue
+    dir: new V3(), ins: 0, len: 0, touch: false, press: 0, pressT: 0, give: 0, ahead: { hit: false, dist: 0 }, cmd: { dx: 0, dy: 0, dz: 0 }
   };
+  h.dir.copy(h.tip).sub(h.port); h.ins = h.len = h.dir.length(); h.dir.normalize();
   for (const t in INST) { h.sub[t] = buildInst(t); h.sub[t].g.visible = t === inst; h.grp.add(h.sub[t].g); }
   scene.add(h.grp); HAND[k] = h;
 }
@@ -1689,24 +1737,28 @@ const otherHand = h => (h === HAND.L ? HAND.R : HAND.L);
 const CTRL = { mode: 'mouse' }; // 'mouse' | 'hands'
 
 // ---------- input + picking ----------
-const INP = { x: 0, y: 0, inside: false, down: false, ndc: new THREE.Vector2(0, 0) };
+const INP = { x: 0, y: 0, inside: false, down: false, ndc: new THREE.Vector2(0, 0), lock: false, noLock: false };
 const RAY = new THREE.Raycaster();
+// Two ways of placing a tip.
+// Free depth (mouse): each instrument pivots about its port and slides along its own shaft. The tip is wherever
+// that puts it, and it touches tissue only when it is pushed there.
+// Auto depth: the tip rides whatever tissue lies under a pointer on the screen. Hand control uses this until
+// hands can signal depth; with the mouse it is a setting.
+const DEPTH = { auto: false, fulcrum: false, flip: false, wheel: 1, sens: 1, CONTACT: 0.22, GIVE: 0.55 };
+const DKEY = 'tlh.depth.v1';
+const freeDepth = () => CTRL.mode === 'mouse' && !DEPTH.auto;
+function poseFromPoint(h, p) { h.dir.copy(p).sub(h.port); h.ins = h.dir.length(); h.dir.normalize(); }
 function shown(o) { for (; o; o = o.parent) if (!o.visible) return false; return true; }
-function routeMouse() { // mouse mode: the mouse is the active hand's pointer; the other hand holds
+function routeMouse() { // mouse mode: the mouse drives the active hand; the other hand holds
   if (CTRL.mode !== 'mouse') return;
+  const free = !DEPTH.auto;
   for (const h of HANDS) {
-    h.ptr.on = h.key === ACTIVE && INP.inside;
-    if (h.ptr.on) { h.ptr.x = INP.x; h.ptr.y = INP.y; h.ptr.ndc.copy(INP.ndc); }
+    h.ptr.on = h.key === ACTIVE && (free || INP.inside);
+    if (h.ptr.on && !free) { h.ptr.x = INP.x; h.ptr.y = INP.y; h.ptr.ndc.copy(INP.ndc); }
   }
 }
-function doPick(h) {
+function fillPick(h, hit) {
   const P = h.pick;
-  let hit = null;
-  if (h.ptr.on) {
-    RAY.setFromCamera(h.ptr.ndc, camera); h.ray.copy(RAY.ray);
-    const hits = RAY.intersectObjects(PICKS, false);
-    for (let i = 0; i < hits.length; i++) if (shown(hits[i].object)) { hit = hits[i]; break; }
-  }
   P.hit = !!hit;
   if (!hit) { P.mesh = null; P.ent = null; P.side = null; return; }
   const o = hit.object, ud = o.userData;
@@ -1718,8 +1770,14 @@ function doPick(h) {
   if (ud.tube) P.u = ud.tube.uAt(hit.face.a);
   else if (ud.strip) { const st = ud.strip.stAt(hit.face.a); if (ud.strip.map) { const m = ud.strip.map(st[0], st[1]); P.u = m[0]; P.v = m[1]; } else { P.u = st[0]; P.v = st[1]; } }
 }
+function firstShown(hits) { for (let i = 0; i < hits.length; i++) if (shown(hits[i].object)) return hits[i]; return null; }
+function doPick(h) { // auto depth: what lies under this hand's pointer
+  let hit = null;
+  if (h.ptr.on) { RAY.setFromCamera(h.ptr.ndc, camera); h.ray.copy(RAY.ray); hit = firstShown(RAY.intersectObjects(PICKS, false)); }
+  fillPick(h, hit);
+}
 // When a pointer is over a working point of the current step (an incision line, the cup rim), the tip rides that
-// point rather than dropping through the opened tissue onto whatever lies behind it.
+// point rather than dropping through the opened tissue onto whatever lies behind it. Auto depth only.
 const _sp = new V3();
 function snapPick(h) {
   if (!S.running || !h.ptr.on) return;
@@ -1737,19 +1795,71 @@ function snapPick(h) {
   P.hit = true; P.mesh = null; P.ent = 'target'; P.side = null; P.piece = null; P.dist = bz;
   P.point.copy(h.ray.origin).addScaledVector(h.ray.direction, bz); P.normal.copy(h.ray.direction).negate();
 }
-const _cv = new V3(), _g = new V3();
+const _cv = new V3(), _g = new V3(), _fr = new V3(), _fu = new V3(), _ft = new V3(), _fp = new V3();
+// Free depth: turn mouse travel into a swing about the port, and wheel travel into insertion along the shaft.
+// Mouse travel is scaled by the tip's distance from the lens so the tip keeps pace with the mouse at any zoom.
+// With the fulcrum effect on, the tip moves opposite to the hand, as it does with a real handle outside the abdomen.
+function freeDrive(h) {
+  const c = h.cmd;
+  if ((c.dx || c.dy) && h.exch <= 0) {
+    camera.getWorldDirection(_cv);
+    _ft.copy(h.port).addScaledVector(h.dir, h.ins);
+    const depth = Math.max(2, _g.copy(_ft).sub(camera.position).dot(_cv));
+    const k = ((2 * depth * Math.tan((camera.fov * DEG) / 2)) / VH) * DEPTH.sens * (DEPTH.fulcrum ? -1 : 1);
+    _fr.setFromMatrixColumn(camera.matrixWorld, 0); _fu.setFromMatrixColumn(camera.matrixWorld, 1);
+    // the tip stays in the picture: travel that would carry it past an edge is ignored on that axis; travel back in is not
+    _fp.copy(_ft).project(camera); const x0 = Math.abs(_fp.x), y0 = Math.abs(_fp.y);
+    _fp.copy(_ft).addScaledVector(_fr, c.dx * k).project(camera); const okX = Math.abs(_fp.x) < 0.96 || Math.abs(_fp.x) < x0;
+    _fp.copy(_ft).addScaledVector(_fu, -c.dy * k).project(camera); const okY = Math.abs(_fp.y) < 0.96 || Math.abs(_fp.y) < y0;
+    if (okX) _ft.addScaledVector(_fr, c.dx * k);
+    if (okY) _ft.addScaledVector(_fu, -c.dy * k);
+    if (okX || okY) { const L = h.ins; h.dir.copy(_ft).sub(h.port).normalize(); h.ins = L; }
+  }
+  if (c.dz && h.exch <= 0) h.ins = clamp(h.ins + c.dz, 3, 34);
+  c.dx = c.dy = c.dz = 0;
+}
+// Free depth: the first tissue along the shaft is what the tip will meet. Short of it the instrument touches
+// nothing. At it the tip is in contact. Pushed further, the tissue gives a little and then stops the instrument.
+function freePick(h, dt) {
+  const P = h.pick, A = h.ahead;
+  h.ray.origin.copy(h.port); h.ray.direction.copy(h.dir);
+  RAY.set(h.port, h.dir);
+  const hit = firstShown(RAY.intersectObjects(PICKS, false));
+  fillPick(h, hit);
+  A.hit = !!hit; A.dist = hit ? hit.distance : 99;
+  const press = h.ins - A.dist;
+  h.touch = A.hit && press > -DEPTH.CONTACT;
+  h.give = press > 0 ? DEPTH.GIVE * (1 - Math.exp(-press / DEPTH.GIVE)) : 0;
+  h.len = A.hit ? Math.min(h.ins, A.dist + h.give) : h.ins;
+  if (press > DEPTH.GIVE * 2.4) h.ins = A.dist + DEPTH.GIVE * 2.4; // so backing out answers at once
+  h.press = Math.max(0, press);
+  if (hit) h.surf.copy(hit.point);
+  if (!h.touch) { P.hit = false; P.ent = null; P.side = null; P.mesh = null; }
+  // the label and contact marker sit at the tip
+  _fp.copy(h.port).addScaledVector(h.dir, h.len).project(camera);
+  h.ptr.ndc.set(_fp.x, _fp.y); h.ptr.x = (_fp.x * 0.5 + 0.5) * VW; h.ptr.y = (-_fp.y * 0.5 + 0.5) * VH;
+  if (h.press > DEPTH.GIVE * 1.3 && S.running && !h.grab) { h.pressT += dt; if (h.pressT > 1.2) { h.pressT = 0; hint('press', 'You are pressing the instrument into tissue. Back it out a little.'); } } else h.pressT = Math.max(0, h.pressT - dt);
+}
 function updateHands(dt) {
-  for (const h of HANDS) {
-    const act = h.ptr.on && S.running && !S.ended, P = h.pick;
+  const free = freeDepth();
+  for (let i = 0; i < HANDS.length; i++) {
+    const h = HANDS[i], act = h.ptr.on && S.running && !S.ended, P = h.pick;
     if (h.grab && h.grab.pull) {
       const pl = h.grab.pull;
       if (act) {
-        camera.getWorldDirection(_cv);
-        const den = h.ray.direction.dot(_cv), tt = _g.copy(pl.nat).sub(h.ray.origin).dot(_cv) / (den || 1);
-        _g.copy(h.ray.origin).addScaledVector(h.ray.direction, tt).sub(pl.nat).clampLength(0, 1.6);
+        if (free) { // the held tissue follows the tip, up to its stretch; past that the instrument is held back
+          _g.copy(h.port).addScaledVector(h.dir, h.ins).sub(pl.nat);
+          if (_g.length() > 1.6) { _g.setLength(1.6); poseFromPoint(h, _ft.copy(pl.nat).add(_g)); }
+        } else {
+          camera.getWorldDirection(_cv);
+          const den = h.ray.direction.dot(_cv), tt = _g.copy(pl.nat).sub(h.ray.origin).dot(_cv) / (den || 1);
+          _g.copy(h.ray.origin).addScaledVector(h.ray.direction, tt).sub(pl.nat).clampLength(0, 1.6);
+        }
         pl.off.lerp(_g, 1 - Math.exp(-14 * dt));
       }
       h.goal.copy(pl.nat).add(pl.off); h.tip.copy(h.goal);
+    } else if (free) {
+      if (h.exch <= 0) h.goal.copy(h.port).addScaledVector(h.dir, h.len);
     } else if (act && h.exch <= 0) {
       if (P.hit) { h.surf.copy(P.point).addScaledVector(P.normal, 0.1); h.depth = P.dist; }
       else h.surf.copy(h.ray.origin).addScaledVector(h.ray.direction, h.depth);
@@ -1758,8 +1868,13 @@ function updateHands(dt) {
       const dG = h.surf.distanceTo(h.ray.origin), dP = h.goal.distanceTo(h.ray.origin), lim = (h.firing ? 2.5 : 12) * dt;
       if (dG > dP + lim) h.goal.copy(h.ray.origin).addScaledVector(h.ray.direction, dP + lim); else h.goal.copy(h.surf);
     }
-    const r = 1 - Math.exp(-20 * dt); h.tip.lerp(h.goal, r);
-    h.near = (h.grab && h.grab.pull) || h.tip.distanceTo(h.surf) < 0.7;
+    const r = 1 - Math.exp(-(free ? 30 : 20) * dt); h.tip.lerp(h.goal, r);
+    const held = !!(h.grab && h.grab.pull);
+    h.near = held || (free ? h.touch : h.tip.distanceTo(h.surf) < 0.7);
+    // tissue under a pressing tip dents; a held or absent contact does not
+    const dent = free && h.touch && !held && h.exch <= 0 ? h.give : 0;
+    DENT.pos.value[i].set(h.surf.x, h.surf.y, h.surf.z, dent); DENT.dir.value[i].copy(h.dir);
+    if (!free) { poseFromPoint(h, h.tip); h.len = h.ins; h.touch = h.near; h.press = 0; } // keep the pose current so switching modes is seamless
     let retract = 0;
     if (h.exch > 0) {
       h.exch -= dt / 0.55;
@@ -2006,7 +2121,13 @@ function thermal(h, dt, radius) {
     else if (e === 'ureter') heatUp(h, 'ureter', P.side, dt * 2, { u: P.u });
   }
 }
-function nearTarget(h, p, r) { const d = h.tip.distanceTo(p); return d < r || (d < r + 1.6 && h.ptr.on && h.ray.distanceSqToPoint(p) < 0.2); }
+// Is this tip at working point p? Auto depth also accepts a pointer aimed at it from just short of it, since the tip
+// is still travelling there. Free depth wants the tip itself there: touching tissue, or all but on the point.
+function nearTarget(h, p, r) {
+  const d = h.tip.distanceTo(p);
+  if (freeDepth()) return d < r && (h.touch || d < 0.45);
+  return d < r || (d < r + 1.6 && h.ptr.on && h.ray.distanceSqToPoint(p) < 0.2);
+}
 function nearestUreter(p) { let best = 99, bk = 'R'; for (const k of ['R', 'L']) { const d = Math.max(0, nearestOnArr(URETER[k].arr, p).d - 0.2); if (d < best) { best = d; bk = k; } } return { d: best, k: bk }; }
 function controlBleeders(h, dt) {
   let any = false;
@@ -2582,7 +2703,9 @@ const ACT_COL = { seal: '#f0b24a', cut: '#ffffff', trace: '#43c6c0', push: '#43c
 function drawOverlay(time) {
   const c = OV.getContext('2d'), pr = OV.width / VW;
   c.setTransform(pr, 0, 0, pr, 0, 0); c.clearRect(0, 0, VW, VH);
-  if (CTRL.mode === 'mouse' && INP.inside) { c.strokeStyle = 'rgba(255,255,255,0.75)'; c.lineWidth = 1.2; c.beginPath(); c.arc(INP.x, INP.y, 5, 0, TAU); c.stroke(); }
+  const free = freeDepth(), live = S.running && !S.ended;
+  if (CTRL.mode === 'mouse' && INP.inside && !(free && (INP.lock || (INP.noLock && live)))) { c.strokeStyle = 'rgba(255,255,255,0.75)'; c.lineWidth = 1.2; c.beginPath(); c.arc(INP.x, INP.y, 5, 0, TAU); c.stroke(); }
+  if (free && live) drawTipMarkers(c);
   if (!S.running) return;
   if (CTRL.mode === 'hands') drawHandPointers(c);
   const st = STEPS[S.step], pulseR = 1 + 0.12 * Math.sin(time * 5);
@@ -2594,12 +2717,14 @@ function drawOverlay(time) {
         if (b.seal > 0) { c.beginPath(); c.arc(_ps.x, _ps.y, 22, -Math.PI / 2, -Math.PI / 2 + TAU * b.seal); c.stroke(); }
         pill(c, _ps.x + 22, _ps.y - 28, 'Bleeding: hold bipolar here', '#ffd9d7', 'rgba(90,10,10,0.85)');
       }
+      if (free) depthGuide(c, S.bleeders[0].pt(_w));
     } else {
       if (st.path) {
         const pts = st.path();
         if (pts.length > 1) { c.setLineDash([5, 6]); c.strokeStyle = 'rgba(67,198,192,0.85)'; c.lineWidth = 2; c.beginPath(); pts.forEach((p, i) => { project(p, _ps); i ? c.lineTo(_ps.x, _ps.y) : c.moveTo(_ps.x, _ps.y); }); c.stroke(); c.setLineDash([]); }
       }
       const n = st.next && st.next();
+      if (free && n && n.act !== 'button' && !n.hidden) depthGuide(c, n.p);
       if (st.dots) for (const d of st.dots()) {
         project(d.p, _ps); c.beginPath(); c.arc(_ps.x, _ps.y, d.done ? 3 : 4.5, 0, TAU);
         if (d.done) { c.fillStyle = 'rgba(95,207,142,0.9)'; c.fill(); } else if (d.vis) { c.strokeStyle = 'rgba(67,198,192,0.95)'; c.lineWidth = 2; c.stroke(); } else { c.strokeStyle = 'rgba(160,175,185,0.35)'; c.lineWidth = 1.5; c.stroke(); }
@@ -2629,6 +2754,46 @@ function drawOverlay(time) {
     });
   }
   if (S.guided) for (const h of HANDS) { const P = h.pick; if (h.ptr.on && P.hit && ENT_NAME[P.ent] && !h.firing && !h.grab) pill(c, h.ptr.x + 14, h.ptr.y + 12, ENT_NAME[P.ent](P.side)); }
+}
+// Guided free depth: a ring round the step's target closes in as the driven tip nears it in space and turns green
+// on arrival, since a flat picture does not show how deep the target lies. Also says when tissue lies between this
+// hand's port and the target and the other hand has a clear line.
+const GD = { t: -9, blocked: false }, _gd = new V3(), RAYG = new THREE.Raycaster();
+function reachFrom(h, p) {
+  _gd.copy(p).sub(h.port); const L = _gd.length(); RAYG.set(h.port, _gd.normalize());
+  const f = firstShown(RAYG.intersectObjects(PICKS, false));
+  return !f || f.distance > L - 0.8;
+}
+function depthGuide(c, p) {
+  const h = activeHand(), d = h.tip.distanceTo(p), at = d < 0.6;
+  project(p, _tm);
+  c.strokeStyle = at ? 'rgba(95,207,142,0.95)' : 'rgba(255,255,255,0.5)'; c.lineWidth = at ? 2.2 : 1.2;
+  c.beginPath(); c.arc(_tm.x, _tm.y, 10 + 8 * Math.min(6, d), 0, TAU); c.stroke();
+  if (Math.abs(S.t - GD.t) > 0.4) { GD.t = S.t; GD.blocked = !reachFrom(h, p) && reachFrom(otherHand(h), p); }
+  if (GD.blocked) pill(c, _tm.x + 24, _tm.y + 16, 'Tissue is in the way from this port: switch hands (Space)', '#ffe7c2', 'rgba(70,45,5,0.85)');
+}
+// free depth: a mark at each tip that is touching tissue (amber when pressing in), a faint ring on the driven tip,
+// and a prompt while the cursor is free
+const _tm = { x: 0, y: 0, z: 0 };
+function drawTipMarkers(c) {
+  for (const h of HANDS) {
+    if (h.exch > 0) continue;
+    const _ps = project(h.tip, _tm);
+    if (_ps.z > 1 || _ps.x < 0 || _ps.y < 0 || _ps.x > VW || _ps.y > VH) {
+      if (h.key === ACTIVE) { // the driven tip is out of the picture: mark the edge it lies beyond
+        const x = clamp(_ps.z > 1 ? VW / 2 : _ps.x, 16, VW - 16), y = clamp(_ps.z > 1 ? VH - 16 : _ps.y, 16, VH - 16);
+        c.fillStyle = 'rgba(255,255,255,0.85)'; c.beginPath(); c.arc(x, y, 6, 0, TAU); c.fill(); pill(c, clamp(x + 12, 8, VW - 150), clamp(y - 10, 8, VH - 30), 'Instrument tip is out of view');
+      }
+      continue;
+    }
+    const hard = h.press > DEPTH.GIVE * 1.3, on = h.key === ACTIVE;
+    if (h.touch) {
+      c.strokeStyle = hard ? 'rgba(240,178,74,0.95)' : 'rgba(255,255,255,0.9)'; c.lineWidth = hard ? 2.4 : 1.6;
+      c.beginPath(); c.arc(_ps.x, _ps.y, hard ? 9 : 7, 0, TAU); c.stroke();
+      c.fillStyle = c.strokeStyle; c.beginPath(); c.arc(_ps.x, _ps.y, 1.8, 0, TAU); c.fill();
+    } else if (on) { c.strokeStyle = 'rgba(255,255,255,0.4)'; c.lineWidth = 1; c.beginPath(); c.arc(_ps.x, _ps.y, 4.5, 0, TAU); c.stroke(); }
+  }
+  if (!INP.lock && !INP.noLock) pill(c, VW / 2 - 150, VH - 34, 'Click the picture to take the instruments. Esc frees the cursor.');
 }
 // hand control: one reticle per hand, plus a marker on an instrument that is on hold
 function drawHandPointers(c) {
@@ -2737,6 +2902,7 @@ function renderUI(dt) {
     if (x.inst === 'needle') state = '';
     let tail = '';
     if (hm && HT.status === 'ready' && S.running) { const sl = HT.slot[x.key]; tail = sl.engaged ? '' : HT.clock - sl.tSeen < 0.3 ? '  ON HOLD' : '  NO HAND'; }
+    if (freeDepth() && S.running && x.touch && !(x.grab && x.grab.pull)) tail = x.press > DEPTH.GIVE * 1.3 ? '  PRESSING' : '  CONTACT';
     const e = $('hudDev' + x.key); e.textContent = x.key + '  ' + devName[x.inst] + (state ? '  ' + state : '') + tail;
     e.className = 'hudline' + (x.firing && x.inst !== 'suction' ? ' hot' : '') + (!hm && x.key !== ACTIVE ? ' dim' : '');
     if ((hm || x === h) && (x.inst === 'bipolar' || x.inst === 'hook')) { const n = nearestUreter(x.tip); if (!prox || n.d < prox.d) prox = n; }
@@ -2778,6 +2944,7 @@ function resetHands() {
     const h = HAND[k]; h.sub[h.inst].g.visible = false; h.inst = inst; h.sub[inst].g.visible = true;
     h.tip.set(3.4 * sx, -0.4, 4.6); h.goal.copy(h.tip); h.surf.copy(h.tip); h.grab = null; h.exch = 0; h.exchTo = null; h.firing = false; h.open = h.openGoal = 0.7; h.roll = 0;
     h.ptr.on = false; h.pick.hit = false; h.pick.ent = null; h.nearFlag = false; h.lastUp = -9;
+    poseFromPoint(h, h.tip); h.len = h.ins; h.touch = false; h.press = h.pressT = h.give = 0; h.cmd.dx = h.cmd.dy = h.cmd.dz = 0;
   }
   ACTIVE = 'R'; htResetSlots();
 }
@@ -3161,21 +3328,53 @@ function htWire() {
 // ---------- input wiring, main loop, start-up ----------
 function wire() {
   const pos = e => { const r = OV.getBoundingClientRect(); INP.x = e.clientX - r.left; INP.y = e.clientY - r.top; INP.ndc.set((INP.x / r.width) * 2 - 1, -((INP.y / r.height) * 2 - 1)); INP.inside = true; };
-  OV.addEventListener('pointermove', pos);
+  // Free depth: the mouse steers by its travel, not its position, so the cursor is locked to the picture while
+  // operating. Esc frees it. Where a browser will not lock the cursor, travel over the picture is used instead.
+  const freeOn = () => freeDepth() && S.running && !S.ended;
+  const lockReq = () => {
+    if (!OV.requestPointerLock) { INP.noLock = true; return; }
+    try { const p = OV.requestPointerLock(); if (p && p.catch) p.catch(() => { INP.noLock = true; }); } catch (_) { INP.noLock = true; }
+  };
+  const up = () => { if (INP.down) { INP.down = false; if (CTRL.mode === 'mouse') primaryUp(activeHand()); } };
+  document.addEventListener('pointerlockchange', () => { INP.lock = document.pointerLockElement === OV; if (!INP.lock) up(); });
+  document.addEventListener('pointerlockerror', () => { INP.noLock = true; });
+  OV.addEventListener('pointermove', e => {
+    pos(e);
+    if (freeOn() && (INP.lock || INP.noLock)) { const c = activeHand().cmd; c.dx += e.movementX || 0; c.dy += e.movementY || 0; }
+  });
   OV.addEventListener('pointerdown', e => {
     pos(e);
     if (CTRL.mode !== 'mouse') return; // with hand control on, the mouse only works the panels
-    const h = activeHand(); routeMouse(); doPick(h); snapPick(h);
+    const h = activeHand();
+    if (freeDepth()) {
+      if (freeOn() && !INP.lock && !INP.noLock) { lockReq(); return; } // the first click takes the instruments; it does not fire them
+      freePick(h, 0);
+    } else { routeMouse(); doPick(h); snapPick(h); }
     if (e.button === 2) { cutAction(); return; }
     if (e.button !== 0) return;
     try { OV.setPointerCapture(e.pointerId); } catch (_) {}
     INP.down = true; primaryDown(h);
   });
-  const up = () => { if (INP.down) { INP.down = false; if (CTRL.mode === 'mouse') primaryUp(activeHand()); } };
   OV.addEventListener('pointerup', up); OV.addEventListener('pointercancel', up);
-  OV.addEventListener('pointerleave', () => { INP.inside = false; up(); });
+  OV.addEventListener('pointerleave', () => { INP.inside = false; if (!INP.lock) up(); });
   OV.addEventListener('contextmenu', e => e.preventDefault());
-  OV.addEventListener('wheel', e => { e.preventDefault(); CAM.userIns = clamp(CAM.userIns - e.deltaY * 0.006, -5, 6); }, { passive: false });
+  OV.addEventListener('wheel', e => {
+    e.preventDefault();
+    if (freeOn()) { // the wheel slides the instrument along its shaft: a slow turn for fine control, a fast spin for travel
+      const d = e.deltaY * (e.deltaMode === 1 ? 30 : 1), step = Math.pow(Math.min(1, Math.abs(d) / 60), 0.6) * 0.34 * DEPTH.wheel;
+      activeHand().cmd.dz += (d < 0 ? 1 : -1) * (DEPTH.flip ? -1 : 1) * step;
+    } else if (!freeDepth()) CAM.userIns = clamp(CAM.userIns - e.deltaY * 0.006, -5, 6);
+  }, { passive: false });
+  wire.freeTick = () => { if (INP.lock && !freeOn() && document.exitPointerLock) document.exitPointerLock(); };
+  // mouse settings
+  // On a Mac the system default ("natural" scrolling) reverses the wheel, so start reversed there: wheel forward should push in.
+  DEPTH.flip = /Mac/i.test(navigator.platform || navigator.userAgent || '');
+  try { const d = JSON.parse(localStorage.getItem(DKEY) || 'null'); if (d) { DEPTH.auto = !!d.auto; DEPTH.fulcrum = !!d.fulcrum; DEPTH.flip = !!d.flip; if (d.wheel > 0.2 && d.wheel < 4) DEPTH.wheel = d.wheel; } } catch (_) {}
+  const saveD = () => { try { localStorage.setItem(DKEY, JSON.stringify({ auto: DEPTH.auto, fulcrum: DEPTH.fulcrum, flip: DEPTH.flip, wheel: DEPTH.wheel })); } catch (_) {} };
+  const dtog = (id, key) => { const b = $(id), sync = () => { b.classList.toggle('on', DEPTH[key]); b.setAttribute('aria-pressed', DEPTH[key] ? 'true' : 'false'); }; b.addEventListener('click', () => { DEPTH[key] = !DEPTH[key]; sync(); saveD(); uiDirty(); }); sync(); };
+  dtog('btnAuto', 'auto'); dtog('btnFulcrum', 'fulcrum'); dtog('btnFlip', 'flip');
+  $('mWheel').value = Math.round(DEPTH.wheel * 100);
+  $('mWheel').addEventListener('input', e => { DEPTH.wheel = e.target.value / 100; saveD(); });
   $('handL').addEventListener('click', () => setActive('L')); $('handR').addEventListener('click', () => setActive('R'));
   $('btnCut').addEventListener('click', () => cutAction());
   $('btnSwitch').addEventListener('click', () => setActive(ACTIVE === 'L' ? 'R' : 'L'));
@@ -3206,7 +3405,7 @@ function wire() {
   window.addEventListener('keydown', e => {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     const k = e.key.toLowerCase();
-    if (['w', 'a', 's', 'd', 'q', 'e', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) { held[k] = true; if (k.startsWith('arrow') && S.running) e.preventDefault(); return; }
+    if (['w', 'a', 's', 'd', 'q', 'e', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', '=', '+', '-', '_'].includes(k)) { held[k] = true; if (k.startsWith('arrow') && S.running) e.preventDefault(); return; }
     if (!S.running) return;
     if (k >= '1' && k <= '5') { const t = Object.keys(INST)[+k - 1]; setInst(ACTIVE, t); }
     else if (k === ' ' || k === 'x') { if (e.target && /^(BUTTON|INPUT)$/.test(e.target.tagName) && k === ' ') return; e.preventDefault(); setActive(ACTIVE === 'L' ? 'R' : 'L'); }
@@ -3214,8 +3413,6 @@ function wire() {
     else if (k === 'l') { S.labels = !S.labels; syncL(); }
     else if (k === 'g') { S.guided = !S.guided; syncG(); uiDirty(); }
     else if (k === 'm') { AU.on = !AU.on; if (!AU.on) stopSustain(); syncS(); }
-    else if (k === '=' || k === '+') CAM.userIns = clamp(CAM.userIns + 0.8, -5, 6);
-    else if (k === '-') CAM.userIns = clamp(CAM.userIns - 0.8, -5, 6);
   });
   window.addEventListener('keyup', e => { held[e.key.toLowerCase()] = false; });
   window.addEventListener('blur', () => { for (const k in held) held[k] = false; });
@@ -3228,6 +3425,7 @@ function wire() {
     const pr = 5 * dt;
     if (held.arrowleft) CAM.pan.x = clamp(CAM.pan.x - pr, -5, 5); if (held.arrowright) CAM.pan.x = clamp(CAM.pan.x + pr, -5, 5);
     if (held.arrowup) CAM.pan.y = clamp(CAM.pan.y + pr, -4, 4); if (held.arrowdown) CAM.pan.y = clamp(CAM.pan.y - pr, -4, 4);
+    if (held['='] || held['+']) CAM.userIns = clamp(CAM.userIns + 6 * dt, -5, 6); if (held['-'] || held['_']) CAM.userIns = clamp(CAM.userIns - 6 * dt, -5, 6);
   };
   if (window.ResizeObserver) new ResizeObserver(resize).observe(VIEW); else window.addEventListener('resize', resize);
 }
@@ -3241,7 +3439,13 @@ function tick(dt) {
   scene.updateMatrixWorld();
   const hm = CTRL.mode === 'hands';
   if (hm) htPointers(dt); else routeMouse();
-  for (const h of HANDS) { doPick(h); snapPick(h); }
+  const free = freeDepth(), live = S.running && !S.ended;
+  for (const h of HANDS) {
+    if (!free) { doPick(h); snapPick(h); continue; }
+    if (h.key === ACTIVE && live) freeDrive(h); else h.cmd.dx = h.cmd.dy = h.cmd.dz = 0;
+    freePick(h, dt);
+  }
+  wire.freeTick();
   if (hm) htActions(dt);
   updateHands(dt);
   if (S.running) { actionTick(dt); updateSteps(dt); }
@@ -3258,7 +3462,7 @@ function frame(now) {
 S = freshState();
 buildStatic(); wire(); htWire();
 // everything lit throws and takes shadows from the scope light, except flat marks painted on a surface and the blood pool
-scene.traverse(o => { if (o.isMesh && !o.material.isMeshBasicMaterial) { o.castShadow = o !== POOL; o.receiveShadow = true; } });
+scene.traverse(o => { if (o.isMesh && !o.material.isMeshBasicMaterial) { o.castShadow = o !== POOL; o.receiveShadow = true; if (o.material.userData.depth) o.customDepthMaterial = o.material.userData.depth; } });
 (function () {
   let q = null;
   try { q = new URLSearchParams(location.search).get('q') || localStorage.getItem(QKEY); } catch (e) {}
@@ -3297,10 +3501,11 @@ window.__sim = {
   forceStep, visibleAt, colpPt, SEALSPEC, URETER, VG, UT, BL, HT, HANDS, CTRL, fakeHand, htIngest, htEnable, htDisable, calibFinish,
   get S() { return S; }, STEPS, HAND, CAM, AN, INP, tick, setPoseGoal, setInst, setActive, cutAction, startCase,
   get active() { return ACTIVE; }, get PICK() { return activeHand().pick; },
-  next() { const st = STEPS[S.step]; if (S.bleeders.length) { const p = S.bleeders[0].pt(new V3()); project(p, _ps); return { act: 'bleed', x: _ps.x, y: _ps.y }; } const n = st.next && st.next(); if (!n) return null; project(n.p, _ps); return { act: n.act, label: n.label, x: _ps.x, y: _ps.y, z: _ps.z, hidden: !!n.hidden, vis: visibleAt(n.p, 0.8), p: n.p.toArray() }; },
+  next() { const st = STEPS[S.step]; if (S.bleeders.length) { const p = S.bleeders[0].pt(new V3()); project(p, _ps); return { act: 'bleed', x: _ps.x, y: _ps.y, p: p.toArray() }; } const n = st.next && st.next(); if (!n) return null; project(n.p, _ps); return { act: n.act, label: n.label, x: _ps.x, y: _ps.y, z: _ps.z, hidden: !!n.hidden, vis: visibleAt(n.p, 0.8), p: n.p.toArray() }; },
   proj(p) { project(new V3(p[0], p[1], p[2]), _ps); return { x: _ps.x, y: _ps.y }; },
   render(dt) { renderFrame(dt == null ? 0.5 : dt, simTime, S.haze); drawOverlay(simTime); renderUI(1); htRenderUI(1, simTime); },
-  setQuality, QUAL, GRADE, LIGHT, MAT, POST, head, scene, camera, renderer, THREE
+  setQuality, QUAL, GRADE, LIGHT, MAT, POST, head, scene, camera, renderer, THREE,
+  DEPTH, DENT, freeDepth, freePick, poseFromPoint, primaryDown, primaryUp, nearTarget, PICKS, shown
 };
 
 </script>

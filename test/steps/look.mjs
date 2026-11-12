@@ -5,7 +5,7 @@ const OUT = new URL('../out/', import.meta.url).pathname;
 export default async function (page) {
   const ev = (fn, a) => page.evaluate(fn, a);
   await ev(q => window.__sim.setQuality(q), process.env.Q || 'high');
-  await page.click('#btnBegin');
+  await page.click('#btnBegin'); await page.evaluate(() => { window.__sim.DEPTH.auto = true; }); // these scripts point at the screen: auto depth
   await ev(() => { window.__simPause = true; window.__sim.S.guided = !!0; });
   if (process.env.GUIDE) await ev(() => { window.__sim.S.guided = true; });
   const box = await page.locator('#ov').boundingBox();

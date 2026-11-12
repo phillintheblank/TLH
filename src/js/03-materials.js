@@ -190,10 +190,40 @@ const TRI_MAP = `
 	vec3 triON = normalize( vON );
 	vec3 triW = pow( abs( triON ), vec3( 4.0 ) ); triW /= triW.x + triW.y + triW.z;
 	diffuseColor *= texture2D( map, vOP.zy * triK.x ) * triW.x + texture2D( map, vOP.xz * triK.x + 0.37 ) * triW.y + texture2D( map, vOP.xy * triK.x + 0.71 ) * triW.z;`;
+// 3. Tissue dents under a pressing instrument tip: vertices near the contact are pushed along the shaft and their
+//    normals lean into the pit. One dent per hand: xyz = contact point, w = depth in cm (0 = none).
+const DENT = { pos: { value: [new THREE.Vector4(), new THREE.Vector4()] }, dir: { value: [new V3(0, 0, -1), new V3(0, 0, -1)] } };
+const DENT_PARS = `
+#define DENT_R2 0.9
+uniform vec4 dent[ 2 ]; uniform vec3 dentDir[ 2 ];
+void dentApply( vec3 p, inout vec3 off, inout vec3 nrm ) {
+	vec3 wp = ( modelMatrix * vec4( p, 1.0 ) ).xyz; mat3 m = mat3( modelMatrix );
+	for ( int i = 0; i < 2; i ++ ) {
+		float dep = dent[ i ].w;
+		if ( dep > 0.0 ) {
+			vec3 dv = wp - dent[ i ].xyz; float g = exp( - dot( dv, dv ) / DENT_R2 );
+			off += ( dentDir[ i ] * ( dep * g ) ) * m;
+			nrm += ( dv * ( - 2.0 * dep * g / DENT_R2 ) ) * m;
+		}
+	}
+}`;
+// the shadow pass must see the same dent, or the pit would fall inside the shadow of its own undented surface
+function dentDepth() {
+  const d = new THREE.MeshDepthMaterial();
+  d.onBeforeCompile = sh => {
+    sh.uniforms.dent = DENT.pos; sh.uniforms.dentDir = DENT.dir;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>' + DENT_PARS)
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvec3 dentOff = vec3( 0.0 ), dentN = vec3( 0.0 );\n\tdentApply( position, dentOff, dentN );\n\ttransformed += dentOff;');
+  };
+  d.customProgramCacheKey = () => 'dent-depth';
+  return d;
+}
 function tissueHook(tri) {
   return sh => {
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float dry;\nvarying float vDry;' + (tri ? '\nvarying vec3 vOP;\nvarying vec3 vON;' : ''))
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvDry = dry;' + (tri ? '\n\tvOP = position; vON = normal;' : ''));
+    sh.uniforms.dent = DENT.pos; sh.uniforms.dentDir = DENT.dir;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float dry;\nvarying float vDry;' + DENT_PARS + (tri ? '\nvarying vec3 vOP;\nvarying vec3 vON;' : ''))
+      .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\n\tvec3 dentOff = vec3( 0.0 );\n\tdentApply( position, dentOff, objectNormal );')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n\ttransformed += dentOff;\n\tvDry = dry;' + (tri ? '\n\tvOP = position; vON = normal;' : ''));
     let f = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vDry;' + (tri ? TRI_PARS : ''))
       .replace('#include <lights_physical_fragment>', '#include <lights_physical_fragment>\n\tmaterial.roughness = mix( material.roughness, 0.93, vDry );\n\t#ifdef USE_CLEARCOAT\n\t\tmaterial.clearcoat *= 1.0 - vDry;\n\t#endif');
     if (tri) {
@@ -217,6 +247,7 @@ function wet(o) {
   delete p.mr; delete p.ms; delete p.relief; delete p.bs; delete p.br; delete p.tri;
   const m = new THREE.MeshPhysicalMaterial(p);
   m.onBeforeCompile = tissueHook(o.tri); m.customProgramCacheKey = () => (o.tri ? 'tissue-tri' : 'tissue');
+  m.userData.depth = dentDepth();
   return m;
 }
 const MAT = {

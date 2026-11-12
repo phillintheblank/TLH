@@ -20,10 +20,10 @@ const head = new THREE.SpotLight(0xffffff, 1, 0, 1.0, 0.62, LIGHT.decay);
 head.intensity = Math.PI * Math.pow(LIGHT.ref, LIGHT.decay) * LIGHT.gain;
 // The light fibres sit beside the lens, not on its axis, so everything throws a thin shadow to one side. Those
 // shadows are the main depth cue in a flat picture: an instrument's shadow closes up as it nears the tissue.
-head.position.set(0.12, 0.42, 0); head.target.position.set(0.12, 0.42, -1);
+head.position.set(0.3, 0.9, 0); head.target.position.set(0.3, 0.9, -1);
 camera.add(head); camera.add(head.target);
 head.castShadow = true; head.shadow.mapSize.set(2048, 2048); head.shadow.camera.near = 0.6; head.shadow.camera.far = 60;
-head.shadow.bias = -0.0006; head.shadow.normalBias = 0.03; head.shadow.radius = 2.5;
+head.shadow.bias = -0.0006; head.shadow.normalBias = 0.03; head.shadow.radius = 1.8;
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
 
 // Everything else is light that has already bounced off lit tissue: dim and red, strongest from the deep pelvis.

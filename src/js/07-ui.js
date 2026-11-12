@@ -46,7 +46,9 @@ const ACT_COL = { seal: '#f0b24a', cut: '#ffffff', trace: '#43c6c0', push: '#43c
 function drawOverlay(time) {
   const c = OV.getContext('2d'), pr = OV.width / VW;
   c.setTransform(pr, 0, 0, pr, 0, 0); c.clearRect(0, 0, VW, VH);
-  if (CTRL.mode === 'mouse' && INP.inside) { c.strokeStyle = 'rgba(255,255,255,0.75)'; c.lineWidth = 1.2; c.beginPath(); c.arc(INP.x, INP.y, 5, 0, TAU); c.stroke(); }
+  const free = freeDepth(), live = S.running && !S.ended;
+  if (CTRL.mode === 'mouse' && INP.inside && !(free && (INP.lock || (INP.noLock && live)))) { c.strokeStyle = 'rgba(255,255,255,0.75)'; c.lineWidth = 1.2; c.beginPath(); c.arc(INP.x, INP.y, 5, 0, TAU); c.stroke(); }
+  if (free && live) drawTipMarkers(c);
   if (!S.running) return;
   if (CTRL.mode === 'hands') drawHandPointers(c);
   const st = STEPS[S.step], pulseR = 1 + 0.12 * Math.sin(time * 5);
@@ -58,12 +60,14 @@ function drawOverlay(time) {
         if (b.seal > 0) { c.beginPath(); c.arc(_ps.x, _ps.y, 22, -Math.PI / 2, -Math.PI / 2 + TAU * b.seal); c.stroke(); }
         pill(c, _ps.x + 22, _ps.y - 28, 'Bleeding: hold bipolar here', '#ffd9d7', 'rgba(90,10,10,0.85)');
       }
+      if (free) depthGuide(c, S.bleeders[0].pt(_w));
     } else {
       if (st.path) {
         const pts = st.path();
         if (pts.length > 1) { c.setLineDash([5, 6]); c.strokeStyle = 'rgba(67,198,192,0.85)'; c.lineWidth = 2; c.beginPath(); pts.forEach((p, i) => { project(p, _ps); i ? c.lineTo(_ps.x, _ps.y) : c.moveTo(_ps.x, _ps.y); }); c.stroke(); c.setLineDash([]); }
       }
       const n = st.next && st.next();
+      if (free && n && n.act !== 'button' && !n.hidden) depthGuide(c, n.p);
       if (st.dots) for (const d of st.dots()) {
         project(d.p, _ps); c.beginPath(); c.arc(_ps.x, _ps.y, d.done ? 3 : 4.5, 0, TAU);
         if (d.done) { c.fillStyle = 'rgba(95,207,142,0.9)'; c.fill(); } else if (d.vis) { c.strokeStyle = 'rgba(67,198,192,0.95)'; c.lineWidth = 2; c.stroke(); } else { c.strokeStyle = 'rgba(160,175,185,0.35)'; c.lineWidth = 1.5; c.stroke(); }
@@ -93,6 +97,46 @@ function drawOverlay(time) {
     });
   }
   if (S.guided) for (const h of HANDS) { const P = h.pick; if (h.ptr.on && P.hit && ENT_NAME[P.ent] && !h.firing && !h.grab) pill(c, h.ptr.x + 14, h.ptr.y + 12, ENT_NAME[P.ent](P.side)); }
+}
+// Guided free depth: a ring round the step's target closes in as the driven tip nears it in space and turns green
+// on arrival, since a flat picture does not show how deep the target lies. Also says when tissue lies between this
+// hand's port and the target and the other hand has a clear line.
+const GD = { t: -9, blocked: false }, _gd = new V3(), RAYG = new THREE.Raycaster();
+function reachFrom(h, p) {
+  _gd.copy(p).sub(h.port); const L = _gd.length(); RAYG.set(h.port, _gd.normalize());
+  const f = firstShown(RAYG.intersectObjects(PICKS, false));
+  return !f || f.distance > L - 0.8;
+}
+function depthGuide(c, p) {
+  const h = activeHand(), d = h.tip.distanceTo(p), at = d < 0.6;
+  project(p, _tm);
+  c.strokeStyle = at ? 'rgba(95,207,142,0.95)' : 'rgba(255,255,255,0.5)'; c.lineWidth = at ? 2.2 : 1.2;
+  c.beginPath(); c.arc(_tm.x, _tm.y, 10 + 8 * Math.min(6, d), 0, TAU); c.stroke();
+  if (Math.abs(S.t - GD.t) > 0.4) { GD.t = S.t; GD.blocked = !reachFrom(h, p) && reachFrom(otherHand(h), p); }
+  if (GD.blocked) pill(c, _tm.x + 24, _tm.y + 16, 'Tissue is in the way from this port: switch hands (Space)', '#ffe7c2', 'rgba(70,45,5,0.85)');
+}
+// free depth: a mark at each tip that is touching tissue (amber when pressing in), a faint ring on the driven tip,
+// and a prompt while the cursor is free
+const _tm = { x: 0, y: 0, z: 0 };
+function drawTipMarkers(c) {
+  for (const h of HANDS) {
+    if (h.exch > 0) continue;
+    const _ps = project(h.tip, _tm);
+    if (_ps.z > 1 || _ps.x < 0 || _ps.y < 0 || _ps.x > VW || _ps.y > VH) {
+      if (h.key === ACTIVE) { // the driven tip is out of the picture: mark the edge it lies beyond
+        const x = clamp(_ps.z > 1 ? VW / 2 : _ps.x, 16, VW - 16), y = clamp(_ps.z > 1 ? VH - 16 : _ps.y, 16, VH - 16);
+        c.fillStyle = 'rgba(255,255,255,0.85)'; c.beginPath(); c.arc(x, y, 6, 0, TAU); c.fill(); pill(c, clamp(x + 12, 8, VW - 150), clamp(y - 10, 8, VH - 30), 'Instrument tip is out of view');
+      }
+      continue;
+    }
+    const hard = h.press > DEPTH.GIVE * 1.3, on = h.key === ACTIVE;
+    if (h.touch) {
+      c.strokeStyle = hard ? 'rgba(240,178,74,0.95)' : 'rgba(255,255,255,0.9)'; c.lineWidth = hard ? 2.4 : 1.6;
+      c.beginPath(); c.arc(_ps.x, _ps.y, hard ? 9 : 7, 0, TAU); c.stroke();
+      c.fillStyle = c.strokeStyle; c.beginPath(); c.arc(_ps.x, _ps.y, 1.8, 0, TAU); c.fill();
+    } else if (on) { c.strokeStyle = 'rgba(255,255,255,0.4)'; c.lineWidth = 1; c.beginPath(); c.arc(_ps.x, _ps.y, 4.5, 0, TAU); c.stroke(); }
+  }
+  if (!INP.lock && !INP.noLock) pill(c, VW / 2 - 150, VH - 34, 'Click the picture to take the instruments. Esc frees the cursor.');
 }
 // hand control: one reticle per hand, plus a marker on an instrument that is on hold
 function drawHandPointers(c) {
@@ -201,6 +245,7 @@ function renderUI(dt) {
     if (x.inst === 'needle') state = '';
     let tail = '';
     if (hm && HT.status === 'ready' && S.running) { const sl = HT.slot[x.key]; tail = sl.engaged ? '' : HT.clock - sl.tSeen < 0.3 ? '  ON HOLD' : '  NO HAND'; }
+    if (freeDepth() && S.running && x.touch && !(x.grab && x.grab.pull)) tail = x.press > DEPTH.GIVE * 1.3 ? '  PRESSING' : '  CONTACT';
     const e = $('hudDev' + x.key); e.textContent = x.key + '  ' + devName[x.inst] + (state ? '  ' + state : '') + tail;
     e.className = 'hudline' + (x.firing && x.inst !== 'suction' ? ' hot' : '') + (!hm && x.key !== ACTIVE ? ' dim' : '');
     if ((hm || x === h) && (x.inst === 'bipolar' || x.inst === 'hook')) { const n = nearestUreter(x.tip); if (!prox || n.d < prox.d) prox = n; }
@@ -242,6 +287,7 @@ function resetHands() {
     const h = HAND[k]; h.sub[h.inst].g.visible = false; h.inst = inst; h.sub[inst].g.visible = true;
     h.tip.set(3.4 * sx, -0.4, 4.6); h.goal.copy(h.tip); h.surf.copy(h.tip); h.grab = null; h.exch = 0; h.exchTo = null; h.firing = false; h.open = h.openGoal = 0.7; h.roll = 0;
     h.ptr.on = false; h.pick.hit = false; h.pick.ent = null; h.nearFlag = false; h.lastUp = -9;
+    poseFromPoint(h, h.tip); h.len = h.ins; h.touch = false; h.press = h.pressT = h.give = 0; h.cmd.dx = h.cmd.dy = h.cmd.dz = 0;
   }
   ACTIVE = 'R'; htResetSlots();
 }

@@ -86,8 +86,11 @@ for (const [k, sx, inst] of [['L', -1, 'grasper'], ['R', 1, 'bipolar']]) {
     key: k, inst, port: V(8.5 * sx, 3.5, 13.5), tip: V(3.4 * sx, -0.4, 4.6), goal: V(3.4 * sx, -0.4, 4.6), grp: new THREE.Group(), sub: {},
     open: 0.7, openGoal: 0.7, grab: null, exch: 0, exchTo: null, firing: false, depth: 12, roll: 0, near: false, surf: new V3(),
     // each hand has its own pointer, view ray and pick so both instruments can work at once
-    ptr: { x: 0, y: 0, on: false, ndc: new THREE.Vector2() }, ray: new THREE.Ray(), pick: newPick(), nearFlag: false, lastUp: -9
+    ptr: { x: 0, y: 0, on: false, ndc: new THREE.Vector2() }, ray: new THREE.Ray(), pick: newPick(), nearFlag: false, lastUp: -9,
+    // pose about the port: direction, commanded insertion, the length actually reached, and contact with tissue
+    dir: new V3(), ins: 0, len: 0, touch: false, press: 0, pressT: 0, give: 0, ahead: { hit: false, dist: 0 }, cmd: { dx: 0, dy: 0, dz: 0 }
   };
+  h.dir.copy(h.tip).sub(h.port); h.ins = h.len = h.dir.length(); h.dir.normalize();
   for (const t in INST) { h.sub[t] = buildInst(t); h.sub[t].g.visible = t === inst; h.grp.add(h.sub[t].g); }
   scene.add(h.grp); HAND[k] = h;
 }
@@ -98,24 +101,28 @@ const otherHand = h => (h === HAND.L ? HAND.R : HAND.L);
 const CTRL = { mode: 'mouse' }; // 'mouse' | 'hands'
 
 // ---------- input + picking ----------
-const INP = { x: 0, y: 0, inside: false, down: false, ndc: new THREE.Vector2(0, 0) };
+const INP = { x: 0, y: 0, inside: false, down: false, ndc: new THREE.Vector2(0, 0), lock: false, noLock: false };
 const RAY = new THREE.Raycaster();
+// Two ways of placing a tip.
+// Free depth (mouse): each instrument pivots about its port and slides along its own shaft. The tip is wherever
+// that puts it, and it touches tissue only when it is pushed there.
+// Auto depth: the tip rides whatever tissue lies under a pointer on the screen. Hand control uses this until
+// hands can signal depth; with the mouse it is a setting.
+const DEPTH = { auto: false, fulcrum: false, flip: false, wheel: 1, sens: 1, CONTACT: 0.22, GIVE: 0.55 };
+const DKEY = 'tlh.depth.v1';
+const freeDepth = () => CTRL.mode === 'mouse' && !DEPTH.auto;
+function poseFromPoint(h, p) { h.dir.copy(p).sub(h.port); h.ins = h.dir.length(); h.dir.normalize(); }
 function shown(o) { for (; o; o = o.parent) if (!o.visible) return false; return true; }
-function routeMouse() { // mouse mode: the mouse is the active hand's pointer; the other hand holds
+function routeMouse() { // mouse mode: the mouse drives the active hand; the other hand holds
   if (CTRL.mode !== 'mouse') return;
+  const free = !DEPTH.auto;
   for (const h of HANDS) {
-    h.ptr.on = h.key === ACTIVE && INP.inside;
-    if (h.ptr.on) { h.ptr.x = INP.x; h.ptr.y = INP.y; h.ptr.ndc.copy(INP.ndc); }
+    h.ptr.on = h.key === ACTIVE && (free || INP.inside);
+    if (h.ptr.on && !free) { h.ptr.x = INP.x; h.ptr.y = INP.y; h.ptr.ndc.copy(INP.ndc); }
   }
 }
-function doPick(h) {
+function fillPick(h, hit) {
   const P = h.pick;
-  let hit = null;
-  if (h.ptr.on) {
-    RAY.setFromCamera(h.ptr.ndc, camera); h.ray.copy(RAY.ray);
-    const hits = RAY.intersectObjects(PICKS, false);
-    for (let i = 0; i < hits.length; i++) if (shown(hits[i].object)) { hit = hits[i]; break; }
-  }
   P.hit = !!hit;
   if (!hit) { P.mesh = null; P.ent = null; P.side = null; return; }
   const o = hit.object, ud = o.userData;
@@ -127,8 +134,14 @@ function doPick(h) {
   if (ud.tube) P.u = ud.tube.uAt(hit.face.a);
   else if (ud.strip) { const st = ud.strip.stAt(hit.face.a); if (ud.strip.map) { const m = ud.strip.map(st[0], st[1]); P.u = m[0]; P.v = m[1]; } else { P.u = st[0]; P.v = st[1]; } }
 }
+function firstShown(hits) { for (let i = 0; i < hits.length; i++) if (shown(hits[i].object)) return hits[i]; return null; }
+function doPick(h) { // auto depth: what lies under this hand's pointer
+  let hit = null;
+  if (h.ptr.on) { RAY.setFromCamera(h.ptr.ndc, camera); h.ray.copy(RAY.ray); hit = firstShown(RAY.intersectObjects(PICKS, false)); }
+  fillPick(h, hit);
+}
 // When a pointer is over a working point of the current step (an incision line, the cup rim), the tip rides that
-// point rather than dropping through the opened tissue onto whatever lies behind it.
+// point rather than dropping through the opened tissue onto whatever lies behind it. Auto depth only.
 const _sp = new V3();
 function snapPick(h) {
   if (!S.running || !h.ptr.on) return;
@@ -146,19 +159,71 @@ function snapPick(h) {
   P.hit = true; P.mesh = null; P.ent = 'target'; P.side = null; P.piece = null; P.dist = bz;
   P.point.copy(h.ray.origin).addScaledVector(h.ray.direction, bz); P.normal.copy(h.ray.direction).negate();
 }
-const _cv = new V3(), _g = new V3();
+const _cv = new V3(), _g = new V3(), _fr = new V3(), _fu = new V3(), _ft = new V3(), _fp = new V3();
+// Free depth: turn mouse travel into a swing about the port, and wheel travel into insertion along the shaft.
+// Mouse travel is scaled by the tip's distance from the lens so the tip keeps pace with the mouse at any zoom.
+// With the fulcrum effect on, the tip moves opposite to the hand, as it does with a real handle outside the abdomen.
+function freeDrive(h) {
+  const c = h.cmd;
+  if ((c.dx || c.dy) && h.exch <= 0) {
+    camera.getWorldDirection(_cv);
+    _ft.copy(h.port).addScaledVector(h.dir, h.ins);
+    const depth = Math.max(2, _g.copy(_ft).sub(camera.position).dot(_cv));
+    const k = ((2 * depth * Math.tan((camera.fov * DEG) / 2)) / VH) * DEPTH.sens * (DEPTH.fulcrum ? -1 : 1);
+    _fr.setFromMatrixColumn(camera.matrixWorld, 0); _fu.setFromMatrixColumn(camera.matrixWorld, 1);
+    // the tip stays in the picture: travel that would carry it past an edge is ignored on that axis; travel back in is not
+    _fp.copy(_ft).project(camera); const x0 = Math.abs(_fp.x), y0 = Math.abs(_fp.y);
+    _fp.copy(_ft).addScaledVector(_fr, c.dx * k).project(camera); const okX = Math.abs(_fp.x) < 0.96 || Math.abs(_fp.x) < x0;
+    _fp.copy(_ft).addScaledVector(_fu, -c.dy * k).project(camera); const okY = Math.abs(_fp.y) < 0.96 || Math.abs(_fp.y) < y0;
+    if (okX) _ft.addScaledVector(_fr, c.dx * k);
+    if (okY) _ft.addScaledVector(_fu, -c.dy * k);
+    if (okX || okY) { const L = h.ins; h.dir.copy(_ft).sub(h.port).normalize(); h.ins = L; }
+  }
+  if (c.dz && h.exch <= 0) h.ins = clamp(h.ins + c.dz, 3, 34);
+  c.dx = c.dy = c.dz = 0;
+}
+// Free depth: the first tissue along the shaft is what the tip will meet. Short of it the instrument touches
+// nothing. At it the tip is in contact. Pushed further, the tissue gives a little and then stops the instrument.
+function freePick(h, dt) {
+  const P = h.pick, A = h.ahead;
+  h.ray.origin.copy(h.port); h.ray.direction.copy(h.dir);
+  RAY.set(h.port, h.dir);
+  const hit = firstShown(RAY.intersectObjects(PICKS, false));
+  fillPick(h, hit);
+  A.hit = !!hit; A.dist = hit ? hit.distance : 99;
+  const press = h.ins - A.dist;
+  h.touch = A.hit && press > -DEPTH.CONTACT;
+  h.give = press > 0 ? DEPTH.GIVE * (1 - Math.exp(-press / DEPTH.GIVE)) : 0;
+  h.len = A.hit ? Math.min(h.ins, A.dist + h.give) : h.ins;
+  if (press > DEPTH.GIVE * 2.4) h.ins = A.dist + DEPTH.GIVE * 2.4; // so backing out answers at once
+  h.press = Math.max(0, press);
+  if (hit) h.surf.copy(hit.point);
+  if (!h.touch) { P.hit = false; P.ent = null; P.side = null; P.mesh = null; }
+  // the label and contact marker sit at the tip
+  _fp.copy(h.port).addScaledVector(h.dir, h.len).project(camera);
+  h.ptr.ndc.set(_fp.x, _fp.y); h.ptr.x = (_fp.x * 0.5 + 0.5) * VW; h.ptr.y = (-_fp.y * 0.5 + 0.5) * VH;
+  if (h.press > DEPTH.GIVE * 1.3 && S.running && !h.grab) { h.pressT += dt; if (h.pressT > 1.2) { h.pressT = 0; hint('press', 'You are pressing the instrument into tissue. Back it out a little.'); } } else h.pressT = Math.max(0, h.pressT - dt);
+}
 function updateHands(dt) {
-  for (const h of HANDS) {
-    const act = h.ptr.on && S.running && !S.ended, P = h.pick;
+  const free = freeDepth();
+  for (let i = 0; i < HANDS.length; i++) {
+    const h = HANDS[i], act = h.ptr.on && S.running && !S.ended, P = h.pick;
     if (h.grab && h.grab.pull) {
       const pl = h.grab.pull;
       if (act) {
-        camera.getWorldDirection(_cv);
-        const den = h.ray.direction.dot(_cv), tt = _g.copy(pl.nat).sub(h.ray.origin).dot(_cv) / (den || 1);
-        _g.copy(h.ray.origin).addScaledVector(h.ray.direction, tt).sub(pl.nat).clampLength(0, 1.6);
+        if (free) { // the held tissue follows the tip, up to its stretch; past that the instrument is held back
+          _g.copy(h.port).addScaledVector(h.dir, h.ins).sub(pl.nat);
+          if (_g.length() > 1.6) { _g.setLength(1.6); poseFromPoint(h, _ft.copy(pl.nat).add(_g)); }
+        } else {
+          camera.getWorldDirection(_cv);
+          const den = h.ray.direction.dot(_cv), tt = _g.copy(pl.nat).sub(h.ray.origin).dot(_cv) / (den || 1);
+          _g.copy(h.ray.origin).addScaledVector(h.ray.direction, tt).sub(pl.nat).clampLength(0, 1.6);
+        }
         pl.off.lerp(_g, 1 - Math.exp(-14 * dt));
       }
       h.goal.copy(pl.nat).add(pl.off); h.tip.copy(h.goal);
+    } else if (free) {
+      if (h.exch <= 0) h.goal.copy(h.port).addScaledVector(h.dir, h.len);
     } else if (act && h.exch <= 0) {
       if (P.hit) { h.surf.copy(P.point).addScaledVector(P.normal, 0.1); h.depth = P.dist; }
       else h.surf.copy(h.ray.origin).addScaledVector(h.ray.direction, h.depth);
@@ -167,8 +232,13 @@ function updateHands(dt) {
       const dG = h.surf.distanceTo(h.ray.origin), dP = h.goal.distanceTo(h.ray.origin), lim = (h.firing ? 2.5 : 12) * dt;
       if (dG > dP + lim) h.goal.copy(h.ray.origin).addScaledVector(h.ray.direction, dP + lim); else h.goal.copy(h.surf);
     }
-    const r = 1 - Math.exp(-20 * dt); h.tip.lerp(h.goal, r);
-    h.near = (h.grab && h.grab.pull) || h.tip.distanceTo(h.surf) < 0.7;
+    const r = 1 - Math.exp(-(free ? 30 : 20) * dt); h.tip.lerp(h.goal, r);
+    const held = !!(h.grab && h.grab.pull);
+    h.near = held || (free ? h.touch : h.tip.distanceTo(h.surf) < 0.7);
+    // tissue under a pressing tip dents; a held or absent contact does not
+    const dent = free && h.touch && !held && h.exch <= 0 ? h.give : 0;
+    DENT.pos.value[i].set(h.surf.x, h.surf.y, h.surf.z, dent); DENT.dir.value[i].copy(h.dir);
+    if (!free) { poseFromPoint(h, h.tip); h.len = h.ins; h.touch = h.near; h.press = 0; } // keep the pose current so switching modes is seamless
     let retract = 0;
     if (h.exch > 0) {
       h.exch -= dt / 0.55;
@@ -415,7 +485,13 @@ function thermal(h, dt, radius) {
     else if (e === 'ureter') heatUp(h, 'ureter', P.side, dt * 2, { u: P.u });
   }
 }
-function nearTarget(h, p, r) { const d = h.tip.distanceTo(p); return d < r || (d < r + 1.6 && h.ptr.on && h.ray.distanceSqToPoint(p) < 0.2); }
+// Is this tip at working point p? Auto depth also accepts a pointer aimed at it from just short of it, since the tip
+// is still travelling there. Free depth wants the tip itself there: touching tissue, or all but on the point.
+function nearTarget(h, p, r) {
+  const d = h.tip.distanceTo(p);
+  if (freeDepth()) return d < r && (h.touch || d < 0.45);
+  return d < r || (d < r + 1.6 && h.ptr.on && h.ray.distanceSqToPoint(p) < 0.2);
+}
 function nearestUreter(p) { let best = 99, bk = 'R'; for (const k of ['R', 'L']) { const d = Math.max(0, nearestOnArr(URETER[k].arr, p).d - 0.2); if (d < best) { best = d; bk = k; } } return { d: best, k: bk }; }
 function controlBleeders(h, dt) {
   let any = false;

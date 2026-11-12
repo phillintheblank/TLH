@@ -1,7 +1,7 @@
 // Jump to chosen stages and take full-size screenshots.
 const OUT = new URL('../out/', import.meta.url).pathname;
 export default async function (page) {
-  await page.click('#btnBegin');
+  await page.click('#btnBegin'); await page.evaluate(() => { window.__sim.DEPTH.auto = true; }); // these scripts point at the screen: auto depth
   await page.evaluate(() => { window.__simPause = true; });
   const box = await page.locator('#ov').boundingBox();
   const ev = (fn, a) => page.evaluate(fn, a);

@@ -34,6 +34,7 @@ kbd{font:500 11px var(--mono);padding:1px 5px;border:1px solid var(--line);borde
 .ghost:hover,.tog:hover,.sel:hover{color:var(--text);border-color:#35505e}
 .sel{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:5px 8px;font:inherit;font-size:13px;color:var(--muted)}
 .view.post #haze,.view.post .vignette{display:none}
+.mousepanel .btnrow{flex-wrap:wrap}.mousepanel .tog{font-size:12.5px;padding:4px 9px}
 main{display:grid;grid-template-columns:minmax(0,1fr) 352px;min-height:0}
 .stage{display:flex;flex-direction:column;gap:10px;min-width:0;min-height:0;padding:12px 0 12px 16px}
 .view{position:relative;flex:1;min-height:260px;border-radius:8px;overflow:hidden;background:#050101;border:1px solid #000;cursor:none;touch-action:none;user-select:none}
@@ -162,7 +163,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 <body>
 <div id="app">
   <header class="bar">
-    <div class="brand"><h1>TLH Simulator</h1><p>Build 0.2 &middot; hand control &middot; total laparoscopic hysterectomy, bilateral salpingectomy</p></div>
+    <div class="brand"><h1>TLH Simulator</h1><p>Build 0.3a &middot; total laparoscopic hysterectomy, bilateral salpingectomy</p></div>
     <div class="bar-ctl">
       <select id="selQ" class="sel" title="Picture quality. Auto starts at High and steps down if the frame rate drops." aria-label="Picture quality"><option value="auto">Quality: auto</option><option value="high">Quality: high</option><option value="medium">Quality: medium</option><option value="low">Quality: low</option></select>
       <button type="button" id="btnHands" class="tog" title="Drive both instruments with your hands through this device's camera">Hand control</button>
@@ -204,16 +205,19 @@ input[type=range]{width:100%;accent-color:var(--accent)}
             </ul>
             <h3>With the mouse</h3>
             <ul class="keys">
-              <li><b>Move, click, hold</b><span>Steers and works the selected hand's instrument</span></li>
+              <li><b>Move</b><span>Swings the selected instrument about its port</span></li>
+              <li><b>Wheel</b><span>Slides it in and out along its shaft. It works only where its tip touches tissue.</span></li>
+              <li><b>Click, hold</b><span>Grasp, seal, cut with the hook, aspirate, place a bite</span></li>
               <li><b>Right-click</b><span>Fires the bipolar cut blade</span></li>
               <li><b>Space or X</b><span>Switch hands; the other holds its position</span></li>
+              <li><b>Esc</b><span>Frees the cursor for the panels. Click the picture to take the instruments again.</span></li>
             </ul>
             <h3>Keyboard, either way</h3>
             <ul class="keys">
               <li><b>1 to 5</b><span>Change the selected hand's instrument</span></li>
               <li><b>W A S D, Q E</b><span>Uterine manipulator: tilt, deviate, push the cup</span></li>
               <li><b>C</b><span>Cut blade</span></li>
-              <li><b>Scroll, arrows</b><span>Advance and aim the scope</span></li>
+              <li><b>+ and &minus;, arrows</b><span>Advance and aim the scope</span></li>
             </ul>
             <p class="fine">An educational rehearsal tool with simplified anatomy and tissue behaviour. It is not a validated assessment and does not replace supervised training.</p>
           </div>
@@ -290,6 +294,16 @@ input[type=range]{width:100%;accent-color:var(--accent)}
         <div class="prog"><div class="track"><i id="stepBar"></i></div><span id="stepProg"></span></div>
         <div class="btnrow"><button type="button" class="primary" id="stepBtn1" hidden></button><button type="button" class="primary" id="stepBtn2" hidden></button></div>
         <p class="pearl"><b>Pearl</b><span id="stepPearl"></span></p>
+      </section>
+      <section class="block mousepanel">
+        <h3>Mouse control</h3>
+        <p class="ht-status" id="msNote">The mouse swings the instrument about its port and the wheel slides it in and out.</p>
+        <div class="btnrow">
+          <button type="button" class="tog" id="btnAuto" title="The tip follows the tissue under the pointer, as in earlier builds, and the wheel moves the scope. Hand control always works this way for now.">Auto depth</button>
+          <button type="button" class="tog" id="btnFulcrum" title="The tip moves opposite to the mouse, as it does with a real laparoscopic handle outside the abdomen. Mouse only.">Fulcrum effect</button>
+          <button type="button" class="tog" id="btnFlip" title="Swap which way the wheel pushes the instrument in">Reverse wheel</button>
+        </div>
+        <div class="tune"><label for="mWheel">Wheel speed<input type="range" id="mWheel" min="30" max="300" value="100"></label></div>
       </section>
       <section class="block handpanel">
         <h3>Hand control</h3>
