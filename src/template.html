@@ -163,7 +163,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 <body>
 <div id="app">
   <header class="bar">
-    <div class="brand"><h1>TLH Simulator</h1><p>Build 0.3a &middot; total laparoscopic hysterectomy, bilateral salpingectomy</p></div>
+    <div class="brand"><h1>TLH Simulator</h1><p>Build 0.3b &middot; total laparoscopic hysterectomy, bilateral salpingectomy</p></div>
     <div class="bar-ctl">
       <select id="selQ" class="sel" title="Picture quality. Auto starts at High and steps down if the frame rate drops." aria-label="Picture quality"><option value="auto">Quality: auto</option><option value="high">Quality: high</option><option value="medium">Quality: medium</option><option value="low">Quality: low</option></select>
       <button type="button" id="btnHands" class="tog" title="Drive both instruments with your hands through this device's camera">Hand control</button>
@@ -198,10 +198,10 @@ input[type=range]{width:100%;accent-color:var(--accent)}
             <p class="fine">Hand control uses this device's camera. The video is analysed in your browser and is never recorded or sent anywhere. A short calibration sets directions and your pinch, so the lid can be upright or tilted down at your hands.</p>
             <h3>With your hands</h3>
             <ul class="keys">
-              <li><b>Move a hand</b><span>Steers that hand's instrument; both work at once</span></li>
+              <li><b>Move a hand</b><span>Its instrument's tip follows: right, up, and forward to go in. Both work at once.</span></li>
               <li><b>Pinch</b><span>Thumb to first two fingers: grasp and hold, seal, cut with the hook, aspirate, place a bite</span></li>
               <li><b>Pinch again</b><span>On a sealed pedicle, after relaxing: fires the cut blade</span></li>
-              <li><b>Open hand flat</b><span>Clutch: that instrument holds still until you curl the hand again</span></li>
+              <li><b>Open hand flat</b><span>Clutch: that instrument holds still, in depth too, until you curl the hand again</span></li>
             </ul>
             <h3>With the mouse</h3>
             <ul class="keys">
@@ -296,10 +296,10 @@ input[type=range]{width:100%;accent-color:var(--accent)}
         <p class="pearl"><b>Pearl</b><span id="stepPearl"></span></p>
       </section>
       <section class="block mousepanel">
-        <h3>Mouse control</h3>
-        <p class="ht-status" id="msNote">The mouse swings the instrument about its port and the wheel slides it in and out.</p>
+        <h3>Depth and mouse</h3>
+        <p class="ht-status" id="msNote">Instrument tips move freely in depth. Mouse: move to swing the instrument about its port, wheel to slide it in and out. Hands: push forward to go in.</p>
         <div class="btnrow">
-          <button type="button" class="tog" id="btnAuto" title="The tip follows the tissue under the pointer, as in earlier builds, and the wheel moves the scope. Hand control always works this way for now.">Auto depth</button>
+          <button type="button" class="tog" id="btnAuto" title="The tip follows the tissue under the pointer, as in earlier builds, with the mouse or with hands. With the mouse, the wheel then moves the scope.">Auto depth</button>
           <button type="button" class="tog" id="btnFulcrum" title="The tip moves opposite to the mouse, as it does with a real laparoscopic handle outside the abdomen. Mouse only.">Fulcrum effect</button>
           <button type="button" class="tog" id="btnFlip" title="Swap which way the wheel pushes the instrument in">Reverse wheel</button>
         </div>
@@ -317,6 +317,8 @@ input[type=range]{width:100%;accent-color:var(--accent)}
             <label for="tSmooth">Smoothing: steadier, but slower to follow<input type="range" id="tSmooth" min="0" max="100" value="50"></label>
             <label for="tPinch">Pinch: right triggers sooner, left needs a firmer pinch<input type="range" id="tPinch" min="-100" max="100" value="0"></label>
             <label for="tOpen">Clutch: right triggers on a less open hand<input type="range" id="tOpen" min="-100" max="100" value="0"></label>
+            <label for="tZGain">Depth speed: instrument travel in and out per hand movement<input type="range" id="tZGain" min="30" max="300" value="100"></label>
+            <label for="tZSteady">Depth steadiness: steadier, but slower to follow<input type="range" id="tZSteady" min="0" max="100" value="50"></label>
           </details>
         </div>
         <div class="btnrow"><button type="button" class="mini" id="htOn">Turn on hand control</button><button type="button" class="mini" id="htRecal" hidden>Recalibrate</button><button type="button" class="mini" id="htOff" hidden>Turn off</button></div>

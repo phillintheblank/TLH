@@ -3,14 +3,14 @@ import { installHandDriver, calibrate } from './handdriver.mjs';
 const OUT = new URL('../out/', import.meta.url).pathname;
 export default async function (page) {
   const ev = (fn, a) => page.evaluate(fn, a);
-  await installHandDriver(page);
+  await installHandDriver(page, 'upright');
   await ev(() => { window.__simPause = true; window.__sim.HT.sim = true; });
   await page.click('#btnBeginHands');
   // part-way through calibration
   await ev(() => { const d = window.__drv; d.step(60); for (let i = 0; i < 8; i++) { d.hands.R.x -= 0.012; d.step(1); } d.step(6); window.__sim.render(); });
   await page.waitForTimeout(300); await page.screenshot({ path: OUT + 'hv-calib.png' });
   await ev(() => { const d = window.__drv; d.hands.R.x = 0.32; window.__sim.calibFinish(true); });
-  await calibrate(page, 'upright').catch(() => {});
+  await calibrate(page).catch(() => {});
   await ev(() => {
     const d = window.__drv, S = window.__sim;
     S.forceStep(); d.step(40); S.setPoseGoal(S.STEPS[S.S.step].rec); d.step(50);

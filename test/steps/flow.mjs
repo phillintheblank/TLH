@@ -12,17 +12,32 @@ export default async function (page) {
   const ev = (fn, a) => page.evaluate(fn, a);
   const log = []; const say = s => { log.push(s); console.log(s); };
   let D; // driver: T(seconds), moveTo({x,y}), down(), up(), cut(n)
-  if (MODE === 'hands') {
-    await installHandDriver(page);
-    await ev(() => { window.__simPause = true; window.__sim.HT.sim = true; });
+  if (MODE === 'hands' || MODE === 'handsauto') {
+    // hands: free depth, the tip is brought to each target in space. handsauto: auto depth, the hand points at the screen.
+    const auto = MODE === 'handsauto';
+    await installHandDriver(page, process.env.CAM || 'upright');
+    await ev(a => { window.__simPause = true; window.__sim.HT.sim = true; window.__sim.DEPTH.auto = a; }, auto);
     await page.click('#btnBeginHands');
-    const cal = await calibrate(page, process.env.CAM || 'upright');
+    const cal = await calibrate(page);
     say('calibrated: ' + JSON.stringify(cal));
+    if (process.env.NOISE) await ev(n => { window.__drv.noise = n; }, +process.env.NOISE);
     D = {
       T: dt => ev(n => window.__drv.step(n), Math.max(1, Math.ceil(dt * 30))),
-      moveTo: async n => { const r = await ev(n => window.__drv.moveTo('R', n.x, n.y), n); if (!r.ok) say('   (pointer did not reach target: ' + JSON.stringify(r) + ')'); await D.T(0.5); },
-      down: () => ev(() => { window.__drv.hands.R.ap = 0.14; window.__drv.step(3); }),
-      up: () => ev(() => { window.__drv.hands.R.ap = 0.62; window.__drv.step(3); }),
+      moveTo: auto
+        ? async n => { const r = await ev(n => window.__drv.moveTo('R', n.x, n.y), n); if (!r.ok) say('   (pointer did not reach target: ' + JSON.stringify(r) + ')'); await D.T(0.5); }
+        : async n => { // use whichever hand has the clear line from its port, with the instrument this step needs
+          const r = await ev(([p, tryNo, want]) => {
+            const s = window.__sim, d = window.__drv, T3 = s.THREE, R = new T3.Raycaster(), P = new T3.Vector3().fromArray(p);
+            const reach = h => { const v = P.clone().sub(h.port), L = v.length(); R.set(h.port, v.normalize()); const f = R.intersectObjects(s.PICKS, false).filter(x => s.shown(x.object))[0]; return f ? f.distance - L : 9; };
+            let h = s.HAND[s.active]; const o = s.HAND[h.key === 'R' ? 'L' : 'R'], dA = reach(h), dO = reach(o);
+            if (dA < -0.65 && dO > dA + 0.3) { const tool = h.inst; s.setActive(o.key); if (o.inst !== tool) s.setInst(o.key, tool); h = o; d.step(30); }
+            return d.reach(h.key, p, tryNo, want);
+          }, [n.p, n.tryNo || 0, n.want || null]);
+          if (VERBOSE || !r.ok) say('   reach ' + JSON.stringify(r));
+          return r.good; // a person looks at where the tip is resting before pinching
+        },
+      down: () => ev(() => { const d = window.__drv; d.hands[window.__sim.active].ap = 0.14; d.step(3); }),
+      up: () => ev(() => { const d = window.__drv; d.hands[window.__sim.active].ap = 0.62; d.step(3); }),
       cut: async () => { await D.T(0.4); await D.down(); await D.T(0.2); await D.up(); }
     };
   } else if (MODE === 'free') {
@@ -89,17 +104,19 @@ export default async function (page) {
     }
     const n = await next();
     if (!n) { await T(0.3); if (++stuck > 30) { say('STUCK (no next) at ' + I.id + ' ' + JSON.stringify(I)); break; } continue; }
-    if (n.act === 'bleed') { await setInst('bipolar'); await D.moveTo(n); await D.down(); await T(1.7); await D.up(); if (I.tool !== 'any') await setInst(I.tool); continue; }
+    if (n.act === 'bleed') { await setInst('bipolar'); n.tryNo = stuck; if ((await D.moveTo(n)) === false) { if (++stuck > 8) { say('NO PROGRESS at ' + I.id + ': the tip never came to rest on the bleeder'); break; } continue; } stuck = 0; await D.down(); await T(1.7); await D.up(); if (I.tool !== 'any') await setInst(I.tool); continue; }
     if (n.act === 'button') { await ev(() => window.__sim.render()); const b2 = await page.locator('#stepBtn2').isVisible(); await page.click(b2 ? '#stepBtn2' : '#stepBtn1'); await T(0.6); continue; }
     if (I.id === 'colp' && (n.hidden || !n.vis)) { await setPose(colpPoses[colpI++ % colpPoses.length]); if (colpI > 40) { say('STUCK colp ' + I.prog); break; } continue; }
-    if (!n.vis && n.act !== 'suction') { if (++stuck > 4) { say('TARGET HIDDEN at ' + I.id + ' act=' + n.act + ' label=' + n.label); await shot('hidden-' + I.id); break; } }
+    // by hand a bite goes wherever on the edge is in line and in view, not only on the marker
+    if (!n.vis && n.act !== 'suction' && !(n.act === 'bite' && MODE === 'hands')) { if (++stuck > 4) { say('TARGET HIDDEN at ' + I.id + ' act=' + n.act + ' label=' + n.label); await shot('hidden-' + I.id); break; } }
     if (process.env.PROBE && n.p) { // can each port reach this target in a straight line?
       const r = await ev(p => { const s = window.__sim, T = s.THREE, R = new T.Raycaster(), o = {}; for (const k of ['L', 'R']) { const port = s.HAND[k].port, d = new T.Vector3().fromArray(p).sub(port), L = d.length(); d.normalize(); R.set(port, d); const f = R.intersectObjects(s.PICKS, false).filter(h => s.shown(h.object))[0]; o[k] = f ? (f.distance - L).toFixed(1) + ' ' + f.object.userData.ent + (f.object.userData.side || '') : 'free'; } return o; }, n.p);
       say('   reach ' + I.id + ' ' + n.act + ': L[' + r.L + '] R[' + r.R + ']');
     }
     const before = JSON.stringify([I.prog, n.act, n.label]);
     if (n.act === 'suction') await setInst('suction');
-    await D.moveTo(n);
+    n.tryNo = stuck;
+    if ((await D.moveTo(n)) === false && n.want && !n.want.cuff) { if (++stuck > 8) { say('NO PROGRESS at ' + I.id + ' act=' + n.act + ' label=' + n.label + ': the tip never came to rest on the target'); await shot('stuck-' + I.id); break; } continue; }
     if (VERBOSE) { const J = await info(); say('   ' + I.id + ' ' + n.act + ' "' + n.label + '" pick=' + JSON.stringify(J.pick) + ' near=' + J.near + ' on=' + J.on); }
     if (n.act === 'click' || n.act === 'bite') { await D.down(); await T(0.1); await D.up(); await T(n.act === 'bite' ? 1.2 : 0.3); }
     else if (n.act === 'cut') { await D.cut(n); await T(0.5); }

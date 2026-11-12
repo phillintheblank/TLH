@@ -108,12 +108,15 @@ function reachFrom(h, p) {
   return !f || f.distance > L - 0.8;
 }
 function depthGuide(c, p) {
-  const h = activeHand(), d = h.tip.distanceTo(p), at = d < 0.6;
+  // which tip is this about? the mouse's hand, or with hand control the one holding this step's instrument (else the nearer)
+  let h = activeHand();
+  if (CTRL.mode === 'hands') { const tool = S.bleeders.length ? 'bipolar' : STEPS[S.step].tool, c2 = HANDS.filter(x => x.inst === tool); h = c2.length === 1 ? c2[0] : HAND.L.tip.distanceTo(p) < HAND.R.tip.distanceTo(p) ? HAND.L : HAND.R; }
+  const d = h.tip.distanceTo(p), at = d < 0.6;
   project(p, _tm);
   c.strokeStyle = at ? 'rgba(95,207,142,0.95)' : 'rgba(255,255,255,0.5)'; c.lineWidth = at ? 2.2 : 1.2;
   c.beginPath(); c.arc(_tm.x, _tm.y, 10 + 8 * Math.min(6, d), 0, TAU); c.stroke();
   if (Math.abs(S.t - GD.t) > 0.4) { GD.t = S.t; GD.blocked = !reachFrom(h, p) && reachFrom(otherHand(h), p); }
-  if (GD.blocked) pill(c, _tm.x + 24, _tm.y + 16, 'Tissue is in the way from this port: switch hands (Space)', '#ffe7c2', 'rgba(70,45,5,0.85)');
+  if (GD.blocked) pill(c, _tm.x + 24, _tm.y + 16, CTRL.mode === 'hands' ? 'Tissue is in the way from the ' + (h.key === 'L' ? 'left' : 'right') + ' port: use the other hand' : 'Tissue is in the way from this port: switch hands (Space)', '#ffe7c2', 'rgba(70,45,5,0.85)');
 }
 // free depth: a mark at each tip that is touching tissue (amber when pressing in), a faint ring on the driven tip,
 // and a prompt while the cursor is free
@@ -123,20 +126,20 @@ function drawTipMarkers(c) {
     if (h.exch > 0) continue;
     const _ps = project(h.tip, _tm);
     if (_ps.z > 1 || _ps.x < 0 || _ps.y < 0 || _ps.x > VW || _ps.y > VH) {
-      if (h.key === ACTIVE) { // the driven tip is out of the picture: mark the edge it lies beyond
+      if (CTRL.mode === 'hands' ? HT.slot[h.key].engaged : h.key === ACTIVE) { // a driven tip is out of the picture: mark the edge it lies beyond
         const x = clamp(_ps.z > 1 ? VW / 2 : _ps.x, 16, VW - 16), y = clamp(_ps.z > 1 ? VH - 16 : _ps.y, 16, VH - 16);
         c.fillStyle = 'rgba(255,255,255,0.85)'; c.beginPath(); c.arc(x, y, 6, 0, TAU); c.fill(); pill(c, clamp(x + 12, 8, VW - 150), clamp(y - 10, 8, VH - 30), 'Instrument tip is out of view');
       }
       continue;
     }
-    const hard = h.press > DEPTH.GIVE * 1.3, on = h.key === ACTIVE;
+    const hard = h.press > DEPTH.GIVE * 1.3, on = CTRL.mode === 'mouse' && h.key === ACTIVE;
     if (h.touch) {
       c.strokeStyle = hard ? 'rgba(240,178,74,0.95)' : 'rgba(255,255,255,0.9)'; c.lineWidth = hard ? 2.4 : 1.6;
       c.beginPath(); c.arc(_ps.x, _ps.y, hard ? 9 : 7, 0, TAU); c.stroke();
       c.fillStyle = c.strokeStyle; c.beginPath(); c.arc(_ps.x, _ps.y, 1.8, 0, TAU); c.fill();
     } else if (on) { c.strokeStyle = 'rgba(255,255,255,0.4)'; c.lineWidth = 1; c.beginPath(); c.arc(_ps.x, _ps.y, 4.5, 0, TAU); c.stroke(); }
   }
-  if (!INP.lock && !INP.noLock) pill(c, VW / 2 - 150, VH - 34, 'Click the picture to take the instruments. Esc frees the cursor.');
+  if (CTRL.mode === 'mouse' && !INP.lock && !INP.noLock) pill(c, VW / 2 - 150, VH - 34, 'Click the picture to take the instruments. Esc frees the cursor.');
 }
 // hand control: one reticle per hand, plus a marker on an instrument that is on hold
 function drawHandPointers(c) {

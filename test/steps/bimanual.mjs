@@ -6,13 +6,13 @@ export default async function (page) {
   const ev = (fn, a) => page.evaluate(fn, a);
   let fails = 0;
   const check = (name, ok, detail) => { console.log((ok ? 'PASS ' : 'FAIL ') + name + (detail ? '  ' + JSON.stringify(detail) : '')); if (!ok) fails++; };
-  await installHandDriver(page);
-  await ev(() => { window.__simPause = true; window.__sim.HT.sim = true; });
+  await installHandDriver(page, 'upright');
+  await ev(() => { window.__simPause = true; window.__sim.HT.sim = true; window.__sim.DEPTH.auto = true; }); // two-handed behaviour in auto depth; free depth is covered by handdepth.mjs
   await page.click('#btnBeginHands');
   await ev(() => { window.__drv.noise = 0.004; }); // jitter on every landmark frame
-  const cal = await calibrate(page, process.env.CAM || 'upright');
+  const cal = await calibrate(page);
   check('calibration completes with jitter', cal.status === 'ready' && cal.running, cal);
-  const expectU = process.env.CAM === 'tilted' ? 1 : -1;
+  const expectU = -1;
   check('directions learned', Math.abs(cal.r[0] + 1) < 0.15 && Math.abs(cal.u[1] - expectU) < 0.15, { r: cal.r, u: cal.u });
 
   // 1. both instruments move at the same time, each with its own hand, in the directions the user means

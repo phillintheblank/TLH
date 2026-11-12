@@ -3,7 +3,7 @@ function wire() {
   const pos = e => { const r = OV.getBoundingClientRect(); INP.x = e.clientX - r.left; INP.y = e.clientY - r.top; INP.ndc.set((INP.x / r.width) * 2 - 1, -((INP.y / r.height) * 2 - 1)); INP.inside = true; };
   // Free depth: the mouse steers by its travel, not its position, so the cursor is locked to the picture while
   // operating. Esc frees it. Where a browser will not lock the cursor, travel over the picture is used instead.
-  const freeOn = () => freeDepth() && S.running && !S.ended;
+  const freeOn = () => CTRL.mode === 'mouse' && freeDepth() && S.running && !S.ended;
   const lockReq = () => {
     if (!OV.requestPointerLock) { INP.noLock = true; return; }
     try { const p = OV.requestPointerLock(); if (p && p.catch) p.catch(() => { INP.noLock = true; }); } catch (_) { INP.noLock = true; }
@@ -36,7 +36,7 @@ function wire() {
     if (freeOn()) { // the wheel slides the instrument along its shaft: a slow turn for fine control, a fast spin for travel
       const d = e.deltaY * (e.deltaMode === 1 ? 30 : 1), step = Math.pow(Math.min(1, Math.abs(d) / 60), 0.6) * 0.34 * DEPTH.wheel;
       activeHand().cmd.dz += (d < 0 ? 1 : -1) * (DEPTH.flip ? -1 : 1) * step;
-    } else if (!freeDepth()) CAM.userIns = clamp(CAM.userIns - e.deltaY * 0.006, -5, 6);
+    } else if (CTRL.mode !== 'mouse' || !freeDepth()) CAM.userIns = clamp(CAM.userIns - e.deltaY * 0.006, -5, 6);
   }, { passive: false });
   wire.freeTick = () => { if (INP.lock && !freeOn() && document.exitPointerLock) document.exitPointerLock(); };
   // mouse settings
@@ -115,7 +115,7 @@ function tick(dt) {
   const free = freeDepth(), live = S.running && !S.ended;
   for (const h of HANDS) {
     if (!free) { doPick(h); snapPick(h); continue; }
-    if (h.key === ACTIVE && live) freeDrive(h); else h.cmd.dx = h.cmd.dy = h.cmd.dz = 0;
+    if (live && (hm ? HT.slot[h.key].engaged : h.key === ACTIVE)) freeDrive(h); else { h.cmd.dx = h.cmd.dy = h.cmd.dz = h.cmd.dv = 0; h.cmd.cart = false; }
     freePick(h, dt);
   }
   wire.freeTick();
@@ -162,20 +162,25 @@ function forceStep() {
   else if (st.id === 'final') { S.lowP = true; S.ureterOK.R = S.ureterOK.L = true; endCase(); }
 }
 // A synthetic hand for tests: 21 landmarks that produce the given palm position, pinch aperture and finger extension.
+// A synthetic hand for tests: a fixed 3-D hand shape (wl, metres) drawn into the picture at (x, y) with its palm
+// `size` picture-heights long. opn spreads the fingers, ap parts the thumb from the fingertips.
 function fakeHand(o) {
-  const lm = [], wl = [], P = 0.095, a = HT.aspect;
-  for (let i = 0; i < 21; i++) { lm.push({ x: o.x, y: o.y, z: 0 }); wl.push({ x: 0, y: 0, z: 0 }); }
-  const sz = o.size || 0.2; lm[0] = { x: o.x, y: o.y + sz / 3, z: 0 }; lm[5] = { x: o.x - 0.03 / a, y: o.y - sz / 6, z: 0 }; lm[17] = { x: o.x + 0.03 / a, y: o.y - sz / 6, z: 0 }; lm[9] = { x: o.x, y: o.y + sz / 3 - sz, z: 0 };
+  const lm = [], wl = [], P = 0.095, a = HT.aspect, sz = o.size || 0.2;
+  for (let i = 0; i < 21; i++) wl.push({ x: 0, y: 0, z: 0 });
+  wl[1] = { x: -0.03, y: -0.02, z: 0 };
   [[5, 8, -0.3], [9, 12, 0], [13, 16, 0.25], [17, 20, 0.5]].forEach(([m, t, an]) => { const dx = Math.sin(an), dy = -Math.cos(an); wl[m] = { x: dx * P, y: dy * P, z: 0 }; wl[t] = { x: dx * P * o.opn, y: dy * P * o.opn, z: 0 }; });
   wl[4] = { x: wl[8].x, y: wl[8].y, z: o.ap * P };
+  const cx = (wl[0].x + wl[5].x + wl[17].x) / 3, cy = (wl[0].y + wl[5].y + wl[17].y) / 3, k = sz / P;
+  for (let i = 0; i < 21; i++) lm.push({ x: o.x + ((wl[i].x - cx) * k) / a, y: o.y + (wl[i].y - cy) * k, z: 0 });
   return { lm, wl };
 }
 window.__sim = {
   forceStep, visibleAt, colpPt, SEALSPEC, URETER, VG, UT, BL, HT, HANDS, CTRL, fakeHand, htIngest, htEnable, htDisable, calibFinish,
   get S() { return S; }, STEPS, HAND, CAM, AN, INP, tick, setPoseGoal, setInst, setActive, cutAction, startCase,
   get active() { return ACTIVE; }, get PICK() { return activeHand().pick; },
-  next() { const st = STEPS[S.step]; if (S.bleeders.length) { const p = S.bleeders[0].pt(new V3()); project(p, _ps); return { act: 'bleed', x: _ps.x, y: _ps.y, p: p.toArray() }; } const n = st.next && st.next(); if (!n) return null; project(n.p, _ps); return { act: n.act, label: n.label, x: _ps.x, y: _ps.y, z: _ps.z, hidden: !!n.hidden, vis: visibleAt(n.p, 0.8), p: n.p.toArray() }; },
+  next() { const st = STEPS[S.step]; if (S.bleeders.length) { const p = S.bleeders[0].pt(new V3()); project(p, _ps); return { act: 'bleed', x: _ps.x, y: _ps.y, p: p.toArray(), want: { spot: 0.35, avoid: ['ureter', 'iliac', 'rectum', 'bladder'] } }; } const n = st.next && st.next(); if (!n) return null; project(n.p, _ps); const um = /(right|left) ureter/.exec(n.label || ''), want = st.seal ? { ents: st.seal.ent === 'meso' ? ['meso', 'tube'] : [st.seal.ent], side: st.seal.side } : um ? { ents: ['ureter'], side: um[1] === 'right' ? 'R' : 'L' } : n.act === 'bite' ? { cuff: { edge: S.cuff.pending ? 'post' : 'ant', x: S.cuff.pending ? S.cuff.pending.x : st.nextX() } } : null; return { act: n.act, label: n.label, x: _ps.x, y: _ps.y, z: _ps.z, hidden: !!n.hidden, vis: visibleAt(n.p, 0.8), p: n.p.toArray(), want }; },
   proj(p) { project(new V3(p[0], p[1], p[2]), _ps); return { x: _ps.x, y: _ps.y }; },
+  cuffAt(p) { const lp = new V3(p[0], p[1], p[2]).applyMatrix4(new THREE.Matrix4().copy(VG.M).invert()); return { x: lp.x, edge: lp.z < 0 ? 'ant' : 'post', depth: Math.max(0, -lp.y) }; }, // where on the vaginal cuff a point lies, as the bite check sees it
   render(dt) { renderFrame(dt == null ? 0.5 : dt, simTime, S.haze); drawOverlay(simTime); renderUI(1); htRenderUI(1, simTime); },
   setQuality, QUAL, GRADE, LIGHT, MAT, POST, head, scene, camera, renderer, THREE,
   DEPTH, DENT, freeDepth, freePick, poseFromPoint, primaryDown, primaryUp, nearTarget, PICKS, shown
