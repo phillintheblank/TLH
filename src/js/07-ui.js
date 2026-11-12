@@ -111,7 +111,7 @@ function depthGuide(c, p) {
   // which tip is this about? the mouse's hand, or with hand control the one holding this step's instrument (else the nearer)
   let h = activeHand();
   if (CTRL.mode === 'hands') { const tool = S.bleeders.length ? 'bipolar' : STEPS[S.step].tool, c2 = HANDS.filter(x => x.inst === tool); h = c2.length === 1 ? c2[0] : HAND.L.tip.distanceTo(p) < HAND.R.tip.distanceTo(p) ? HAND.L : HAND.R; }
-  const d = h.tip.distanceTo(p), at = d < 0.6;
+  const d = h.tip.distanceTo(p), at = d < 0.6 || h.lock;
   project(p, _tm);
   c.strokeStyle = at ? 'rgba(95,207,142,0.95)' : 'rgba(255,255,255,0.5)'; c.lineWidth = at ? 2.2 : 1.2;
   c.beginPath(); c.arc(_tm.x, _tm.y, 10 + 8 * Math.min(6, d), 0, TAU); c.stroke();
@@ -132,12 +132,23 @@ function drawTipMarkers(c) {
       }
       continue;
     }
-    const hard = h.press > DEPTH.GIVE * 1.3, on = CTRL.mode === 'mouse' && h.key === ACTIVE;
-    if (h.touch) {
+    const hard = h.press > DEPTH.GIVE * 1.3, on = CTRL.mode === 'mouse' && h.key === ACTIVE, driven = CTRL.mode === 'hands' ? HT.slot[h.key].engaged : on;
+    if (h.lock) { // settled on the step's target
+      c.strokeStyle = 'rgba(95,207,142,0.95)'; c.lineWidth = 2.2; c.beginPath(); c.arc(_ps.x, _ps.y, 8, 0, TAU); c.stroke(); c.beginPath(); c.arc(_ps.x, _ps.y, 12.5, 0, TAU); c.stroke();
+      c.fillStyle = c.strokeStyle; c.beginPath(); c.arc(_ps.x, _ps.y, 2, 0, TAU); c.fill();
+    } else if (h.touch) {
       c.strokeStyle = hard ? 'rgba(240,178,74,0.95)' : 'rgba(255,255,255,0.9)'; c.lineWidth = hard ? 2.4 : 1.6;
       c.beginPath(); c.arc(_ps.x, _ps.y, hard ? 9 : 7, 0, TAU); c.stroke();
       c.fillStyle = c.strokeStyle; c.beginPath(); c.arc(_ps.x, _ps.y, 1.8, 0, TAU); c.fill();
     } else if (on) { c.strokeStyle = 'rgba(255,255,255,0.4)'; c.lineWidth = 1; c.beginPath(); c.arc(_ps.x, _ps.y, 4.5, 0, TAU); c.stroke(); }
+    if (h.limT > 0) { // held at the edge of the working space: corner marks round the tip
+      c.strokeStyle = 'rgba(240,178,74,0.95)'; c.lineWidth = 2; const r = 14, q = 5;
+      for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { c.beginPath(); c.moveTo(_ps.x + sx * r, _ps.y + sy * (r - q)); c.lineTo(_ps.x + sx * r, _ps.y + sy * r); c.lineTo(_ps.x + sx * (r - q), _ps.y + sy * r); c.stroke(); }
+    }
+    if (h.hid && driven && !h.touch) { // the tip has gone behind tissue: show where it is
+      c.setLineDash([3, 4]); c.strokeStyle = 'rgba(255,255,255,0.75)'; c.lineWidth = 1.4; c.beginPath(); c.arc(_ps.x, _ps.y, 9, 0, TAU); c.stroke(); c.setLineDash([]);
+      pill(c, clamp(_ps.x + 14, 8, VW - 170), clamp(_ps.y - 26, 8, VH - 30), 'Tip is behind tissue');
+    }
   }
   if (CTRL.mode === 'mouse' && !INP.lock && !INP.noLock) pill(c, VW / 2 - 150, VH - 34, 'Click the picture to take the instruments. Esc frees the cursor.');
 }
@@ -154,6 +165,15 @@ function drawHandPointers(c) {
       const x = clamp(_ps.x, 14, VW - 14), y = clamp(_ps.y, 14, VH - 14);
       c.setLineDash([3, 4]); c.strokeStyle = col; c.lineWidth = 1.4; c.beginPath(); c.arc(x, y, 9, 0, TAU); c.stroke(); c.setLineDash([]);
       pill(c, x + 12, y - 24, h.key + (HT.clock - s.tSeen < 0.3 ? ' on hold' : ' no hand'), col);
+    }
+  }
+  // what the camera is losing: a hand at the edge of its view, a hand gone from it, or a thumb it cannot see
+  if (HT.status === 'ready') {
+    let y = VH - 34;
+    for (const h of HANDS) {
+      const s = HT.slot[h.key], nm = h.key === 'L' ? 'Left' : 'Right', seen = HT.clock - s.tSeen < 0.3;
+      const msg = !seen && s.ever && s.edgeLast ? nm + ' hand has left the camera\'s view at the ' + s.edgeLast + '. Bring it back in.' : seen && s.edge ? nm + ' hand is at the ' + s.edge + ' edge of the camera\'s view' : seen && s.hid ? nm + ' thumb is hidden from the camera: grip held' : '';
+      if (msg) { c.font = '500 12px "IBM Plex Sans", system-ui, sans-serif'; const w = c.measureText(msg).width + 14; pill(c, VW / 2 - w / 2, y, msg, '#ffe7c2', 'rgba(70,45,5,0.85)'); y -= 26; }
     }
   }
 }
@@ -248,7 +268,8 @@ function renderUI(dt) {
     if (x.inst === 'needle') state = '';
     let tail = '';
     if (hm && HT.status === 'ready' && S.running) { const sl = HT.slot[x.key]; tail = sl.engaged ? '' : HT.clock - sl.tSeen < 0.3 ? '  ON HOLD' : '  NO HAND'; }
-    if (freeDepth() && S.running && x.touch && !(x.grab && x.grab.pull)) tail = x.press > DEPTH.GIVE * 1.3 ? '  PRESSING' : '  CONTACT';
+    if (freeDepth() && S.running && x.touch && !(x.grab && x.grab.pull)) tail = x.lock ? '  ON TARGET' : x.press > DEPTH.GIVE * 1.3 ? '  PRESSING' : '  CONTACT';
+    if (freeDepth() && S.running && x.limT > 0) tail += '  AT LIMIT';
     const e = $('hudDev' + x.key); e.textContent = x.key + '  ' + devName[x.inst] + (state ? '  ' + state : '') + tail;
     e.className = 'hudline' + (x.firing && x.inst !== 'suction' ? ' hot' : '') + (!hm && x.key !== ACTIVE ? ' dim' : '');
     if ((hm || x === h) && (x.inst === 'bipolar' || x.inst === 'hook')) { const n = nearestUreter(x.tip); if (!prox || n.d < prox.d) prox = n; }

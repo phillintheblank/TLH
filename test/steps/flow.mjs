@@ -16,7 +16,7 @@ export default async function (page) {
     // hands: free depth, the tip is brought to each target in space. handsauto: auto depth, the hand points at the screen.
     const auto = MODE === 'handsauto';
     await installHandDriver(page, process.env.CAM || 'upright');
-    await ev(a => { window.__simPause = true; window.__sim.HT.sim = true; window.__sim.DEPTH.auto = a; }, auto);
+    await ev(([a, plain]) => { window.__simPause = true; const s = window.__sim; s.HT.sim = true; s.DEPTH.auto = a; if (plain) s.DEPTH.assist = s.DEPTH.prio = false; }, [auto, process.env.ASSIST === '0']); // ASSIST=0: depth assist and target lock off
     await page.click('#btnBeginHands');
     const cal = await calibrate(page);
     say('calibrated: ' + JSON.stringify(cal));
@@ -24,7 +24,7 @@ export default async function (page) {
     D = {
       T: dt => ev(n => window.__drv.step(n), Math.max(1, Math.ceil(dt * 30))),
       moveTo: auto
-        ? async n => { const r = await ev(n => window.__drv.moveTo('R', n.x, n.y), n); if (!r.ok) say('   (pointer did not reach target: ' + JSON.stringify(r) + ')'); await D.T(0.5); }
+        ? async n => { const k = (n.tryNo || 0) % 5, r = await ev(n => window.__drv.moveTo('R', n.x, n.y), { x: n.x + [0, 6, -6, 0, 0][k], y: n.y + [0, 0, 0, 6, -6][k] }); /* a retry aims a few pixels to one side, as a person would */ if (!r.ok) say('   (pointer did not reach target: ' + JSON.stringify(r) + ')'); await D.T(0.5); }
         : async n => { // use whichever hand has the clear line from its port, with the instrument this step needs
           const r = await ev(([p, tryNo, want]) => {
             const s = window.__sim, d = window.__drv, T3 = s.THREE, R = new T3.Raycaster(), P = new T3.Vector3().fromArray(p);
@@ -118,7 +118,8 @@ export default async function (page) {
     n.tryNo = stuck;
     if ((await D.moveTo(n)) === false && n.want && !n.want.cuff) { if (++stuck > 8) { say('NO PROGRESS at ' + I.id + ' act=' + n.act + ' label=' + n.label + ': the tip never came to rest on the target'); await shot('stuck-' + I.id); break; } continue; }
     if (VERBOSE) { const J = await info(); say('   ' + I.id + ' ' + n.act + ' "' + n.label + '" pick=' + JSON.stringify(J.pick) + ' near=' + J.near + ' on=' + J.on); }
-    if (n.act === 'click' || n.act === 'bite') { await D.down(); await T(0.1); await D.up(); await T(n.act === 'bite' ? 1.2 : 0.3); }
+    if (n.act === 'hover') await T(1.3); // hold near: no press
+    else if (n.act === 'click' || n.act === 'bite') { await D.down(); await T(0.1); await D.up(); await T(n.act === 'bite' ? 1.2 : 0.3); }
     else if (n.act === 'cut') { await D.cut(n); await T(0.5); }
     else if (n.act === 'seal') { await D.down(); for (let k = 0; k < 40; k++) { await T(0.2); const m = await next(); if (!m || m.act !== 'seal') break; } await D.up(); await T(0.2); }
     else if (n.act === 'trace' || n.act === 'push') { await D.down(); await T(n.act === 'push' ? 0.75 : 0.25); await D.up(); await T(0.15); }

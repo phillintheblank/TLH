@@ -5,7 +5,8 @@ pelvis, a uterine manipulator, five instruments, 21 steps, complications and an 
 
 Two things set it apart. **Hand control:** the device camera tracks both hands, each hand drives its own instrument
 at the same time in all three directions (pushing a hand forward drives its instrument in), a pinch works the
-instrument, and an open, flat hand acts as a clutch. **A picture built to look
+instrument, and an open, flat hand acts as a clutch. Assists make it forgiving: the tip settles onto tissue and onto
+the step's target, and it cannot be lost outside the working space. **A picture built to look
 like a scope view:** light that comes from the scope tip, a camera pipeline with automatic exposure and glare, wet
 translucent tissue, and sealing, smoke and bleeding that behave like the real thing.
 
@@ -40,9 +41,24 @@ hand is pushed forward.
   coarser signal than left-right and up-down, so it is smoothed harder and passes through a small dead band: the
   tip holds still against tracker jitter and follows once the hand has clearly moved. *Depth speed* and *Depth
   steadiness* in the hand control tuning panel set how far and how readily it responds.
-- **Depth is never locked.** While a pinch holds tissue or fires energy the instrument still moves in and out, so
-  grasped tissue can be drawn toward the camera or pushed away. To hold a depth, open the hand flat (clutch). The
-  clutch also lets you ratchet: push in, open the hand, bring it back, curl it and push in again.
+- **Depth is never locked while grasping.** A grasper that holds tissue still moves in and out, so the tissue can
+  be drawn toward the camera or pushed away. To hold a depth, open the hand flat (clutch). The clutch also lets you
+  ratchet: push in, open the hand, bring it back, curl it and push in again.
+- **Depth assist** (hand control, on by default): forward travel slows as the tip nears tissue. Once the tip rests on
+  tissue it stays there and rides over the surface as the hand moves sideways, so the last few millimetres are not a
+  balancing act and pushing on does not dig in. Draw the hand clearly back (about half a centimetre of tip travel)
+  to lift off. If the tissue under the tip is cut or drawn away, the tip stays where it is; it never drops onto
+  whatever lies behind.
+- **Target lock** (hand control, on by default, only while guidance is on): when the instrument the step needs
+  comes within about half a centimetre of the step's target, it settles onto the target and the status line shows
+  ON TARGET. A pinch then acts on the target and not on its neighbour, and tracker jitter no longer moves the tip.
+  It settles only on the structure the step is after; at a working point in an opened plane (an incision line, the
+  bladder flap, the cup rim) it holds the tip at the point, clear of what lies beyond. Move the hand clearly
+  sideways, or draw it back, to let go. The other hand's instrument is never caught.
+- **Working space:** the tip stops at the pelvic wall and slides along it, stays inside the picture, cannot be drawn
+  back past the lens, and cannot go so far to its own side that the instrument is lost in the wall it comes through.
+  Travel that a limit refuses is discarded, so reversing answers at once. Corner marks appear round a tip that is at
+  a limit, and a dashed ring shows where a tip is when it has gone behind tissue. Mouse and hands alike.
 
 - **Contact:** the first tissue along the shaft is what the tip meets. Pushed further, the tissue dents about half a
   centimetre and then stops the instrument; keep pressing and a warning appears.
@@ -56,8 +72,10 @@ hand is pushed forward.
   follows the tissue under the pointer; the wheel moves the scope). *Fulcrum effect* makes the tip move opposite to the mouse, as with a real
   laparoscopic handle; it is off by default because the goal is robotic control, which has no fulcrum effect.
   *Reverse wheel* swaps which way the wheel pushes in. *Wheel speed* scales the travel.
-- **Survey step:** a click or pinch that misses the ureter does not fire the bipolar or hook. Nothing needs energy
-  before both ureters are found, and a near miss beside a ureter should not burn it.
+- **Identifying the ureters:** hold a driven instrument tip within about a centimetre of a ureter for a second and
+  it is marked; a ring fills as you hold. No pinch or click is needed, so nothing beside the ureter is grasped by
+  mistake. The same applies when confirming the ureters at the end. During the survey a click or pinch never fires
+  the bipolar or hook.
 
 ## Picture
 
@@ -76,19 +94,22 @@ hand is pushed forward.
 
 | Build | What changed | Play it |
 |---|---|---|
-| 0.3b | Depth from the hands: push forward to go in, calibration learns the forward direction | https://phillintheblank.github.io/TLH/ |
+| 0.3c | Hand control made easier: depth assist, target lock, working-space limits, hold-near ureter identification, grip hold | https://phillintheblank.github.io/TLH/ |
+| 0.3b | Depth from the hands: push forward to go in, calibration learns the forward direction | https://phillintheblank.github.io/TLH/v0.3b/ |
 | 0.3a | Free-moving instrument tips with the mouse: wheel depth, contact, tissue give, fulcrum option | https://phillintheblank.github.io/TLH/v0.3a/ |
 | 0.2 | Realism update: lighting, camera, tissue, energy effects, instruments | https://phillintheblank.github.io/TLH/v0.2/ |
 | 0.1 | Hand control added to the mouse simulator | https://phillintheblank.github.io/TLH/v0.1/ |
 
 Each build's source is kept on a `checkpoint/…` branch (`checkpoint/v0.1-hands`, `checkpoint/v0.2-realism`,
-`checkpoint/v0.3a-depth`, `checkpoint/v0.3b-handdepth`), and the built page of each
+`checkpoint/v0.3a-depth`, `checkpoint/v0.3b-handdepth`, `checkpoint/v0.3c-assist`), and the built page of each
 earlier build stays in `docs/` under its version number.
 
 ## Hand control
 
-- **Calibration** takes about 25 seconds and runs before the case. You show both hands, move your right hand right,
-  then up, then forward, pinch, relax into a working grip, and open the hand flat. All three directions are learned
+- **Calibration** takes about 25 seconds and runs before the case. You show both hands in your working grip (as if
+  loosely holding a small ball: a clear gap between the thumb and the first two fingertips, ring and little fingers
+  curled), move your right hand right, then up, then forward, pinch, relax into the grip, and open the hand flat.
+  Each step shows a small picture of the pose it wants. All three directions are learned
   from your own movements, so the laptop lid can be upright or tilted down at your hands, and the display can be the
   laptop screen, a second monitor or XR glasses. A calibration saved by an earlier build has no forward direction,
   so it is asked for once more. *Skip: standard webcam* assumes an upright lid facing you.
@@ -96,14 +117,24 @@ earlier build stays in `docs/` under its version number.
   comfortable, curl it again and carry on from where the instrument was.
 - **A grasper keeps hold through a clutch.** Come back still pinched to keep holding; relax to let go.
 - **Energy stops** the moment a hand opens or leaves the camera view.
-- **Tuning** (right-hand panel): sensitivity, smoothing, depth speed, depth steadiness, pinch threshold and clutch
-  threshold.
+- **Grip hold** (on by default): when the camera cannot see the thumb (it is behind the fingers, or the hand is
+  side-on), the tracker is only guessing where it is. The instrument then keeps its open or closed state until the
+  thumb is seen again. An open flat hand always works and always releases.
+- **What the camera is losing** is shown as it happens: the preview marks the thumb tip and the two fingertips it
+  is reading (hollow amber rings when the thumb is hidden), a bar marks the side of the view a hand is about to
+  leave by, and a line on the picture says which hand and which edge.
+- **Tuning** (right-hand panel): depth assist, target lock and grip hold switches; sensitivity, smoothing, depth
+  speed, depth steadiness, pinch threshold and clutch threshold.
 - **Privacy.** Video frames are analysed inside the browser and discarded. Nothing is recorded or uploaded.
 
 ### Limits of this build
 
-- Hand depth has been tested with simulated hands only (both lid positions, with tracker jitter added). How steady
-  the palm-size signal is from a real camera, and how the default depth speed feels, need real hands.
+- Hand depth and the assists have been tested with simulated hands only (both lid positions, with tracker jitter
+  added). How steady the palm-size signal is from a real camera, and how the assists feel, need real hands.
+- Grip hold decides that the thumb is hidden from the tracker's own depth estimates. It has not been tried on a
+  real camera: if a grip sticks or flickers, switch it off in the tuning panel.
+- One camera sees a limited space. A hand that drops out of its view is lost until it comes back; the clutch lets
+  you bring a hand back to the middle without moving its instrument.
 - With the lid tilted down at the desk, forward is read from where the hand is in the picture and lift from how
   large it looks, so lifting becomes the coarser direction instead of depth.
 - Keep your hands side by side. If one hand passes over the other in the camera's view, the tracker can swap them.
@@ -121,14 +152,17 @@ earlier build stays in `docs/` under its version number.
 1. Hand control, left-right and up-down, two hands (done)
 2. Realism: lighting, camera, tissue, energy effects, instruments (done)
 3. Free-moving tips and depth with the mouse (done)
-4. Depth from the hands, from palm size in the laptop camera (this build); a second camera only if that proves too
-   coarse with real hands
-5. Contact along the instrument shaft, and instruments that cannot pass through each other
-6. Side-by-side stereo for XR glasses and 3D displays
-7. Wrist orientation driving a wristed instrument tip
-8. Robotic instrument set and multiport robotic case flow
-9. Voice commands for the uterine manipulator and instrument exchanges
-10. Wristed suturing
+4. Depth from the hands, from palm size in the laptop camera (done)
+5. Hand control made easier: depth assist, target lock, working-space limits (this build)
+6. Scope control with both hands: two open palms moved together pan, tilt and advance the view
+7. A second camera (a phone) for a better view of the thumb and of depth, if one camera is not enough
+8. Contact along the instrument shaft, lifting tissue with the side of an instrument, and instruments that cannot
+   pass through each other
+9. Side-by-side stereo for XR glasses and 3D displays
+10. Wrist orientation driving a wristed instrument tip
+11. Robotic instrument set and multiport robotic case flow
+12. Voice commands for the uterine manipulator and instrument exchanges
+13. Wristed suturing
 
 ## Working on it
 
@@ -147,11 +181,16 @@ Tests drive a headless Chrome through Playwright (`test/shot.mjs <screenshot> <s
   and give, working only in contact, traction, complications.
 - `test/steps/flow.mjs` plays the whole case: in free depth (`MODE=free`), with real mouse events in auto depth
   (`MODE=mouse`), or with synthetic hand landmarks pushed through the full hand-control pipeline, in free depth
-  (`MODE=hands`) or auto depth (`MODE=handsauto`), for either lid position (`CAM=upright|tilted`) and with tracker
-  jitter (`NOISE=0.004`).
+  (`MODE=hands`, add `ASSIST=0` to switch the assists off) or auto depth (`MODE=handsauto`), for either lid position
+  (`CAM=upright|tilted`) and with tracker jitter (`NOISE=0.004`).
 - `test/steps/handdepth.mjs` checks hand depth: calibration of all three directions under jitter, the mapping from
   hand travel to tip travel, both hands at once, that a pinch does not move the tip, no creep at rest, the clutch
   and ratcheting, contact and give, sealing and cutting in contact, and traction in depth (`CAM=upright|tilted`).
+- `test/steps/assist.mjs` checks the assists with scripted hands: hold-near identification, the slow approach, resting
+  on and riding over tissue, lifting off, target lock and letting go, grip hold when the thumb is hidden, and the
+  edge-of-view flag (`CAM=upright|tilted`).
+- `test/steps/limits.mjs` checks the working space: each instrument pushed out in every direction and drawn back to
+  the lens stays in the cavity and in view, and reversing answers at once; also with the real mouse and wheel.
 - `test/steps/handdriver.mjs` is the scripted pair of hands those tests use. It steers the way a person does: it
   lines the tip up with the target from the port, slides in until the tip touches, checks what it is resting on
   before pinching, and clutches when a hand runs out of room.

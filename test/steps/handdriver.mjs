@@ -18,7 +18,7 @@ export async function installHandDriver(page, cam) {
         for (let i = 0; i < (n || 1); i++) {
           this.t += 1 / 30;
           const dets = [];
-          for (const k of ['L', 'R']) { const h = this.hands[k]; if (h.vis) dets.push(S.fakeHand({ x: h.x + (Math.random() - 0.5) * this.noise, y: h.y + (Math.random() - 0.5) * this.noise, size: h.size * (1 + (Math.random() - 0.5) * this.noise * 3), ap: h.ap, opn: h.opn })); }
+          for (const k of ['L', 'R']) { const h = this.hands[k]; if (h.vis) dets.push(S.fakeHand({ x: h.x + (Math.random() - 0.5) * this.noise, y: h.y + (Math.random() - 0.5) * this.noise, size: h.size * (1 + (Math.random() - 0.5) * this.noise * 3), ap: h.ap, opn: h.opn, hide: h.hide })); }
           S.htIngest(dets, this.t); S.tick(1 / 30);
         }
       },
@@ -122,7 +122,7 @@ export async function installHandDriver(page, cam) {
           for (const c of cell) { c.room = 0; if (c.on) for (let b = -1; b <= 1; b++) for (let a = -1; a <= 1; a++) { const o = at(c.i + a, c.j + b); if (o && o.on) c.room++; } c.r = Math.hypot(c.i, c.j) * G; }
           let list = []; for (const need of [9, 7, 5, 4, 3, 2, 1]) { list = cell.filter(c => c.on && c.room >= need && c.r <= 0.5).sort((a, b) => a.r - b.r); if (list.length) break; }
           if (!list.length) list = cell.filter(c => c.on).sort((a, b) => a.r - b.r);
-          if (want && want.cuff) { const nearP = cell.filter(c => c.on && c.room >= 3).sort((a, b) => a.r - b.r); if (nearP.length) list = nearP; } // a bite goes where it is asked for: place before room
+          if (want && (want.cuff || want.spot)) { const nearP = cell.filter(c => c.on && c.room >= 3).sort((a, b) => a.r - b.r); if (nearP.length) list = nearP; } // a bite or a burst of energy goes exactly where it is asked for: place before room
           let pick = list[(tryNo || 0) % Math.min(list.length || 1, 4)];
           if (!want && !tryNo && at(0, 0).on && at(0, 0).room >= 4) pick = at(0, 0); // a named spot with room around it: go straight for it
           if (pick) off.addScaledVector(cr, pick.i * G).addScaledVector(cu, pick.j * G);
@@ -140,7 +140,9 @@ export async function installHandDriver(page, cam) {
         const out = { tries: 0, feel: 0, aim: +off.length().toFixed(2) };
         // the other hand goes back to its own side first, as a person's would, so the two never cross in the picture
         { const ok = k === 'R' ? 'L' : 'R', oh = this.hands[ok]; if (oh.vis && oh.ap > 0.4 && Math.hypot(oh.x - HOME[ok].x, oh.y - HOME[ok].y) > 0.06) this.clutch(ok); }
-        if (good() && !tryNo) return Object.assign(out, { ok: true, touch: true, good: true, hand: k, short: 0, off: +hand.tip.distanceTo(P).toFixed(2), ent: hand.pick.ent, press: +hand.press.toFixed(2) });
+        // rest the tip on the tissue firmly enough that a little tremor does not lift it off again
+        const rest = () => { for (let i = 0; i < 25 && hand.touch && hand.ins - hand.ahead.dist < 0; i++) this.nudge(k, own(hand.ins + 0.2), 0.002); if (hand.touch) this.step(4); };
+        if (good() && !tryNo) { rest(); if (good()) return Object.assign(out, { ok: true, touch: true, good: true, hand: k, short: 0, off: +hand.tip.distanceTo(P).toFixed(2), ent: hand.pick.ent, press: +hand.press.toFixed(2) }); }
         lift(1);
         let s0 = L - 0.8; for (const c of [L - 2.5, L - 1.5]) if (c > 3 && inView(line(c))) { s0 = c; break; }
         const back = Math.min(hand.ins, s0); if (back < hand.ins - 0.3 && inView(own(back))) this.tipTo(k, own(back), 0.25, false, 200);
@@ -174,9 +176,7 @@ export async function installHandDriver(page, cam) {
         }
         // centre the tip on the aim point, as a person does before pinching; come back down if that lifted it off; then
         if (good()) { this.tipTo(k, line(hand.ins), 0.06, false, 60, 0.004); if (!hand.touch) r = this.lineTo(k, d, L + 0.2, 150); }
-        // rest the tip on it firmly enough that a little tremor does not lift it off again
-        for (let i = 0; i < 25 && hand.touch && hand.ins - hand.ahead.dist < 0; i++) this.nudge(k, own(hand.ins + 0.2), 0.002);
-        if (hand.touch) this.step(4);
+        rest();
         return Object.assign(out, r, { good: good(), hand: k, short: +(L - hand.len).toFixed(2), off: +hand.tip.distanceTo(P).toFixed(2), ent: hand.pick.ent, press: +hand.press.toFixed(2) });
       }
     };

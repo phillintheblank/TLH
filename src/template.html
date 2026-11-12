@@ -137,6 +137,8 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 .cal-cam{width:100%;aspect-ratio:4/3;border-radius:8px;background:#05080a;border:1px solid var(--line);display:block}
 .cal-side h2{font-size:26px;margin-top:8px}
 .cal-note{min-height:2.9em;color:var(--warn);font-size:13px;margin:0}
+.cal-pose{display:flex;align-items:center;gap:12px;margin:10px 0 2px;color:var(--mut,#9fb0b8);font-size:12.5px;line-height:1.35}
+.cal-pose canvas{width:112px;height:112px;flex:none;border:1px solid var(--line);border-radius:8px;background:#05080a}
 .cam-video{position:absolute;width:2px;height:2px;opacity:0;pointer-events:none}
 .cam-prev{width:100%;aspect-ratio:4/3;border-radius:6px;background:#05080a;border:1px solid var(--line);display:block;margin-bottom:8px}
 .ht-status{margin:0 0 8px;font-size:13px;color:#b9c8cf}.ht-status.err{color:var(--warn)}
@@ -163,7 +165,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 <body>
 <div id="app">
   <header class="bar">
-    <div class="brand"><h1>TLH Simulator</h1><p>Build 0.3b &middot; total laparoscopic hysterectomy, bilateral salpingectomy</p></div>
+    <div class="brand"><h1>TLH Simulator</h1><p>Build 0.3c &middot; total laparoscopic hysterectomy, bilateral salpingectomy</p></div>
     <div class="bar-ctl">
       <select id="selQ" class="sel" title="Picture quality. Auto starts at High and steps down if the frame rate drops." aria-label="Picture quality"><option value="auto">Quality: auto</option><option value="high">Quality: high</option><option value="medium">Quality: medium</option><option value="low">Quality: low</option></select>
       <button type="button" id="btnHands" class="tog" title="Drive both instruments with your hands through this device's camera">Hand control</button>
@@ -199,6 +201,8 @@ input[type=range]{width:100%;accent-color:var(--accent)}
             <h3>With your hands</h3>
             <ul class="keys">
               <li><b>Move a hand</b><span>Its instrument's tip follows: right, up, and forward to go in. Both work at once.</span></li>
+              <li><b>Resting on tissue</b><span>The tip slows as it nears tissue and stays on it. Draw your hand clearly back to lift off.</span></li>
+              <li><b>Near a target</b><span>With guidance on, the instrument the step needs settles onto the target. Move clearly away to let go.</span></li>
               <li><b>Pinch</b><span>Thumb to first two fingers: grasp and hold, seal, cut with the hook, aspirate, place a bite</span></li>
               <li><b>Pinch again</b><span>On a sealed pedicle, after relaxing: fires the cut blade</span></li>
               <li><b>Open hand flat</b><span>Clutch: that instrument holds still, in depth too, until you curl the hand again</span></li>
@@ -229,6 +233,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
               <div class="eyebrow"><span>Hand control setup</span><span id="calCount"></span></div>
               <h2 id="calTitle">Getting ready</h2>
               <p id="calText"></p>
+              <div class="cal-pose" id="calPoseWrap" hidden><canvas id="calPose"></canvas><span id="calPoseCap"></span></div>
               <div class="prog"><div class="track"><i id="calBar"></i></div></div>
               <p class="cal-note" id="calNote"></p>
               <div class="cta">
@@ -311,6 +316,11 @@ input[type=range]{width:100%;accent-color:var(--accent)}
         <div id="htLive" hidden>
           <canvas id="camPrev" class="cam-prev"></canvas>
           <div class="chips"><span class="chip" id="htL">Left</span><span class="chip" id="htR">Right</span></div>
+          <div class="btnrow">
+            <button type="button" class="tog" id="btnAssist" title="The tip slows as it nears tissue, then stays on the tissue and rides over it as your hand moves sideways. Draw your hand clearly back to lift it off.">Depth assist</button>
+            <button type="button" class="tog" id="btnPrio" title="While guidance is on, the instrument this step needs settles onto the step's target when it comes close, so a pinch acts on the target and not on its neighbour. Move your hand clearly away, or draw it back, to let go.">Target lock</button>
+            <button type="button" class="tog" id="btnGhold" title="When the camera cannot see your thumb (it is behind the fingers, or the hand is side-on), the instrument keeps its open or closed state instead of flickering. Opening the hand flat always releases.">Grip hold</button>
+          </div>
           <details class="tune">
             <summary>Tuning</summary>
             <label for="tGain">Sensitivity: instrument travel per hand movement<input type="range" id="tGain" min="8" max="45" value="20"></label>

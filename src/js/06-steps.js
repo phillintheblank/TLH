@@ -82,14 +82,32 @@ function inciseStep(o) {
     focus(out) { return cp(2, out); }
   }, o);
 }
+function markUreter(k) {
+  const sur = STEPS[S.step].id === 'survey', map = sur ? S.ureterID : S.ureterOK;
+  if (!map[k]) { map[k] = true; sfx.ok(); toast(CAP[k] + ' ureter ' + (sur ? 'identified' : 'peristalsing, not dilated'), 'ok'); uiDirty(); }
+}
 function clickUreter(h) {
   if (h.pick.hit && h.near && h.pick.ent === 'ureter') {
-    const st = STEPS[S.step], map = st.id === 'survey' ? S.ureterID : S.ureterOK;
-    if (st.id === 'final' && (!S.lowP || S.bleeders.length)) return false;
-    if (!map[h.pick.side]) { map[h.pick.side] = true; sfx.ok(); toast(CAP[h.pick.side] + ' ureter ' + (st.id === 'survey' ? 'identified' : 'peristalsing, not dilated'), 'ok'); uiDirty(); }
+    if (STEPS[S.step].id === 'final' && (!S.lowP || S.bleeders.length)) return false;
+    markUreter(h.pick.side);
     return true;
   }
   return false;
+}
+// Hold-near identification: a driven instrument tip held beside a ureter for a moment identifies it (survey) or
+// confirms it (final inspection). No pinch or click is needed, so nothing beside it is grasped or burned by mistake.
+const UDW = { R: 0, L: 0, NEAR: 1.2, T: 1 };
+function ureterDwell(dt) {
+  const st = STEPS[S.step];
+  if (st.id !== 'survey' && !(st.id === 'final' && S.lowP && !S.bleeders.length)) { UDW.R = UDW.L = 0; return; }
+  const map = st.id === 'survey' ? S.ureterID : S.ureterOK;
+  for (const k of ['R', 'L']) {
+    if (map[k]) { UDW[k] = 0; continue; }
+    let near = false;
+    for (const h of HANDS) if (h.ptr.on && h.exch <= 0 && !h.firing) { const n = nearestOnArr(URETER[k].arr, h.tip); if (n.d - 0.2 < UDW.NEAR && n.u > 0.05 && n.u < 0.65) near = true; }
+    UDW[k] = near ? UDW[k] + dt : Math.max(0, UDW[k] - 2 * dt);
+    if (UDW[k] >= UDW.T) { UDW[k] = 0; markUreter(k); }
+  }
 }
 const _um = {};
 function ureterMarker(k) {
@@ -156,11 +174,11 @@ const STEPS = [
   {
     id: 'survey', kind: 'survey', tool: 'any', phase: 'Survey', short: 'Identify both ureters', title: 'Survey the pelvis and identify both ureters', dist: 17,
     rec: { yaw: 0, pitch: 0.6, push: 0.3 }, expo: [],
-    text: ['Before any energy is used, find each ureter through the peritoneum.', 'It crosses the pelvic brim and runs down the sidewall below the infundibulopelvic ligament. Look for peristalsis.', 'Touch each ureter with an instrument tip and click or pinch to confirm it.'],
+    text: ['Before any energy is used, find each ureter through the peritoneum.', 'It crosses the pelvic brim and runs down the sidewall below the infundibulopelvic ligament. Look for peristalsis.', 'Hold an instrument tip beside each ureter for a moment to mark it. No pinch or click is needed.'],
     pearl: 'Deviating and anteverting the uterus opens each sidewall. At the cervix the ureter passes under the uterine artery about 1.5 to 2 cm lateral.',
     // no energy during the survey: a press that misses the ureter must not fire a bipolar or hook beside it
-    click(h) { if (clickUreter(h)) return true; if (h.inst !== 'bipolar' && h.inst !== 'hook') return false; hint('surveyE', 'No energy yet. Rest the tip on a ureter, then ' + (CTRL.mode === 'hands' ? 'pinch' : 'click') + ' to mark it.'); return true; },
-    next() { for (const k of ['R', 'L']) if (!S.ureterID[k]) return { p: ureterMarker(k), act: 'click', label: 'Identify ' + WORD[k] + ' ureter' }; return null; },
+    click(h) { if (clickUreter(h)) return true; if (h.inst !== 'bipolar' && h.inst !== 'hook') return false; hint('surveyE', 'No energy yet. Hold the tip beside a ureter for a moment to mark it.'); return true; },
+    next() { for (const k of ['R', 'L']) if (!S.ureterID[k]) return { p: ureterMarker(k), act: 'hover', side: k, label: 'Hold near the ' + WORD[k] + ' ureter', prog: UDW[k] / UDW.T }; return null; },
     done() { return S.ureterID.R && S.ureterID.L; }, progress() { return (S.ureterID.R ? 1 : 0) + (S.ureterID.L ? 1 : 0) + ' of 2 identified'; },
     frac() { return ((S.ureterID.R ? 1 : 0) + (S.ureterID.L ? 1 : 0)) / 2; }, focus(o) { return o.set(0, -1.6, 0); }
   },
@@ -277,7 +295,7 @@ const STEPS = [
   },
   {
     id: 'final', kind: 'final', tool: 'any', phase: 'Colpotomy and closure', short: 'Low-pressure inspection', title: 'Inspect at low pressure and confirm the ureters', dist: 12, rec: null, expo: [],
-    text: ['Drop the pneumoperitoneum to 8 mmHg and inspect the pedicles and cuff.', 'Control any ooze with short bipolar bursts, away from the ureter at the cuff angle.', 'Aspirate pooled blood, then touch each ureter and click or pinch to confirm peristalsis.'],
+    text: ['Drop the pneumoperitoneum to 8 mmHg and inspect the pedicles and cuff.', 'Control any ooze with short bipolar bursts, away from the ureter at the cuff angle.', 'Aspirate pooled blood, then hold a tip beside each ureter for a moment to confirm peristalsis.'],
     pearl: 'Venous bleeding that 15 mmHg tamponades shows itself at 8. Cystoscopy follows according to your institution\'s practice.',
     click: clickUreter,
     button: { label: 'Lower pressure to 8 mmHg', fn() { if (S.lowP) return; S.lowP = true; S.pressureGoal = 8; addBleeder(o => cuffPt(1.7, 'ant', 0.5, o), 14, false, 'cuff angle'); S.oozeDone = true; toast('Pressure down: venous ooze at the right cuff angle', 'bleed'); uiDirty(); }, hide: () => S.lowP },
@@ -286,7 +304,7 @@ const STEPS = [
       if (!S.lowP) return { p: cuffPt(0, 'ant', 0, new V3()), act: 'button', label: 'Lower the pressure' };
       if (S.bleeders.length) return null;
       if (S.pool >= 8) return { p: new V3(POOL.position.x, POOL.position.y + 0.1, -1.5), act: 'suction', label: 'Aspirate the pool' };
-      for (const k of ['R', 'L']) if (!S.ureterOK[k]) return { p: ureterMarker(k), act: 'click', label: 'Confirm ' + WORD[k] + ' ureter' };
+      for (const k of ['R', 'L']) if (!S.ureterOK[k]) return { p: ureterMarker(k), act: 'hover', side: k, label: 'Hold near the ' + WORD[k] + ' ureter to confirm it', prog: UDW[k] / UDW.T };
       return { p: cuffPt(0, 'ant', 0, new V3()), act: 'button', label: 'End the case' };
     },
     done() { return S.ended; },
@@ -319,6 +337,7 @@ function updateSteps(dt) {
   if (!S.running || S.ended) return;
   S.t += dt;
   S.pressure = damp(S.pressure, S.pressureGoal, 1.2, dt);
+  ureterDwell(dt);
   const st = STEPS[S.step];
   if (stepPressed && HANDS.some(h => h.firing && h.inst !== 'suction')) checkExposure();
   if (!S.bleeders.length && st.done()) {

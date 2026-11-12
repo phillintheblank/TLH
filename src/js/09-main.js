@@ -42,10 +42,10 @@ function wire() {
   // mouse settings
   // On a Mac the system default ("natural" scrolling) reverses the wheel, so start reversed there: wheel forward should push in.
   DEPTH.flip = /Mac/i.test(navigator.platform || navigator.userAgent || '');
-  try { const d = JSON.parse(localStorage.getItem(DKEY) || 'null'); if (d) { DEPTH.auto = !!d.auto; DEPTH.fulcrum = !!d.fulcrum; DEPTH.flip = !!d.flip; if (d.wheel > 0.2 && d.wheel < 4) DEPTH.wheel = d.wheel; } } catch (_) {}
-  const saveD = () => { try { localStorage.setItem(DKEY, JSON.stringify({ auto: DEPTH.auto, fulcrum: DEPTH.fulcrum, flip: DEPTH.flip, wheel: DEPTH.wheel })); } catch (_) {} };
+  try { const d = JSON.parse(localStorage.getItem(DKEY) || 'null'); if (d) { DEPTH.auto = !!d.auto; DEPTH.fulcrum = !!d.fulcrum; DEPTH.flip = !!d.flip; if (d.wheel > 0.2 && d.wheel < 4) DEPTH.wheel = d.wheel; if (d.assist === false) DEPTH.assist = false; if (d.prio === false) DEPTH.prio = false; } } catch (_) {}
+  const saveD = () => { try { localStorage.setItem(DKEY, JSON.stringify({ auto: DEPTH.auto, fulcrum: DEPTH.fulcrum, flip: DEPTH.flip, wheel: DEPTH.wheel, assist: DEPTH.assist, prio: DEPTH.prio })); } catch (_) {} };
   const dtog = (id, key) => { const b = $(id), sync = () => { b.classList.toggle('on', DEPTH[key]); b.setAttribute('aria-pressed', DEPTH[key] ? 'true' : 'false'); }; b.addEventListener('click', () => { DEPTH[key] = !DEPTH[key]; sync(); saveD(); uiDirty(); }); sync(); };
-  dtog('btnAuto', 'auto'); dtog('btnFulcrum', 'fulcrum'); dtog('btnFlip', 'flip');
+  dtog('btnAuto', 'auto'); dtog('btnFulcrum', 'fulcrum'); dtog('btnFlip', 'flip'); dtog('btnAssist', 'assist'); dtog('btnPrio', 'prio');
   $('mWheel').value = Math.round(DEPTH.wheel * 100);
   $('mWheel').addEventListener('input', e => { DEPTH.wheel = e.target.value / 100; saveD(); });
   $('handL').addEventListener('click', () => setActive('L')); $('handR').addEventListener('click', () => setActive('R'));
@@ -113,8 +113,9 @@ function tick(dt) {
   const hm = CTRL.mode === 'hands';
   if (hm) htPointers(dt); else routeMouse();
   const free = freeDepth(), live = S.running && !S.ended;
+  stepAim();
   for (const h of HANDS) {
-    if (!free) { doPick(h); snapPick(h); continue; }
+    if (!free) { h.hold = h.lock = false; doPick(h); snapPick(h); continue; }
     if (live && (hm ? HT.slot[h.key].engaged : h.key === ACTIVE)) freeDrive(h); else { h.cmd.dx = h.cmd.dy = h.cmd.dz = h.cmd.dv = 0; h.cmd.cart = false; }
     freePick(h, dt);
   }
@@ -168,10 +169,11 @@ function fakeHand(o) {
   const lm = [], wl = [], P = 0.095, a = HT.aspect, sz = o.size || 0.2;
   for (let i = 0; i < 21; i++) wl.push({ x: 0, y: 0, z: 0 });
   wl[1] = { x: -0.03, y: -0.02, z: 0 };
-  [[5, 8, -0.3], [9, 12, 0], [13, 16, 0.25], [17, 20, 0.5]].forEach(([m, t, an]) => { const dx = Math.sin(an), dy = -Math.cos(an); wl[m] = { x: dx * P, y: dy * P, z: 0 }; wl[t] = { x: dx * P * o.opn, y: dy * P * o.opn, z: 0 }; });
-  wl[4] = { x: wl[8].x, y: wl[8].y, z: o.ap * P };
+  [[5, 8, -0.3], [9, 12, 0], [13, 16, 0.25], [17, 20, 0.5]].forEach(([m, t, an]) => { const dx = Math.sin(an), dy = -Math.cos(an); wl[m] = { x: dx * P, y: dy * P, z: 0 }; wl[t] = { x: dx * P * o.opn, y: dy * P * o.opn, z: 0 }; for (const q of [1, 2]) wl[m + q] = { x: lerp(wl[m].x, wl[t].x, q / 3), y: lerp(wl[m].y, wl[t].y, q / 3), z: 0 }; });
+  wl[4] = o.hide ? { x: (wl[5].x + wl[8].x) / 2, y: (wl[5].y + wl[8].y) / 2, z: 0.5 * P } : { x: wl[8].x - o.ap * P, y: wl[8].y, z: 0 }; // hide: the thumb tip is behind the index finger, where the camera cannot see it
+  for (const q of [1, 2]) wl[1 + q] = { x: lerp(wl[1].x, wl[4].x, q / 3), y: lerp(wl[1].y, wl[4].y, q / 3), z: lerp(0, wl[4].z, q / 3) };
   const cx = (wl[0].x + wl[5].x + wl[17].x) / 3, cy = (wl[0].y + wl[5].y + wl[17].y) / 3, k = sz / P;
-  for (let i = 0; i < 21; i++) lm.push({ x: o.x + ((wl[i].x - cx) * k) / a, y: o.y + (wl[i].y - cy) * k, z: 0 });
+  for (let i = 0; i < 21; i++) lm.push({ x: o.x + ((wl[i].x - cx) * k) / a, y: o.y + (wl[i].y - cy) * k, z: (wl[i].z * k) / a });
   return { lm, wl };
 }
 window.__sim = {

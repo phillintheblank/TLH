@@ -23,11 +23,12 @@ class OneEuro { // low-pass that follows fast motion and steadies slow motion
 function newSlot(k) {
   return { key: k, tSeen: -9, ever: false, x: 0, y: 0, rawx: 0, rawy: 0, fx: new OneEuro(), fy: new OneEuro(), ap: 1, opn: 1.4, pinch: false, flat: false,
     flatT: 0, unflatT: 0, clutch: false, engaged: false, ax: 0, ay: 0, az: 0, px: 0, py: 0, down: false, armed: true, relT: 0, lm: null, v: 0, tPrev: 0, readyT: 0,
-    z: 0, zb: 0, fz: new OneEuro(), lx: 0, ly: 0, lz: 0 }; // z: palm-size signal; zb: the same after its dead band; l*: last values used
+    z: 0, zb: 0, fz: new OneEuro(), lx: 0, ly: 0, lz: 0, // z: palm-size signal; zb: the same after its dead band; l*: last values used
+    hid: false, apRaw: 1, edge: '', edgeLast: '' }; // hid: the thumb cannot be seen, so the grip keeps its last state; edge: side of the camera's view the hand is close to
 }
 const HT = {
   status: 'off', // off | loading | calibrating | ready | error
-  msg: '', cal: null, tune: { gain: 2.0, smooth: 0.5, pinch: 0, open: 0, zgain: 1, zsteady: 0.5 }, slot: { L: newSlot('L'), R: newSlot('R') },
+  msg: '', cal: null, tune: { gain: 2.0, smooth: 0.5, pinch: 0, open: 0, zgain: 1, zsteady: 0.5, ghold: 1 }, slot: { L: newSlot('L'), R: newSlot('R') },
   clock: 0, dets: [], aspect: 4 / 3, video: null, stream: null, landmarker: null, lastVT: -1, fps: 0, fpsN: 0, fpsT: 0, calib: null, resume: false, prevT: 0, sim: false
 };
 function htResetSlots() { for (const k of ['L', 'R']) { const o = HT.slot[k], n = newSlot(k); n.tSeen = o.tSeen; n.ever = o.ever; n.x = o.x; n.y = o.y; n.rawx = o.rawx; n.rawy = o.rawy; n.fx = o.fx; n.fy = o.fy; n.fz = o.fz; n.z = o.z; n.ap = o.ap; n.opn = o.opn; n.lm = o.lm; HT.slot[k] = n; } }
@@ -74,7 +75,23 @@ function handFeatures(lm, wl, aspect) {
   const palm = _d3(W[0], W[9]) || 1e-6;
   const ap = Math.min(_d3(W[4], W[8]), _d3(W[4], W[12])) / palm; // thumb tip to the nearer of index and middle tips
   let opn = 0; for (const [m, t] of [[5, 8], [9, 12], [13, 16], [17, 20]]) opn += _d3(W[t], W[0]) / (_d3(W[m], W[0]) || 1e-6);
-  return { x, y, z, size, ap, opn: opn / 4, lm };
+  // which side of the camera's view the palm is about to leave by, named as the mirrored preview shows it
+  let edge = '', em = 0.045;
+  for (const i of PALM) { const p = lm[i]; if (p.y > 1 - em) { edge = 'bottom'; break; } if (p.y < em) edge = 'top'; else if (p.x < em) edge = 'right'; else if (p.x > 1 - em) edge = 'left'; }
+  return { x, y, z, size, ap, opn: opn / 4, lm, vis: !thumbHidden(lm, W, aspect, palm), edge };
+}
+// Can the camera see the pinch? The thumb tip counts as hidden when another part of the hand lies over it in the
+// picture and is clearly nearer the camera. The tracker is then guessing where the thumb is, and its guess must not
+// open or close an instrument. (In the tracker's coordinates a smaller z is nearer the camera.)
+const COVER = [[5, 6], [6, 7], [7, 8], [9, 10], [10, 11], [11, 12], [13, 14], [14, 15], [15, 16], [17, 18], [18, 19], [19, 20], [5, 9], [9, 13], [13, 17], [0, 5], [0, 17]];
+function thumbHidden(lm, W, aspect, palm) {
+  const px = lm[4].x * aspect, py = lm[4].y, r = 0.2 * Math.hypot((lm[0].x - lm[9].x) * aspect, lm[0].y - lm[9].y), zt = W[4].z;
+  for (const [a, b] of COVER) {
+    const ax = lm[a].x * aspect, ay = lm[a].y, dx = lm[b].x * aspect - ax, dy = lm[b].y - ay;
+    const t = clamp(((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy || 1e-9), 0, 1);
+    if (Math.hypot(px - ax - dx * t, py - ay - dy * t) < r && zt - lerp(W[a].z, W[b].z, t) > 0.3 * palm) return true;
+  }
+  return false;
 }
 function assignSlots(feats) {
   const L = HT.slot.L, R = HT.slot.R, cal = HT.cal || CAL_STD, out = [];
@@ -112,9 +129,13 @@ function htIngest(dets, t) {
     const ox = s.x, oy = s.y, fdt = clamp(t - s.tPrev, 0.005, 0.2); s.tPrev = t;
     s.x = s.fx.f(f.x, t, mc, 5); s.y = s.fy.f(f.y, t, mc, 5); s.z = s.fz.f(f.z, t, lerp(1.8, 0.3, HT.tune.zsteady), 2.5); // palm size is the noisier signal, so it is smoothed harder
     s.v = back ? 0 : lerp(s.v, Math.hypot(s.x - ox, s.y - oy) / fdt, 0.4);
-    s.ap = lerp(s.ap, f.ap, 0.6); s.opn = lerp(s.opn, f.opn, 0.5);
+    s.apRaw = back ? f.ap : lerp(s.apRaw, f.ap, 0.6); s.opn = lerp(s.opn, f.opn, 0.5); s.edge = f.edge; if (f.edge) s.edgeLast = f.edge;
+    s.flat = s.flat ? s.opn > th.flatOff && s.apRaw > th.on : s.opn > th.flatOn && s.apRaw > th.off; // open, flat hand = clutch
+    // Thumb out of sight: the grip keeps its last state until the thumb can be seen again. An open flat hand is plain
+    // to see whatever the thumb is doing, so the clutch always works and clears a held grip.
+    s.hid = HT.tune.ghold > 0.5 && !f.vis && !s.flat;
+    if (!s.hid) s.ap = lerp(s.ap, f.ap, 0.6);
     if (!s.pinch && s.ap < th.on) s.pinch = true; else if (s.pinch && s.ap > th.off) s.pinch = false;
-    s.flat = s.flat ? s.opn > th.flatOff && s.ap > th.on : s.opn > th.flatOn && s.ap > th.off; // open, flat hand = clutch
   }
 }
 const htFresh = s => HT.clock - s.tSeen < 0.3;
@@ -177,13 +198,13 @@ function htRelease() { for (const h of HANDS) { const s = HT.slot[h.key]; if (s.
 // Direction: the user shows which way is right, up and forward, so any camera angle works (lid upright or tilted
 // down at the hands). Gestures: the user's own pinch, working grip and flat hand set the thresholds.
 const CAL_STEPS = [
-  { id: 'hands', title: 'Show both hands', text: 'Hold both hands still where you plan to work, inside the camera view.' },
-  { id: 'right', title: 'Move your right hand to the right', text: 'Slide your right hand about a hand-width to your right, then hold it still. Keep the left hand where it is.' },
-  { id: 'up', title: 'Now lift that hand', text: 'Raise the same hand about a hand-width, straight up, then hold it still.' },
-  { id: 'fwd', title: 'Now push it forward', text: 'Push the same hand away from you, toward the screen, about a hand-length, then hold it still. This is the direction that drives an instrument in.' },
-  { id: 'pinch', title: 'Pinch', text: 'With the right hand, pinch your thumb against your first two fingers and hold.' },
-  { id: 'grip', title: 'Relax into your working grip', text: 'Let the thumb come just off the fingertips, with the other fingers loosely curled, as if holding the controls. Hold still.' },
-  { id: 'flat', title: 'Open the hand flat', text: 'Straighten all the fingers and spread the hand. This is the clutch: it freezes that instrument until you curl the hand again.' }
+  { id: 'hands', pose: 'grip', title: 'Show both hands in your working grip', text: 'Hold each hand as if loosely holding a small ball: thumb opposite the first two fingers with a clear gap between them, ring and little fingers curled into the palm. Turn the hands so the camera can see each thumb and both fingertips, then hold them still where you plan to work.' },
+  { id: 'right', pose: 'grip', title: 'Move your right hand to the right', text: 'Slide your right hand about a hand-width to your right, then hold it still. Keep the left hand where it is.' },
+  { id: 'up', pose: 'grip', title: 'Now lift that hand', text: 'Raise the same hand about a hand-width, straight up, then hold it still.' },
+  { id: 'fwd', pose: 'grip', title: 'Now push it forward', text: 'Push the same hand away from you, toward the screen, about a hand-length, then hold it still. This is the direction that drives an instrument in.' },
+  { id: 'pinch', pose: 'pinch', title: 'Pinch', text: 'With the right hand, bring your thumb onto your first two fingertips and hold. Keep the pinch where the camera can see it.' },
+  { id: 'grip', pose: 'grip', title: 'Relax into your working grip', text: 'Open the thumb away from the fingertips again, as if loosely holding a small ball, with the ring and little fingers still curled. Hold still.' },
+  { id: 'flat', pose: 'flat', title: 'Open the hand flat', text: 'Straighten all the fingers and spread the hand. This is the clutch: it freezes that instrument until you curl the hand again.' }
 ];
 function calibStart() {
   htRelease();
@@ -213,6 +234,10 @@ function calibIngest(feats, t) {
   // a noisy frame drains the hold a little and does not restart it
   const holdFor = (ok, need) => { C.hold = ok ? C.hold + dt : Math.max(0, C.hold - 2 * dt); if (C.hold === 0) C.acc = [0, 0, 0]; return C.hold >= need; };
   if (step === 'hands') {
+    const two = feats.length >= 2 ? [feats[0], feats[1]] : [];
+    if (two.some(f => !f.vis)) C.note = 'I can\'t see a thumb. Turn that hand so the thumb and first two fingertips face the camera.';
+    else if (two.some(f => f.edge)) C.note = 'A hand is at the edge of the camera\'s view. Bring your hands toward the middle, or move the camera.';
+    else if (two.some(f => f.opn > 1.75)) C.note = 'Curl the ring and little fingers into the palm.';
     C.prog = clamp(C.hold / 0.8, 0, 1);
     if (holdFor(still(C.tr[0]) && still(C.tr[1]), 0.8)) { C.p0 = [P3(C.tr[0]), P3(C.tr[1])]; advance(); }
     return;
@@ -369,7 +394,48 @@ function drawPreview(cv) {
   for (const f of HT.dets) {
     const X = p => (1 - p.x) * W, Y = p => p.y * H; c.strokeStyle = c.fillStyle = col(f); c.lineWidth = 1.5 * pr;
     c.beginPath(); for (const [a, b] of HAND_BONES) { c.moveTo(X(f.lm[a]), Y(f.lm[a])); c.lineTo(X(f.lm[b]), Y(f.lm[b])); } c.stroke();
-    for (const i of [4, 8, 12]) { c.beginPath(); c.arc(X(f.lm[i]), Y(f.lm[i]), 3 * pr, 0, TAU); c.fill(); }
+    // the pinch as the tracker reads it: thumb tip, first two fingertips, and the gap between them
+    const near = Math.hypot(f.lm[4].x - f.lm[8].x, f.lm[4].y - f.lm[8].y) <= Math.hypot(f.lm[4].x - f.lm[12].x, f.lm[4].y - f.lm[12].y) ? 8 : 12;
+    if (f.vis) {
+      c.strokeStyle = c.fillStyle = '#ffffff'; c.lineWidth = 1.2 * pr; c.beginPath(); c.moveTo(X(f.lm[4]), Y(f.lm[4])); c.lineTo(X(f.lm[near]), Y(f.lm[near])); c.stroke();
+      for (const i of [4, 8, 12]) { c.beginPath(); c.arc(X(f.lm[i]), Y(f.lm[i]), 3.2 * pr, 0, TAU); c.fill(); }
+    } else {
+      c.strokeStyle = '#f0b24a'; c.lineWidth = 1.5 * pr; for (const i of [4, 8, 12]) { c.beginPath(); c.arc(X(f.lm[i]), Y(f.lm[i]), 4 * pr, 0, TAU); c.stroke(); }
+      c.fillStyle = '#f0b24a'; c.font = '600 ' + 11 * pr + 'px "IBM Plex Sans", system-ui, sans-serif'; c.textAlign = 'center'; c.fillText('thumb hidden', clamp(X(f.lm[9]), 40 * pr, W - 40 * pr), clamp(Y(f.lm[0]) + 14 * pr, 12 * pr, H - 4 * pr)); c.textAlign = 'left';
+    }
+    if (f.edge) { // a bar along the side of the view this hand is about to leave by
+      c.fillStyle = '#f0b24a'; const t = 4 * pr;
+      if (f.edge === 'bottom') c.fillRect(0, H - t, W, t); else if (f.edge === 'top') c.fillRect(0, 0, W, t); else if (f.edge === 'left') c.fillRect(0, 0, t, H); else c.fillRect(W - t, 0, t, H);
+    }
+  }
+}
+// A small drawing of the pose a calibration step asks for: a right hand, palm toward the camera.
+const POSE = (() => {
+  const base = { 0: [0.5, 0.95], 5: [0.4, 0.58], 9: [0.5, 0.55], 13: [0.59, 0.58], 17: [0.67, 0.64] };
+  const open = Object.assign({ 1: [0.38, 0.86], 2: [0.28, 0.74], 3: [0.21, 0.62], 4: [0.16, 0.5], 6: [0.37, 0.42], 7: [0.36, 0.31], 8: [0.35, 0.21], 10: [0.5, 0.38], 11: [0.5, 0.26], 12: [0.5, 0.15],
+    14: [0.61, 0.43], 15: [0.62, 0.32], 16: [0.63, 0.23], 18: [0.71, 0.52], 19: [0.73, 0.44], 20: [0.75, 0.37] }, base);
+  const curled = { 14: [0.62, 0.48], 15: [0.6, 0.56], 16: [0.57, 0.63], 18: [0.7, 0.56], 19: [0.67, 0.62], 20: [0.64, 0.68] };
+  const grip = Object.assign({ 1: [0.38, 0.85], 2: [0.28, 0.75], 3: [0.24, 0.62], 4: [0.27, 0.5], 6: [0.38, 0.44], 7: [0.4, 0.35], 8: [0.43, 0.29], 10: [0.5, 0.4], 11: [0.51, 0.31], 12: [0.53, 0.26] }, curled, base);
+  const pinch = Object.assign({ 1: [0.38, 0.85], 2: [0.3, 0.73], 3: [0.33, 0.58], 4: [0.42, 0.4], 6: [0.39, 0.45], 7: [0.42, 0.38], 8: [0.45, 0.35], 10: [0.5, 0.42], 11: [0.5, 0.36], 12: [0.49, 0.335] }, curled, base);
+  return { grip, pinch, flat: open };
+})();
+function drawPose(cv, name) {
+  const r = cv.getBoundingClientRect(); if (r.width < 4) return;
+  const pr = Math.min(window.devicePixelRatio || 1, 2), W = Math.round(r.width * pr), H = Math.round(r.height * pr);
+  if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+  const c = cv.getContext('2d'); c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, W, H);
+  const P = POSE[name] || POSE.grip, S0 = Math.min(W, H) * 1.12, ox = (W - S0) / 2 + S0 * 0.04, oy = (H - S0) / 2 - S0 * 0.06, X = i => ox + P[i][0] * S0, Y = i => oy + P[i][1] * S0;
+  c.lineCap = c.lineJoin = 'round';
+  c.fillStyle = 'rgba(240,178,74,0.22)'; c.beginPath(); [0, 1, 5, 9, 13, 17].forEach((i, k) => (k ? c.lineTo(X(i), Y(i)) : c.moveTo(X(i), Y(i)))); c.closePath(); c.fill();
+  const work = name === 'flat' ? [] : [[1, 2], [2, 3], [3, 4], [5, 6], [6, 7], [7, 8], [9, 10], [10, 11], [11, 12]];
+  for (const [a, b] of HAND_BONES) {
+    const hot = work.some(w => w[0] === a && w[1] === b);
+    c.strokeStyle = hot || name === 'flat' ? '#f0b24a' : 'rgba(240,178,74,0.5)'; c.lineWidth = (hot || name === 'flat' ? 6 : 5) * pr;
+    c.beginPath(); c.moveTo(X(a), Y(a)); c.lineTo(X(b), Y(b)); c.stroke();
+  }
+  if (name !== 'flat') {
+    c.fillStyle = '#ffffff'; for (const i of [4, 8, 12]) { c.beginPath(); c.arc(X(i), Y(i), 3.6 * pr, 0, TAU); c.fill(); }
+    if (name === 'grip') { c.setLineDash([3 * pr, 3 * pr]); c.strokeStyle = '#ffffff'; c.lineWidth = 1.4 * pr; c.beginPath(); c.moveTo(X(4), Y(4)); c.lineTo(X(8), Y(8)); c.stroke(); c.setLineDash([]); }
   }
 }
 let htUiT = 0;
@@ -384,8 +450,8 @@ function htRenderUI(dt, time) {
   $('htStatus').className = 'ht-status' + (st === 'error' ? ' err' : '');
   if (st === 'ready') {
     for (const k of ['L', 'R']) {
-      const s = HT.slot[k], e = $('ht' + k), txt = !htFresh(s) ? 'no hand' : s.clutch ? 'on hold' : !s.engaged ? 'ready' : s.pinch ? 'pinched' : 'tracking';
-      e.textContent = (k === 'L' ? 'Left: ' : 'Right: ') + txt; e.className = 'chip ' + (!htFresh(s) ? 'no' : s.clutch ? '' : 'ok');
+      const s = HT.slot[k], e = $('ht' + k), txt = !htFresh(s) ? 'no hand' : s.clutch ? 'on hold' : !s.engaged ? 'ready' : s.hid ? 'thumb hidden, grip held' : s.edge ? 'near the edge of view' : s.pinch ? 'pinched' : 'tracking';
+      e.textContent = (k === 'L' ? 'Left: ' : 'Right: ') + txt; e.className = 'chip ' + (!htFresh(s) ? 'no' : s.clutch || s.hid || s.edge ? '' : 'ok');
     }
     drawPreview($('camPrev'));
   }
@@ -399,6 +465,8 @@ function htRenderUI(dt, time) {
     $('calStd').hidden = st !== 'calibrating'; $('calRedo').hidden = st !== 'calibrating' || !C || C.i === 0; $('calRetry').hidden = st !== 'error';
     if (st !== 'calibrating') $('calSaved').hidden = true;
     drawPreview($('calCanvas'));
+    $('calPoseWrap').hidden = !cs || st !== 'calibrating';
+    if (cs && st === 'calibrating') { drawPose($('calPose'), cs.pose); $('calPoseCap').textContent = cs.pose === 'pinch' ? 'Thumb on the first two fingertips' : cs.pose === 'flat' ? 'All fingers straight and spread' : 'Working grip: a gap between thumb and fingertips, last two fingers curled'; }
   }
 }
 function htWire() {
@@ -407,6 +475,7 @@ function htWire() {
   sl('tGain', 'gain', v => v / 10, v => Math.round(v * 10)); sl('tSmooth', 'smooth', v => v / 100, v => Math.round(v * 100));
   sl('tZGain', 'zgain', v => v / 100, v => Math.round(v * 100)); sl('tZSteady', 'zsteady', v => v / 100, v => Math.round(v * 100));
   sl('tPinch', 'pinch', v => v / 100, v => Math.round(v * 100)); sl('tOpen', 'open', v => v / 100, v => Math.round(v * 100));
+  { const b = $('btnGhold'), sync = () => { b.classList.toggle('on', HT.tune.ghold > 0.5); b.setAttribute('aria-pressed', HT.tune.ghold > 0.5 ? 'true' : 'false'); }; b.addEventListener('click', () => { HT.tune.ghold = HT.tune.ghold > 0.5 ? 0 : 1; sync(); try { localStorage.setItem(TUNE_KEY, JSON.stringify(HT.tune)); } catch (_) {} }); sync(); }
   $('btnHands').addEventListener('click', () => (HT.status === 'off' || HT.status === 'error' ? htEnable() : htDisable()));
   $('htOn').addEventListener('click', htEnable); $('htOff').addEventListener('click', htDisable); $('htRecal').addEventListener('click', htOpenCalib);
   $('calStd').addEventListener('click', () => calibFinish(true)); $('calRedo').addEventListener('click', calibStart);

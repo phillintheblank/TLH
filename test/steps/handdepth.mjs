@@ -6,7 +6,8 @@ export default async function (page) {
   const ev = (fn, a) => page.evaluate(fn, a), CAM = process.env.CAM || 'upright';
   let fails = 0; const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) fails++; };
   await installHandDriver(page, CAM);
-  await ev(() => { window.__simPause = true; window.__sim.HT.sim = true; window.__drv.noise = 0.004; });
+  // these checks are of the bare hand-to-tip mapping and contact, so depth assist and target lock are off (assist.mjs covers them)
+  await ev(() => { window.__simPause = true; const s = window.__sim; s.HT.sim = true; s.DEPTH.assist = false; s.DEPTH.prio = false; window.__drv.noise = 0.004; });
   await page.click('#btnBeginHands');
   const cal = await calibrate(page);
   ok(cal.status === 'ready' && cal.running, 'calibration with a forward step completes under jitter ' + JSON.stringify({ r: cal.r, u: cal.u, f: cal.f, fail: cal.fail, note: cal.note }));
@@ -17,7 +18,7 @@ export default async function (page) {
     window.__cf = k => { const c = S.camera, h = S.HAND[k], R = new T3.Vector3().setFromMatrixColumn(c.matrixWorld, 0), U = new T3.Vector3().setFromMatrixColumn(c.matrixWorld, 1), F = c.getWorldDirection(new T3.Vector3()), v = h.port.clone().addScaledVector(h.dir, h.ins).sub(c.position); return [v.dot(R), v.dot(U), v.dot(F)]; };
     window.__mv = (k, a, b, c, n) => { const d = window.__drv, p = window.__cf(k); for (let i = 0; i < n; i++) { d.move(k, a / n, b / n, c / n); d.step(1); } d.step(14); const q = window.__cf(k); return [q[0] - p[0], q[1] - p[1], q[2] - p[2]]; };
     // start both tips well clear of tissue
-    for (const k of ['L', 'R']) { const h = S.HAND[k]; h.ins = 7; } window.__drv.step(10);
+    for (const k of ['L', 'R']) { const h = S.HAND[k]; h.ins = 10.5; } window.__drv.step(10);
   });
   const f2 = a => a.map(v => +v.toFixed(2));
   let d = await ev(() => window.__mv('R', 0.06, 0, 0, 12));
