@@ -22,7 +22,9 @@ const errs = [];
 page.on('console', m => { if ((m.type() === 'error' || m.type() === 'warning') && !/GPU stall|WebGL-|GroupMarkerNotSet/.test(m.text())) errs.push(m.type() + ': ' + m.text()); });
 page.on('pageerror', e => errs.push('pageerror: ' + e.message + '\n' + (e.stack || '').split('\n').slice(0, 4).join('\n')));
 await page.route('**/fonts.googleapis.com/**', r => r.fulfill({ contentType: 'text/css', body: '' }));
-await page.goto(url);
+// Software rendering is slow, so the page's own frame loop stays paused unless LIVE=1; scripts drive tick() and render().
+if (!process.env.LIVE) await page.addInitScript(() => { window.__simPause = true; });
+await page.goto(url + (process.env.PAGE || '') + (process.env.QUERY ? '?' + process.env.QUERY : ''));
 await page.waitForTimeout(1500);
 let code = 0;
 try { if (script) { const fn = (await import(path.resolve(script))).default; await fn(page); } }

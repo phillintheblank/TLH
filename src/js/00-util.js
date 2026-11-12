@@ -2,6 +2,7 @@
 const TAU = Math.PI * 2, DEG = Math.PI / 180;
 const V3 = THREE.Vector3;
 const V = (x, y, z) => new V3(x, y, z);
+const V2 = THREE.Vector2;
 const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
 const lerp = (a, b, t) => a + (b - a) * t;
 const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
@@ -60,82 +61,6 @@ function fbm3(x, y, z, oct) {
   return s / n;
 }
 
-// ---------- procedural textures ----------
-function drawVessel(g, S, R, x, y, ang, w, depth, col) {
-  const pts = [[x, y]];
-  const steps = Math.floor((24 + R() * 80) * Math.min(1.6, w / 1.4) / 6) + 3;
-  let a = ang, cx = x, cy = y;
-  for (let i = 0; i < steps; i++) {
-    a += (R() - 0.5) * 0.75;
-    cx += Math.cos(a) * 6; cy += Math.sin(a) * 6;
-    pts.push([cx, cy]);
-    if (depth > 0 && R() < 0.2) drawVessel(g, S, R, cx, cy, a + (R() < 0.5 ? 1 : -1) * (0.45 + R() * 0.7), w * 0.62, depth - 1, col);
-  }
-  g.lineWidth = w; g.strokeStyle = col; g.lineCap = 'round'; g.lineJoin = 'round';
-  for (let ox = -S; ox <= S; ox += S) for (let oy = -S; oy <= S; oy += S) {
-    g.beginPath();
-    g.moveTo(pts[0][0] + ox, pts[0][1] + oy);
-    for (let i = 1; i < pts.length; i++) g.lineTo(pts[i][0] + ox, pts[i][1] + oy);
-    g.stroke();
-  }
-}
-function tissueTex(o) {
-  const S = o.size || 512, per = o.per || 4;
-  const cv = document.createElement('canvas'); cv.width = cv.height = S;
-  const g = cv.getContext('2d');
-  const img = g.createImageData(S, S), d = img.data;
-  const B = o.base, D = o.dark || o.base, F = o.fat;
-  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
-    const u = (x / S) * per, v = (y / S) * per;
-    const wx = (pfbm(u + 1.7, v + 9.2, per, 3, o.seed + 33) - 0.5) * 1.6, wy = (pfbm(u + 5.2, v + 1.3, per, 3, o.seed + 57) - 0.5) * 1.6;
-    const n = pfbm(u + wx * 0.5, v + wy * 0.5, per, 5, o.seed);
-    const t = sstep(0.3, 0.72, n) * (o.mottle == null ? 1 : o.mottle);
-    let r = lerp(B[0], D[0], t), gg = lerp(B[1], D[1], t), b = lerp(B[2], D[2], t);
-    if (F) {
-      const n2 = pfbm((u + wx) * 2 + 3, (v + wy) * 2 + 7, per * 2, 4, o.seed + 91);
-      const f = sstep(o.fatTh || 0.56, (o.fatTh || 0.56) + 0.16, n2) * (o.fatAmt || 0.7);
-      r = lerp(r, F[0], f); gg = lerp(gg, F[1], f); b = lerp(b, F[2], f);
-    }
-    if (o.stripe) { const k = Math.exp(-Math.pow(((x / S + 0.5) % 1 - 0.5) / 0.05, 2)) * 0.5; r = lerp(r, 240, k); gg = lerp(gg, 205, k); b = lerp(b, 196, k); }
-    const gr = (hashI(x, y, o.seed + 5) - 0.5) * 9;
-    const i = (y * S + x) * 4;
-    d[i] = clamp(r + gr, 0, 255); d[i + 1] = clamp(gg + gr, 0, 255); d[i + 2] = clamp(b + gr, 0, 255); d[i + 3] = 255;
-  }
-  g.putImageData(img, 0, 0);
-  if (o.vessels) {
-    const R = prng(o.seed * 7 + 3);
-    for (let k = 0; k < o.vessels; k++) {
-      drawVessel(g, S, R, R() * S, R() * S, R() * TAU, (o.vw || 1.6) * (0.5 + R()), 3, o.vcol || 'rgba(120,22,38,0.5)');
-    }
-    if (o.veins) for (let k = 0; k < o.veins; k++) {
-      drawVessel(g, S, R, R() * S, R() * S, R() * TAU, 1.8 * (0.6 + R()), 2, 'rgba(70,50,120,0.28)');
-    }
-  }
-  const tex = new THREE.CanvasTexture(cv);
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.encoding = THREE.sRGBEncoding; tex.anisotropy = 4;
-  return tex;
-}
-function bumpTex(seed, per, S) {
-  S = S || 256;
-  const cv = document.createElement('canvas'); cv.width = cv.height = S;
-  const g = cv.getContext('2d'), img = g.createImageData(S, S), d = img.data;
-  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
-    const n = pfbm((x / S) * per, (y / S) * per, per, 5, seed);
-    const c = clamp(n * 255, 0, 255), i = (y * S + x) * 4;
-    d[i] = d[i + 1] = d[i + 2] = c; d[i + 3] = 255;
-  }
-  g.putImageData(img, 0, 0);
-  const tex = new THREE.CanvasTexture(cv); tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  return tex;
-}
-function dotTex(inner, outer) {
-  const S = 64, cv = document.createElement('canvas'); cv.width = cv.height = S;
-  const g = cv.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-  gr.addColorStop(0, inner); gr.addColorStop(1, outer);
-  g.fillStyle = gr; g.fillRect(0, 0, S, S);
-  return new THREE.CanvasTexture(cv);
-}
-
 // ---------- geometry helpers ----------
 // uniform Catmull-Rom through ctrl points, written into preallocated array `out`
 function spline(ctrl, out) {
@@ -166,7 +91,7 @@ const BIG_SPHERE = () => new THREE.Sphere(new V3(), 1e4);
 class Tube {
   constructor(n, m, mat, uvU, uvV) {
     this.n = n; this.m = m; const cols = m + 1, count = n * cols;
-    this.pos = new Float32Array(count * 3); this.nor = new Float32Array(count * 3); this.col = new Float32Array(count * 3).fill(1);
+    this.pos = new Float32Array(count * 3); this.nor = new Float32Array(count * 3); this.col = new Float32Array(count * 3).fill(1); this.dry = new Float32Array(count);
     const uv = new Float32Array(count * 2), idx = [];
     for (let i = 0; i < n; i++) for (let j = 0; j < cols; j++) { uv[(i * cols + j) * 2] = (j / m) * (uvU || 1); uv[(i * cols + j) * 2 + 1] = (i / (n - 1)) * (uvV || 3); }
     for (let i = 0; i < n - 1; i++) for (let j = 0; j < m; j++) { const a = i * cols + j, b = a + 1, c = a + cols, d = c + 1; idx.push(a, b, c, b, d, c); }
@@ -174,13 +99,14 @@ class Tube {
     g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
     g.setAttribute('normal', new THREE.BufferAttribute(this.nor, 3));
     g.setAttribute('color', new THREE.BufferAttribute(this.col, 3));
+    g.setAttribute('dry', new THREE.BufferAttribute(this.dry, 1));
     g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     g.setIndex(idx); g.boundingSphere = BIG_SPHERE();
     this.geo = g; this.mesh = new THREE.Mesh(g, mat); this.mesh.frustumCulled = false;
     this.pts = vecArr(n); this.ua = 0; this.ub = 1; this.on = true;
-    this._T = new V3(); this._N = new V3(); this._B = new V3(); this._c = [1, 1, 1];
+    this._T = new V3(); this._N = new V3(); this._B = new V3(); this._c = [1, 1, 1, 0];
   }
-  // A: samples for u in [0,1]; radFn(u)->radius; colFn(u, c[3]) optional; flat: optional {k} second-axis scale
+  // A: samples for u in [0,1]; radFn(u)->radius; colFn(u, c) optional, c = [r, g, b, dry]; flatK: second-axis scale
   set(A, ua, ub, radFn, colFn, flatK) {
     this.ua = ua; this.ub = ub;
     if (!this.on || ub - ua < 0.004) { this.mesh.visible = false; return; }
@@ -194,17 +120,17 @@ class Tube {
       N.addScaledVector(T, -N.dot(T)).normalize();
       B.crossVectors(T, N);
       const u = ua + ((ub - ua) * i) / (n - 1), r = radFn(u), rb = r * (flatK || 1);
-      if (colFn) colFn(u, c); else { c[0] = c[1] = c[2] = 1; }
+      c[3] = 0; if (colFn) colFn(u, c); else { c[0] = c[1] = c[2] = 1; }
       for (let j = 0; j < cols; j++) {
         const ph = (j / m) * TAU, cs = Math.cos(ph), sn = Math.sin(ph), k = (i * cols + j) * 3;
         this.pos[k] = P[i].x + N.x * cs * r + B.x * sn * rb;
         this.pos[k + 1] = P[i].y + N.y * cs * r + B.y * sn * rb;
         this.pos[k + 2] = P[i].z + N.z * cs * r + B.z * sn * rb;
         this.nor[k] = N.x * cs + B.x * sn; this.nor[k + 1] = N.y * cs + B.y * sn; this.nor[k + 2] = N.z * cs + B.z * sn;
-        this.col[k] = c[0]; this.col[k + 1] = c[1]; this.col[k + 2] = c[2];
+        this.col[k] = c[0]; this.col[k + 1] = c[1]; this.col[k + 2] = c[2]; this.dry[k / 3] = c[3];
       }
     }
-    const at = this.geo.attributes; at.position.needsUpdate = true; at.normal.needsUpdate = true; at.color.needsUpdate = true;
+    const at = this.geo.attributes; at.position.needsUpdate = true; at.normal.needsUpdate = true; at.color.needsUpdate = true; at.dry.needsUpdate = true;
   }
   uAt(vi) { return this.ua + ((this.ub - this.ua) * Math.floor(vi / (this.m + 1))) / (this.n - 1); }
 }
@@ -212,27 +138,28 @@ class Tube {
 class Strip {
   constructor(ns, nt, mat, uvS, uvT) {
     this.ns = ns; this.nt = nt; const count = ns * nt;
-    this.pos = new Float32Array(count * 3); this.col = new Float32Array(count * 3).fill(1);
+    this.pos = new Float32Array(count * 3); this.col = new Float32Array(count * 3).fill(1); this.dry = new Float32Array(count);
     const uv = new Float32Array(count * 2), idx = [];
     for (let j = 0; j < nt; j++) for (let i = 0; i < ns; i++) { uv[(j * ns + i) * 2] = (i / (ns - 1)) * (uvS || 1); uv[(j * ns + i) * 2 + 1] = (j / (nt - 1)) * (uvT || 1); }
     for (let j = 0; j < nt - 1; j++) for (let i = 0; i < ns - 1; i++) { const a = j * ns + i, b = a + 1, c = a + ns, d = c + 1; idx.push(a, b, c, b, d, c); }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
     g.setAttribute('color', new THREE.BufferAttribute(this.col, 3));
+    g.setAttribute('dry', new THREE.BufferAttribute(this.dry, 1));
     g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     g.setIndex(idx); g.boundingSphere = BIG_SPHERE();
     this.geo = g; this.mesh = new THREE.Mesh(g, mat); this.mesh.frustumCulled = false;
-    this._p = new V3(); this._c = [1, 1, 1]; this.map = null; // map(s,t)->[u,v] for picking
+    this._p = new V3(); this._c = [1, 1, 1, 0]; this.map = null; // map(s,t)->[u,v] for picking
   }
   update(fn) {
-    const { ns, nt, pos, col, _p: p, _c: c } = this;
+    const { ns, nt, pos, col, dry, _p: p, _c: c } = this;
     for (let j = 0; j < nt; j++) for (let i = 0; i < ns; i++) {
-      c[0] = c[1] = c[2] = 1;
+      c[0] = c[1] = c[2] = 1; c[3] = 0;
       fn(i / (ns - 1), j / (nt - 1), p, c);
       const k = (j * ns + i) * 3;
-      pos[k] = p.x; pos[k + 1] = p.y; pos[k + 2] = p.z; col[k] = c[0]; col[k + 1] = c[1]; col[k + 2] = c[2];
+      pos[k] = p.x; pos[k + 1] = p.y; pos[k + 2] = p.z; col[k] = c[0]; col[k + 1] = c[1]; col[k + 2] = c[2]; dry[j * ns + i] = c[3];
     }
-    this.geo.attributes.position.needsUpdate = true; this.geo.attributes.color.needsUpdate = true;
+    this.geo.attributes.position.needsUpdate = true; this.geo.attributes.color.needsUpdate = true; this.geo.attributes.dry.needsUpdate = true;
     this.geo.computeVertexNormals();
   }
   stAt(vi) { return [(vi % this.ns) / (this.ns - 1), Math.floor(vi / this.ns) / (this.nt - 1)]; }

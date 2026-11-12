@@ -10,6 +10,7 @@
   },
   "devDependencies": {
     "@mediapipe/tasks-vision": "1.1.1",
-    "three": "0.128.0"
+    "esbuild": "^0.25.12",
+    "three": "0.187.0"
   }
 }

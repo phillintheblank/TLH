@@ -47,9 +47,9 @@ const relaxedPose = s => ({ yaw: 0.36 * s, pitch: PITCH0, push: 0 });
 function lerpPose(a, b, t, o) { o.yaw = lerp(a.yaw, b.yaw, t); o.pitch = lerp(a.pitch, b.pitch, t); o.push = lerp(a.push, b.push, t); return o; }
 
 const COL = {
-  lig: C(200, 106, 110), tube: C(218, 122, 126), fim: C(186, 54, 66), uo: C(208, 130, 126), ip: C(176, 100, 124),
-  art: C(200, 40, 42), vein: C(98, 84, 154), ureter: C(222, 158, 142), usl: C(190, 100, 98),
-  iliacA: C(206, 92, 88), iliacV: C(150, 108, 142), fold: C(210, 132, 114),
+  lig: C(214, 150, 140), tube: C(222, 152, 146), fim: C(190, 70, 80), uo: C(214, 150, 140), ip: C(190, 120, 130),
+  art: C(186, 66, 62), vein: C(112, 100, 152), ureter: C(232, 204, 184), usl: C(200, 128, 120),
+  iliacA: C(204, 112, 102), iliacV: C(146, 116, 146), fold: C(210, 132, 114),
   seal: C(238, 218, 186), char: C(128, 84, 58), edge: C(150, 96, 80)
 };
 const SIDEK = {};
@@ -157,7 +157,7 @@ const AN = { side: {} };
     bowlPoint(Math.cos(th), Math.sin(th), z, 0, p);
     const up = Math.sin(th), deep = sstep(2, -8, z);
     c[0] = 1 - 0.1 * deep; c[1] = (1 + 0.1 * Math.max(0, up)) * (1 - 0.16 * deep); c[2] = (1 - 0.06 * Math.max(0, up)) * (1 - 0.16 * deep);
-  }, { closedU: true, su: 5, sv: 7 });
+  }, { closedU: true, su: 6, sv: 5 });
   AN.bowl = reg(new THREE.Mesh(g, MAT.perit), 'wall');
   scene.add(AN.bowl);
 })();
@@ -230,7 +230,7 @@ UT.g.matrixAutoUpdate = false; scene.add(UT.g);
     UT.g.add(t.mesh);
   }
   // colpotomy cup (visible once the uterus is free) and colpotomy cut segments
-  const cup = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 1.6, 1.0, 40, 1, true), new THREE.MeshStandardMaterial({ color: 0x7db4d8, roughness: 0.38, metalness: 0.05, side: THREE.DoubleSide, envMap: ENV, envMapIntensity: 0.6 }));
+  const cup = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 1.6, 1.0, 40, 1, true), new THREE.MeshStandardMaterial({ color: 0x7db4d8, roughness: 0.38, metalness: 0.05, side: THREE.DoubleSide, envMapIntensity: 0.6 }));
   cup.position.y = -0.22; UT.g.add(cup);
   const cap = new THREE.Mesh(new THREE.CircleGeometry(1.7, 32), new THREE.MeshStandardMaterial({ color: 0xc66a74, roughness: 0.6 }));
   cap.rotation.x = Math.PI / 2; cap.position.y = 0.26; UT.g.add(cap);

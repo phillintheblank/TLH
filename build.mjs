@@ -11,9 +11,14 @@ fs.writeFileSync(path.join(out, 'index.html'), html);
 fs.writeFileSync(path.join(out, '.nojekyll'), '');
 const copy = (from, to) => { if (!fs.existsSync(from)) return false; fs.mkdirSync(path.dirname(to), { recursive: true }); fs.copyFileSync(from, to); return true; };
 const nm = path.join(root, 'node_modules'), mp = path.join(nm, '@mediapipe/tasks-vision');
-copy(path.join(nm, 'three/build/three.min.js'), path.join(out, 'vendor/three.min.js'));
+// three.js ships as two unminified ES modules; bundle and minify them into one file
+try {
+  const esbuild = await import('esbuild');
+  await esbuild.build({ entryPoints: [path.join(nm, 'three/build/three.module.js')], bundle: true, format: 'esm', minify: true, legalComments: 'inline', outfile: path.join(out, 'vendor/three.module.min.js'), logLevel: 'warning' });
+} catch (e) { console.log('three.js bundle failed: ' + e.message); }
+fs.rmSync(path.join(out, 'vendor/three.min.js'), { force: true });
 copy(path.join(mp, 'vision_bundle.mjs'), path.join(out, 'vendor/mediapipe/vision_bundle.mjs'));
 for (const f of ['vision_wasm_internal.js', 'vision_wasm_internal.wasm', 'vision_wasm_nosimd_internal.js', 'vision_wasm_nosimd_internal.wasm']) copy(path.join(mp, 'wasm', f), path.join(out, 'vendor/mediapipe/wasm', f));
 copy(path.join(root, 'models/hand_landmarker.task'), path.join(out, 'models/hand_landmarker.task'));
-const need = ['vendor/three.min.js', 'vendor/mediapipe/vision_bundle.mjs', 'vendor/mediapipe/wasm/vision_wasm_internal.wasm', 'models/hand_landmarker.task'].filter(f => !fs.existsSync(path.join(out, f)));
+const need = ['vendor/three.module.min.js', 'vendor/mediapipe/vision_bundle.mjs', 'vendor/mediapipe/wasm/vision_wasm_internal.wasm', 'models/hand_landmarker.task'].filter(f => !fs.existsSync(path.join(out, f)));
 console.log('built docs/index.html', (html.length / 1024).toFixed(1) + ' KiB' + (need.length ? '  MISSING: ' + need.join(', ') : ''));

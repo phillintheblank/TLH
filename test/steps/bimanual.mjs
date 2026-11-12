@@ -40,7 +40,7 @@ export default async function (page) {
     d.hands.R.ap = 0.14; let frames = 0; while (frames < 120 && S.next() && S.next().act === 'seal') { d.step(1); frames++; }
     const sealed = S.S.side.R.round.seals.length, stillHolding = !!(S.HAND.L.grab && S.HAND.L.grab.pull);
     d.hands.R.ap = 0.62; d.step(14); d.hands.R.ap = 0.14; d.step(5); d.hands.R.ap = 0.62; d.step(10);
-    return { m1, m2, m3, entL, grabbed, pull: +pull.toFixed(2), sealed, stillHolding, cut: S.S.side.R.round.cut, tipMoved: +S.HAND.L.tip.distanceTo(new THREE.Vector3(...tipBefore)).toFixed(2), traction: S.S.stats.traction, unsealed: S.S.stats.unsealedCuts };
+    return { m1, m2, m3, entL, grabbed, pull: +pull.toFixed(2), sealed, stillHolding, cut: S.S.side.R.round.cut, tipMoved: +S.HAND.L.tip.distanceTo(new S.THREE.Vector3(...tipBefore)).toFixed(2), traction: S.S.stats.traction, unsealed: S.S.stats.unsealedCuts };
   });
   check('left hand grasps the tube and holds traction', r.grabbed && r.pull > 0.5 && r.entL === 'tube', r);
   check('right hand seals while the left keeps holding', r.sealed === 1 && r.stillHolding, { sealed: r.sealed, holding: r.stillHolding });

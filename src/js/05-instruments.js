@@ -7,10 +7,10 @@ const INST = {
   needle: { name: 'Needle driver, barbed suture', short: 'Needle driver', key: '5', use: 'Click or pinch on the vaginal edge to place a bite.' }
 };
 const IM = {
-  steel: new THREE.MeshStandardMaterial({ color: 0xcfd4da, metalness: 0.85, roughness: 0.28, envMap: ENV, envMapIntensity: 1.5 }),
-  shaft: new THREE.MeshStandardMaterial({ color: 0x15171a, metalness: 0.25, roughness: 0.42, envMap: ENV, envMapIntensity: 0.7 }),
-  ceramic: new THREE.MeshStandardMaterial({ color: 0xece8dc, roughness: 0.42, envMap: ENV, envMapIntensity: 0.4 }),
-  blue: new THREE.MeshStandardMaterial({ color: 0x2d6fb3, roughness: 0.4, metalness: 0.1, envMap: ENV, envMapIntensity: 0.5 }),
+  steel: new THREE.MeshStandardMaterial({ color: 0xcfd4da, metalness: 0.85, roughness: 0.28, envMapIntensity: 1.5 }),
+  shaft: new THREE.MeshStandardMaterial({ color: 0x15171a, metalness: 0.25, roughness: 0.42, envMapIntensity: 0.7 }),
+  ceramic: new THREE.MeshStandardMaterial({ color: 0xece8dc, roughness: 0.42, envMapIntensity: 0.4 }),
+  blue: new THREE.MeshStandardMaterial({ color: 0x2d6fb3, roughness: 0.4, metalness: 0.1, envMapIntensity: 0.5 }),
   thread: new THREE.MeshStandardMaterial({ color: 0x6a3fb0, roughness: 0.5, vertexColors: false })
 };
 function zCyl(r0, r1, len, z0, mat, seg) { const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, len, seg || 14), mat); m.rotation.x = Math.PI / 2; m.position.z = z0 + len / 2; return m; }

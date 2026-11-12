@@ -88,16 +88,25 @@ function tick(dt) {
   updateFX(dt, simTime); updateSuture();
 }
 function frame(now) {
-  const dt = Math.min(0.05, Math.max(0.001, (now - lastNow) / 1000)); lastNow = now;
+  const raw = (now - lastNow) / 1000, dt = Math.min(0.05, Math.max(0.001, raw)); lastNow = now;
   requestAnimationFrame(frame);
   if (window.__simPause) return; // automated checks drive tick() and render() themselves
   tick(dt);
-  renderer.render(scene, camera);
+  renderFrame(dt, simTime, S.haze); qualityTick(raw);
   drawOverlay(simTime); renderUI(dt); htRenderUI(dt, simTime);
 }
 S = freshState();
-buildStatic(); wire(); htWire(); resize();
+buildStatic(); wire(); htWire();
+// everything lit throws and takes shadows from the scope light, except flat marks painted on a surface and the blood pool
+scene.traverse(o => { if (o.isMesh && !o.material.isMeshBasicMaterial) { o.castShadow = o !== POOL; o.receiveShadow = true; } });
+(function () {
+  let q = null;
+  try { q = new URLSearchParams(location.search).get('q') || localStorage.getItem(QKEY); } catch (e) {}
+  setQuality(q || 'auto', false);
+  $('selQ').addEventListener('change', e => { setQuality(e.target.value, true); e.target.blur(); });
+})();
 resetWorld(false);
+window.__simBooted = performance.now(); $('nogl').hidden = true;
 requestAnimationFrame(frame);
 
 // ---------- hooks for automated checks ----------
@@ -130,5 +139,6 @@ window.__sim = {
   get active() { return ACTIVE; }, get PICK() { return activeHand().pick; },
   next() { const st = STEPS[S.step]; if (S.bleeders.length) { const p = S.bleeders[0].pt(new V3()); project(p, _ps); return { act: 'bleed', x: _ps.x, y: _ps.y }; } const n = st.next && st.next(); if (!n) return null; project(n.p, _ps); return { act: n.act, label: n.label, x: _ps.x, y: _ps.y, z: _ps.z, hidden: !!n.hidden, vis: visibleAt(n.p, 0.8), p: n.p.toArray() }; },
   proj(p) { project(new V3(p[0], p[1], p[2]), _ps); return { x: _ps.x, y: _ps.y }; },
-  render() { renderer.render(scene, camera); drawOverlay(simTime); renderUI(1); htRenderUI(1, simTime); }
+  render(dt) { renderFrame(dt == null ? 0.5 : dt, simTime, S.haze); drawOverlay(simTime); renderUI(1); htRenderUI(1, simTime); },
+  setQuality, QUAL, GRADE, LIGHT, MAT, POST, head, scene, camera, renderer, THREE
 };

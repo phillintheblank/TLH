@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>TLH Simulator: Hand Control</title>
+<title>TLH Simulator</title>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -31,7 +31,9 @@ kbd{font:500 11px var(--mono);padding:1px 5px;border:1px solid var(--line);borde
 .bar-ctl{display:flex;gap:6px;flex-wrap:wrap}
 .tog,.ghost{background:transparent;border:1px solid var(--line);border-radius:6px;padding:5px 10px;font-size:13px;color:var(--muted)}
 .tog.on{color:var(--text);border-color:var(--accent);box-shadow:inset 0 -2px 0 var(--accent)}
-.ghost:hover,.tog:hover{color:var(--text);border-color:#35505e}
+.ghost:hover,.tog:hover,.sel:hover{color:var(--text);border-color:#35505e}
+.sel{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:5px 8px;font:inherit;font-size:13px;color:var(--muted)}
+.view.post #haze,.view.post .vignette{display:none}
 main{display:grid;grid-template-columns:minmax(0,1fr) 352px;min-height:0}
 .stage{display:flex;flex-direction:column;gap:10px;min-width:0;min-height:0;padding:12px 0 12px 16px}
 .view{position:relative;flex:1;min-height:260px;border-radius:8px;overflow:hidden;background:#050101;border:1px solid #000;cursor:none;touch-action:none;user-select:none}
@@ -160,8 +162,9 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 <body>
 <div id="app">
   <header class="bar">
-    <div class="brand"><h1>TLH Simulator</h1><p>Hand-control build 0.1 &middot; total laparoscopic hysterectomy, bilateral salpingectomy</p></div>
+    <div class="brand"><h1>TLH Simulator</h1><p>Build 0.2 &middot; hand control &middot; total laparoscopic hysterectomy, bilateral salpingectomy</p></div>
     <div class="bar-ctl">
+      <select id="selQ" class="sel" title="Picture quality. Auto starts at High and steps down if the frame rate drops." aria-label="Picture quality"><option value="auto">Quality: auto</option><option value="high">Quality: high</option><option value="medium">Quality: medium</option><option value="low">Quality: low</option></select>
       <button type="button" id="btnHands" class="tog" title="Drive both instruments with your hands through this device's camera">Hand control</button>
       <button type="button" id="btnGuide" class="tog" title="On-screen targets, hover names and ureter distance (G)">Guidance</button>
       <button type="button" id="btnLabels" class="tog" title="Name the visible anatomy (L)">Labels</button>
@@ -316,15 +319,16 @@ input[type=range]{width:100%;accent-color:var(--accent)}
     </aside>
   </main>
 </div>
-<script src="./vendor/three.min.js"></script>
 <script>
-(function () {
-'use strict';
-if (!window.THREE) { document.getElementById('nogl').hidden = false; document.getElementById('nogl').textContent = 'The 3D library could not be loaded. Check the network connection and reload.'; return; }
+setTimeout(function () { if (!window.__simBooted) { var n = document.getElementById('nogl'); if (n.hidden) { n.hidden = false; n.textContent = 'The simulator could not start. Check the network connection and reload. It needs a current version of Chrome, Edge, Safari or Firefox.'; } } }, 15000);
+</script>
+<script type="module">
+import * as THREE from './vendor/three.module.min.js';
 // ---------- utilities ----------
 const TAU = Math.PI * 2, DEG = Math.PI / 180;
 const V3 = THREE.Vector3;
 const V = (x, y, z) => new V3(x, y, z);
+const V2 = THREE.Vector2;
 const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
 const lerp = (a, b, t) => a + (b - a) * t;
 const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
@@ -383,82 +387,6 @@ function fbm3(x, y, z, oct) {
   return s / n;
 }
 
-// ---------- procedural textures ----------
-function drawVessel(g, S, R, x, y, ang, w, depth, col) {
-  const pts = [[x, y]];
-  const steps = Math.floor((24 + R() * 80) * Math.min(1.6, w / 1.4) / 6) + 3;
-  let a = ang, cx = x, cy = y;
-  for (let i = 0; i < steps; i++) {
-    a += (R() - 0.5) * 0.75;
-    cx += Math.cos(a) * 6; cy += Math.sin(a) * 6;
-    pts.push([cx, cy]);
-    if (depth > 0 && R() < 0.2) drawVessel(g, S, R, cx, cy, a + (R() < 0.5 ? 1 : -1) * (0.45 + R() * 0.7), w * 0.62, depth - 1, col);
-  }
-  g.lineWidth = w; g.strokeStyle = col; g.lineCap = 'round'; g.lineJoin = 'round';
-  for (let ox = -S; ox <= S; ox += S) for (let oy = -S; oy <= S; oy += S) {
-    g.beginPath();
-    g.moveTo(pts[0][0] + ox, pts[0][1] + oy);
-    for (let i = 1; i < pts.length; i++) g.lineTo(pts[i][0] + ox, pts[i][1] + oy);
-    g.stroke();
-  }
-}
-function tissueTex(o) {
-  const S = o.size || 512, per = o.per || 4;
-  const cv = document.createElement('canvas'); cv.width = cv.height = S;
-  const g = cv.getContext('2d');
-  const img = g.createImageData(S, S), d = img.data;
-  const B = o.base, D = o.dark || o.base, F = o.fat;
-  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
-    const u = (x / S) * per, v = (y / S) * per;
-    const wx = (pfbm(u + 1.7, v + 9.2, per, 3, o.seed + 33) - 0.5) * 1.6, wy = (pfbm(u + 5.2, v + 1.3, per, 3, o.seed + 57) - 0.5) * 1.6;
-    const n = pfbm(u + wx * 0.5, v + wy * 0.5, per, 5, o.seed);
-    const t = sstep(0.3, 0.72, n) * (o.mottle == null ? 1 : o.mottle);
-    let r = lerp(B[0], D[0], t), gg = lerp(B[1], D[1], t), b = lerp(B[2], D[2], t);
-    if (F) {
-      const n2 = pfbm((u + wx) * 2 + 3, (v + wy) * 2 + 7, per * 2, 4, o.seed + 91);
-      const f = sstep(o.fatTh || 0.56, (o.fatTh || 0.56) + 0.16, n2) * (o.fatAmt || 0.7);
-      r = lerp(r, F[0], f); gg = lerp(gg, F[1], f); b = lerp(b, F[2], f);
-    }
-    if (o.stripe) { const k = Math.exp(-Math.pow(((x / S + 0.5) % 1 - 0.5) / 0.05, 2)) * 0.5; r = lerp(r, 240, k); gg = lerp(gg, 205, k); b = lerp(b, 196, k); }
-    const gr = (hashI(x, y, o.seed + 5) - 0.5) * 9;
-    const i = (y * S + x) * 4;
-    d[i] = clamp(r + gr, 0, 255); d[i + 1] = clamp(gg + gr, 0, 255); d[i + 2] = clamp(b + gr, 0, 255); d[i + 3] = 255;
-  }
-  g.putImageData(img, 0, 0);
-  if (o.vessels) {
-    const R = prng(o.seed * 7 + 3);
-    for (let k = 0; k < o.vessels; k++) {
-      drawVessel(g, S, R, R() * S, R() * S, R() * TAU, (o.vw || 1.6) * (0.5 + R()), 3, o.vcol || 'rgba(120,22,38,0.5)');
-    }
-    if (o.veins) for (let k = 0; k < o.veins; k++) {
-      drawVessel(g, S, R, R() * S, R() * S, R() * TAU, 1.8 * (0.6 + R()), 2, 'rgba(70,50,120,0.28)');
-    }
-  }
-  const tex = new THREE.CanvasTexture(cv);
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.encoding = THREE.sRGBEncoding; tex.anisotropy = 4;
-  return tex;
-}
-function bumpTex(seed, per, S) {
-  S = S || 256;
-  const cv = document.createElement('canvas'); cv.width = cv.height = S;
-  const g = cv.getContext('2d'), img = g.createImageData(S, S), d = img.data;
-  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
-    const n = pfbm((x / S) * per, (y / S) * per, per, 5, seed);
-    const c = clamp(n * 255, 0, 255), i = (y * S + x) * 4;
-    d[i] = d[i + 1] = d[i + 2] = c; d[i + 3] = 255;
-  }
-  g.putImageData(img, 0, 0);
-  const tex = new THREE.CanvasTexture(cv); tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  return tex;
-}
-function dotTex(inner, outer) {
-  const S = 64, cv = document.createElement('canvas'); cv.width = cv.height = S;
-  const g = cv.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-  gr.addColorStop(0, inner); gr.addColorStop(1, outer);
-  g.fillStyle = gr; g.fillRect(0, 0, S, S);
-  return new THREE.CanvasTexture(cv);
-}
-
 // ---------- geometry helpers ----------
 // uniform Catmull-Rom through ctrl points, written into preallocated array `out`
 function spline(ctrl, out) {
@@ -489,7 +417,7 @@ const BIG_SPHERE = () => new THREE.Sphere(new V3(), 1e4);
 class Tube {
   constructor(n, m, mat, uvU, uvV) {
     this.n = n; this.m = m; const cols = m + 1, count = n * cols;
-    this.pos = new Float32Array(count * 3); this.nor = new Float32Array(count * 3); this.col = new Float32Array(count * 3).fill(1);
+    this.pos = new Float32Array(count * 3); this.nor = new Float32Array(count * 3); this.col = new Float32Array(count * 3).fill(1); this.dry = new Float32Array(count);
     const uv = new Float32Array(count * 2), idx = [];
     for (let i = 0; i < n; i++) for (let j = 0; j < cols; j++) { uv[(i * cols + j) * 2] = (j / m) * (uvU || 1); uv[(i * cols + j) * 2 + 1] = (i / (n - 1)) * (uvV || 3); }
     for (let i = 0; i < n - 1; i++) for (let j = 0; j < m; j++) { const a = i * cols + j, b = a + 1, c = a + cols, d = c + 1; idx.push(a, b, c, b, d, c); }
@@ -497,13 +425,14 @@ class Tube {
     g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
     g.setAttribute('normal', new THREE.BufferAttribute(this.nor, 3));
     g.setAttribute('color', new THREE.BufferAttribute(this.col, 3));
+    g.setAttribute('dry', new THREE.BufferAttribute(this.dry, 1));
     g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     g.setIndex(idx); g.boundingSphere = BIG_SPHERE();
     this.geo = g; this.mesh = new THREE.Mesh(g, mat); this.mesh.frustumCulled = false;
     this.pts = vecArr(n); this.ua = 0; this.ub = 1; this.on = true;
-    this._T = new V3(); this._N = new V3(); this._B = new V3(); this._c = [1, 1, 1];
+    this._T = new V3(); this._N = new V3(); this._B = new V3(); this._c = [1, 1, 1, 0];
   }
-  // A: samples for u in [0,1]; radFn(u)->radius; colFn(u, c[3]) optional; flat: optional {k} second-axis scale
+  // A: samples for u in [0,1]; radFn(u)->radius; colFn(u, c) optional, c = [r, g, b, dry]; flatK: second-axis scale
   set(A, ua, ub, radFn, colFn, flatK) {
     this.ua = ua; this.ub = ub;
     if (!this.on || ub - ua < 0.004) { this.mesh.visible = false; return; }
@@ -517,17 +446,17 @@ class Tube {
       N.addScaledVector(T, -N.dot(T)).normalize();
       B.crossVectors(T, N);
       const u = ua + ((ub - ua) * i) / (n - 1), r = radFn(u), rb = r * (flatK || 1);
-      if (colFn) colFn(u, c); else { c[0] = c[1] = c[2] = 1; }
+      c[3] = 0; if (colFn) colFn(u, c); else { c[0] = c[1] = c[2] = 1; }
       for (let j = 0; j < cols; j++) {
         const ph = (j / m) * TAU, cs = Math.cos(ph), sn = Math.sin(ph), k = (i * cols + j) * 3;
         this.pos[k] = P[i].x + N.x * cs * r + B.x * sn * rb;
         this.pos[k + 1] = P[i].y + N.y * cs * r + B.y * sn * rb;
         this.pos[k + 2] = P[i].z + N.z * cs * r + B.z * sn * rb;
         this.nor[k] = N.x * cs + B.x * sn; this.nor[k + 1] = N.y * cs + B.y * sn; this.nor[k + 2] = N.z * cs + B.z * sn;
-        this.col[k] = c[0]; this.col[k + 1] = c[1]; this.col[k + 2] = c[2];
+        this.col[k] = c[0]; this.col[k + 1] = c[1]; this.col[k + 2] = c[2]; this.dry[k / 3] = c[3];
       }
     }
-    const at = this.geo.attributes; at.position.needsUpdate = true; at.normal.needsUpdate = true; at.color.needsUpdate = true;
+    const at = this.geo.attributes; at.position.needsUpdate = true; at.normal.needsUpdate = true; at.color.needsUpdate = true; at.dry.needsUpdate = true;
   }
   uAt(vi) { return this.ua + ((this.ub - this.ua) * Math.floor(vi / (this.m + 1))) / (this.n - 1); }
 }
@@ -535,27 +464,28 @@ class Tube {
 class Strip {
   constructor(ns, nt, mat, uvS, uvT) {
     this.ns = ns; this.nt = nt; const count = ns * nt;
-    this.pos = new Float32Array(count * 3); this.col = new Float32Array(count * 3).fill(1);
+    this.pos = new Float32Array(count * 3); this.col = new Float32Array(count * 3).fill(1); this.dry = new Float32Array(count);
     const uv = new Float32Array(count * 2), idx = [];
     for (let j = 0; j < nt; j++) for (let i = 0; i < ns; i++) { uv[(j * ns + i) * 2] = (i / (ns - 1)) * (uvS || 1); uv[(j * ns + i) * 2 + 1] = (j / (nt - 1)) * (uvT || 1); }
     for (let j = 0; j < nt - 1; j++) for (let i = 0; i < ns - 1; i++) { const a = j * ns + i, b = a + 1, c = a + ns, d = c + 1; idx.push(a, b, c, b, d, c); }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
     g.setAttribute('color', new THREE.BufferAttribute(this.col, 3));
+    g.setAttribute('dry', new THREE.BufferAttribute(this.dry, 1));
     g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     g.setIndex(idx); g.boundingSphere = BIG_SPHERE();
     this.geo = g; this.mesh = new THREE.Mesh(g, mat); this.mesh.frustumCulled = false;
-    this._p = new V3(); this._c = [1, 1, 1]; this.map = null; // map(s,t)->[u,v] for picking
+    this._p = new V3(); this._c = [1, 1, 1, 0]; this.map = null; // map(s,t)->[u,v] for picking
   }
   update(fn) {
-    const { ns, nt, pos, col, _p: p, _c: c } = this;
+    const { ns, nt, pos, col, dry, _p: p, _c: c } = this;
     for (let j = 0; j < nt; j++) for (let i = 0; i < ns; i++) {
-      c[0] = c[1] = c[2] = 1;
+      c[0] = c[1] = c[2] = 1; c[3] = 0;
       fn(i / (ns - 1), j / (nt - 1), p, c);
       const k = (j * ns + i) * 3;
-      pos[k] = p.x; pos[k + 1] = p.y; pos[k + 2] = p.z; col[k] = c[0]; col[k + 1] = c[1]; col[k + 2] = c[2];
+      pos[k] = p.x; pos[k + 1] = p.y; pos[k + 2] = p.z; col[k] = c[0]; col[k + 1] = c[1]; col[k + 2] = c[2]; dry[j * ns + i] = c[3];
     }
-    this.geo.attributes.position.needsUpdate = true; this.geo.attributes.color.needsUpdate = true;
+    this.geo.attributes.position.needsUpdate = true; this.geo.attributes.color.needsUpdate = true; this.geo.attributes.dry.needsUpdate = true;
     this.geo.computeVertexNormals();
   }
   stAt(vi) { return [(vi % this.ns) / (this.ns - 1), Math.floor(vi / this.ns) / (this.nt - 1)]; }
@@ -596,81 +526,59 @@ function paramSurface(nu, nv, fn, o) {
   return g;
 }
 
-// ---------- renderer, camera, lights, materials ----------
+// ---------- renderer, camera, scope light ----------
 const GLC = $('gl'), VIEW = $('view');
 let renderer = null;
 try {
   renderer = new THREE.WebGLRenderer({ canvas: GLC, antialias: true, alpha: false, powerPreference: 'high-performance' });
 } catch (e) { renderer = null; }
 if (!renderer) { $('nogl').hidden = false; throw new Error('WebGL unavailable'); }
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
-renderer.outputEncoding = THREE.sRGBEncoding;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.12;
-renderer.setClearColor(0x050101, 1);
+renderer.setClearColor(0x000000, 1);
+renderer.toneMapping = THREE.NeutralToneMapping; // only used when the picture is drawn straight to the screen (Low quality)
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(0x160405, 11, 36);
 const camera = new THREE.PerspectiveCamera(56, 1.6, 0.25, 90);
 scene.add(camera);
 
-const head = new THREE.SpotLight(0xfff1e4, 3.1, 48, 0.62, 0.95, 1.55);
-head.position.set(0, 0, 0); head.target.position.set(0, 0, -1);
+// The only real light in the abdomen leaves from around the lens. Tissue close to the scope is bright, tissue a few
+// centimetres deeper is much darker, and the edges of the picture fall off. LIGHT.ref is the working distance at
+// which a matte white surface comes out at a radiance of about 1.
+const LIGHT = { decay: 2.3, ref: 11, gain: 1 };
+const head = new THREE.SpotLight(0xffffff, 1, 0, 1.0, 0.62, LIGHT.decay);
+head.intensity = Math.PI * Math.pow(LIGHT.ref, LIGHT.decay) * LIGHT.gain;
+// The light fibres sit beside the lens, not on its axis, so everything throws a thin shadow to one side. Those
+// shadows are the main depth cue in a flat picture: an instrument's shadow closes up as it nears the tissue.
+head.position.set(0.12, 0.42, 0); head.target.position.set(0.12, 0.42, -1);
 camera.add(head); camera.add(head.target);
-scene.add(new THREE.HemisphereLight(0x6b3430, 0x1c0707, 0.5));
+head.castShadow = true; head.shadow.mapSize.set(2048, 2048); head.shadow.camera.near = 0.6; head.shadow.camera.far = 60;
+head.shadow.bias = -0.0006; head.shadow.normalBias = 0.03; head.shadow.radius = 2.5;
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
 
-// soft environment so wet surfaces and steel pick up a broad sheen
+// Everything else is light that has already bounced off lit tissue: dim and red, strongest from the deep pelvis.
+// It fills the shadows, and it is what steel and wet surfaces mirror.
 const ENV = (function () {
   const sc = new THREE.Scene();
-  const g = new THREE.SphereGeometry(40, 32, 20), p = g.attributes.position, col = new Float32Array(p.count * 3);
-  const d = new V3(), key = V(0, 0.45, 0.89).normalize();
+  const g = new THREE.SphereGeometry(40, 48, 32), p = g.attributes.position, col = new Float32Array(p.count * 3);
+  const d = new V3(), deep = V(0, -0.45, -0.89).normalize(), fat = V(0.55, -0.6, -0.3).normalize(), fat2 = V(-0.6, -0.5, 0.1).normalize();
   for (let i = 0; i < p.count; i++) {
     d.fromBufferAttribute(p, i).normalize();
-    const k = Math.pow(Math.max(0, d.dot(key)), 6);
-    col[i * 3] = 0.16 + 2.6 * k; col[i * 3 + 1] = 0.035 + 2.0 * k; col[i * 3 + 2] = 0.03 + 1.7 * k;
+    const k = Math.pow(Math.max(0, d.dot(deep) * 0.5 + 0.5), 2.2);
+    const f = Math.pow(Math.max(0, d.dot(fat)), 10) + 0.7 * Math.pow(Math.max(0, d.dot(fat2)), 14);
+    const n = 0.75 + 0.5 * fbm3(d.x * 2.2 + 3, d.y * 2.2 + 1, d.z * 2.2 + 7, 3);
+    col[i * 3] = (0.03 + 0.5 * k * n) + 0.4 * f; col[i * 3 + 1] = (0.012 + 0.2 * k * n) + 0.3 * f; col[i * 3 + 2] = (0.012 + 0.18 * k * n) + 0.1 * f;
   }
   g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  sc.add(new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide })));
+  sc.add(new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, toneMapped: false })));
   const pm = new THREE.PMREMGenerator(renderer);
-  const tex = pm.fromScene(sc, 0.03).texture; pm.dispose();
+  const tex = pm.fromScene(sc, 0.02).texture; pm.dispose(); g.dispose();
   return tex;
 })();
-
-const BUMP = bumpTex(11, 8), BUMP2 = bumpTex(23, 16);
-const TEX = {
-  uterus: tissueTex({ seed: 3, base: [206, 116, 122], dark: [164, 78, 92], vessels: 26, vw: 1.5, vcol: 'rgba(118,24,40,0.42)', veins: 5 }),
-  perit: tissueTex({ seed: 8, base: [198, 94, 90], dark: [146, 56, 60], fat: [216, 170, 108], fatAmt: 0.55, fatTh: 0.6, vessels: 30, vw: 1.5, vcol: 'rgba(128,20,30,0.5)', veins: 8 }),
-  leaf: tissueTex({ seed: 14, base: [214, 122, 116], dark: [176, 84, 86], fat: [232, 192, 128], fatAmt: 0.35, fatTh: 0.62, vessels: 22, vw: 1.2, vcol: 'rgba(132,24,36,0.5)' }),
-  bladder: tissueTex({ seed: 21, base: [212, 132, 116], dark: [184, 100, 94], fat: [224, 184, 120], fatAmt: 0.5, fatTh: 0.55, vessels: 34, vw: 1.4, vcol: 'rgba(138,26,34,0.5)', veins: 6 }),
-  bowel: tissueTex({ seed: 29, base: [210, 142, 132], dark: [178, 104, 100], vessels: 26, vw: 1.1, vcol: 'rgba(140,34,44,0.45)', veins: 5, stripe: true }),
-  ovary: tissueTex({ seed: 35, base: [232, 208, 198], dark: [208, 172, 166], vessels: 7, vw: 0.9, vcol: 'rgba(170,70,80,0.35)' }),
-  fat: tissueTex({ seed: 41, base: [234, 198, 124], dark: [214, 160, 92], vessels: 14, vw: 1.0, vcol: 'rgba(160,36,36,0.5)', mottle: 0.9 }),
-  card: tissueTex({ seed: 47, base: [228, 172, 152], dark: [202, 132, 120], fat: [234, 200, 130], fatAmt: 0.35, vessels: 22, vw: 1.3, vcol: 'rgba(140,26,36,0.55)', veins: 8 }),
-  vag: tissueTex({ seed: 53, base: [226, 150, 146], dark: [196, 112, 116], vessels: 14, vw: 1.0, vcol: 'rgba(140,30,44,0.4)' })
-};
-function wet(o) {
-  return new THREE.MeshPhysicalMaterial(Object.assign({
-    color: 0xffffff, roughness: 0.52, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.1,
-    envMap: ENV, envMapIntensity: 0.55, bumpMap: BUMP, bumpScale: 0.05, vertexColors: true
-  }, o));
-}
-const MAT = {
-  uterus: wet({ map: TEX.uterus, clearcoatRoughness: 0.12 }),
-  perit: wet({ map: TEX.perit, bumpScale: 0.05 }),
-  leaf: wet({ map: TEX.leaf, side: THREE.DoubleSide, bumpScale: 0.03 }),
-  bladder: wet({ map: TEX.bladder }),
-  bowel: wet({ map: TEX.bowel, clearcoatRoughness: 0.1, bumpMap: BUMP2, bumpScale: 0.07 }),
-  ovary: wet({ map: TEX.ovary, clearcoatRoughness: 0.2, bumpMap: BUMP2, bumpScale: 0.05 }),
-  fat: wet({ map: TEX.fat, side: THREE.DoubleSide, bumpMap: BUMP2, bumpScale: 0.07, roughness: 0.6 }),
-  card: wet({ map: TEX.card, side: THREE.DoubleSide }),
-  vag: wet({ map: TEX.vag, side: THREE.DoubleSide }),
-  cord: wet({ bumpScale: 0.02 }),
-  blood: new THREE.MeshPhysicalMaterial({ color: 0x5c0409, roughness: 0.15, clearcoat: 1, clearcoatRoughness: 0.05, envMap: ENV, envMapIntensity: 0.9, transparent: true, opacity: 0.93 })
-};
+scene.environment = ENV; scene.environmentIntensity = 0.3;
 
 // ---------- camera rig (scope pivots at the umbilical port) ----------
-const CAM = { pivot: V(0, 9.2, 17.5), tgt: V(0, -1.2, -1), goal: V(0, -1.2, -1), pan: V(0, 0, 0), ins: 5.5, insGoal: 5.5, userIns: 0 };
+const CAM = { pivot: V(0, 9.2, 17.5), tgt: V(0, -1.2, -1), goal: V(0, -1.2, -1), pan: V(0, 0, 0), ins: 5.5, insGoal: 5.5, userIns: 0, dist: 12 };
 const _cd = new V3();
+const REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 function updateCamera(dt, t) {
   const g = _cd.copy(CAM.goal).add(CAM.pan);
   CAM.tgt.x = damp(CAM.tgt.x, g.x, 2.6, dt); CAM.tgt.y = damp(CAM.tgt.y, g.y, 2.6, dt); CAM.tgt.z = damp(CAM.tgt.z, g.z, 2.6, dt);
@@ -682,14 +590,13 @@ function updateCamera(dt, t) {
   camera.up.set(Math.sin(t * 0.5) * 0.006 * sway, 1, 0);
   camera.lookAt(CAM.tgt);
   camera.updateMatrixWorld(true);
-  // crude auto-exposure: the image would otherwise burn out as the scope closes in
-  renderer.toneMappingExposure = 1.12 * clamp(Math.pow(camera.position.distanceTo(CAM.tgt) / 12, 0.55), 0.6, 1.12);
+  CAM.dist = camera.position.distanceTo(CAM.tgt);
 }
-const REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 let VW = 1, VH = 1;
 function resize() {
   const r = VIEW.getBoundingClientRect();
   VW = Math.max(2, Math.floor(r.width)); VH = Math.max(2, Math.floor(r.height));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, QUAL.cur.pr));
   renderer.setSize(VW, VH, false);
   const asp = VW / VH; camera.aspect = asp;
   // keep roughly constant horizontal coverage on narrow views
@@ -698,6 +605,415 @@ function resize() {
   camera.updateProjectionMatrix();
   const ov = $('ov'), pr = Math.min(window.devicePixelRatio || 1, 2);
   ov.width = VW * pr; ov.height = VH * pr;
+  postResize();
+}
+
+// ---------- picture quality and the camera pipeline ----------
+// With quality Medium or High the scene is drawn into a high-dynamic-range buffer and then put through what a
+// laparoscope's camera does to it: automatic exposure, glare around highlights, edge enhancement, sensor noise,
+// lens fall-off and the grey veil of smoke. Low draws straight to the screen.
+const QPRE = {
+  low: { name: 'Low', post: false, pr: 1, msaa: 0, trans: false, tscale: 0.5, sharp: 0, shadow: 0 },
+  medium: { name: 'Medium', post: true, pr: 1.25, msaa: 2, trans: true, tscale: 0.5, sharp: 0.15, shadow: 1024 },
+  high: { name: 'High', post: true, pr: 2, msaa: 4, trans: true, tscale: 1, sharp: 0.2, shadow: 2048 }
+};
+const QKEY = 'tlh.quality.v1';
+const QUAL = { mode: 'auto', level: 'high', cur: QPRE.high, hdr: false, ema: 16, slowT: 0, note: '' };
+QUAL.hdr = renderer.capabilities.isWebGL2 !== false && (renderer.extensions.has('EXT_color_buffer_float') || renderer.extensions.has('EXT_color_buffer_half_float'));
+const GRADE = { key: 0.25, evMin: 0.25, evMax: 6, bloom: 0.07, vig: 0.38, sat: 0.9, desat: 0.3, con: 0.3, grain: 1, low: 0.8 };
+
+const POST = { main: null, d: [], u: [], lum: null, reset: true, w: 0, h: 0, msaa: -1 };
+const FSQ = { scene: new THREE.Scene(), cam: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), mesh: new THREE.Mesh(new THREE.PlaneGeometry(2, 2), null) };
+FSQ.mesh.frustumCulled = false; FSQ.scene.add(FSQ.mesh);
+const FS_VERT = 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }';
+const fsMat = (frag, uniforms, extra) => new THREE.ShaderMaterial(Object.assign({ vertexShader: FS_VERT, fragmentShader: frag, uniforms, depthTest: false, depthWrite: false, toneMapped: false }, extra || {}));
+const U = v => ({ value: v });
+const PM = {
+  // 2x reduction. The first one also tames single very bright pixels (they would flicker in the glare) and
+  // records how far inside the near-focus limit each pixel is.
+  down: fsMat(`
+    uniform sampler2D t; uniform sampler2D tDepth; uniform vec2 px; uniform vec2 nf; uniform float first; varying vec2 vUv;
+    float lum(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+    void main() {
+      vec4 a = texture2D(t, vUv + px * vec2(-1.0, -1.0)), b = texture2D(t, vUv + px * vec2(1.0, -1.0)), c = texture2D(t, vUv + px * vec2(-1.0, 1.0)), d = texture2D(t, vUv + px * vec2(1.0, 1.0));
+      if (first > 0.5) {
+        float wa = 1.0 / (1.0 + lum(a.rgb)), wb = 1.0 / (1.0 + lum(b.rgb)), wc = 1.0 / (1.0 + lum(c.rgb)), wd = 1.0 / (1.0 + lum(d.rgb));
+        float z = texture2D(tDepth, vUv).x, dist = nf.x * nf.y / (nf.y - z * (nf.y - nf.x));
+        gl_FragColor = vec4((a.rgb * wa + b.rgb * wb + c.rgb * wc + d.rgb * wd) / (wa + wb + wc + wd), 1.0 - smoothstep(1.4, 4.2, dist));
+      } else gl_FragColor = (a + b + c + d) * 0.25;
+    }`, { t: U(null), tDepth: U(null), px: U(new V2()), nf: U(new V2()), first: U(0) }),
+  up: fsMat(`
+    uniform sampler2D t; uniform sampler2D tAdd; uniform vec2 px; uniform float gain; varying vec2 vUv;
+    void main() {
+      vec4 o = px.xyxy * vec4(1.0, 1.0, -1.0, 0.0);
+      vec3 s = texture2D(t, vUv - o.xy).rgb + 2.0 * texture2D(t, vUv - o.wy).rgb + texture2D(t, vUv - o.zy).rgb
+        + 2.0 * texture2D(t, vUv + o.zw).rgb + 4.0 * texture2D(t, vUv).rgb + 2.0 * texture2D(t, vUv + o.xw).rgb
+        + texture2D(t, vUv + o.zy).rgb + 2.0 * texture2D(t, vUv + o.wy).rgb + texture2D(t, vUv + o.xy).rgb;
+      gl_FragColor = vec4((s / 16.0 + texture2D(tAdd, vUv).rgb) * gain, 1.0);
+    }`, { t: U(null), tAdd: U(null), px: U(new V2()), gain: U(1) }),
+  // centre-weighted light meter; written with alpha so the stored value eases toward the new reading
+  meter: fsMat(`
+    uniform sampler2D t; uniform float k;
+    void main() {
+      float s = 0.0, w = 0.0;
+      for (int j = 0; j < 6; j++) for (int i = 0; i < 6; i++) {
+        vec2 p = (vec2(float(i), float(j)) + 0.5) / 6.0;
+        float ww = 1.0 - 0.75 * smoothstep(0.12, 0.62, distance(p, vec2(0.5)));
+        vec3 c = texture2D(t, p).rgb;
+        float l = max(dot(c, vec3(0.2126, 0.7152, 0.0722)), 0.55 * max(c.r, max(c.g, c.b)));
+        if (l == l && l < 1.0e5) { s += ww * log(l + 0.003); w += ww; }
+      }
+      float L = w > 0.0 ? exp(s / w) : 0.2;
+      gl_FragColor = vec4(L, L, L, k);
+    }`, { t: U(null), k: U(1) }, { transparent: true, blending: THREE.NormalBlending }),
+  out: fsMat(`
+    uniform sampler2D tMain; uniform sampler2D tD1; uniform sampler2D tD2; uniform sampler2D tBloom; uniform sampler2D tLum; uniform sampler2D tDepth;
+    uniform vec2 res; uniform vec2 nf; uniform vec2 evLim;
+    uniform float time; uniform float haze; uniform float key; uniform float bloom; uniform float sharp; uniform float grain; uniform float vig; uniform float sat; uniform float desat; uniform float con;
+    varying vec2 vUv;
+    // Camera response: true colour through the mid-tones, then a soft knee where highlights wash out toward white
+    vec3 tm(vec3 c) {
+      float x = min(c.r, min(c.g, c.b)), off = x < 0.08 ? x - 6.25 * x * x : 0.04;
+      c -= off;
+      float peak = max(c.r, max(c.g, c.b));
+      if (peak < 0.76) return c;
+      float d = 0.24, np = 1.0 - d * d / (peak + d - 0.76);
+      c *= np / peak;
+      return mix(c, vec3(np), 1.0 - 1.0 / (desat * (peak - np) + 1.0));
+    }
+    float hash(vec2 p) { vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+    void main() {
+      vec3 col = texture2D(tMain, vUv).rgb;
+      vec4 d1 = texture2D(tD1, vUv), d2 = texture2D(tD2, vUv);
+      float cn = smoothstep(0.04, 0.75, d2.a);
+      col = mix(col, mix(d1.rgb, d2.rgb, cn), cn);
+      float L = texture2D(tLum, vec2(0.5)).r;
+      float ev = clamp(key / max(L, 0.0001), evLim.x, evLim.y);
+      float z = texture2D(tDepth, vUv).x, dist = nf.x * nf.y / (nf.y - z * (nf.y - nf.x));
+      float f = haze * (1.0 - exp(-dist * 0.11));
+      vec3 veil = vec3(0.93, 0.95, 1.0) * L * 2.3;
+      col = mix(col, veil, f);
+      vec3 bl = texture2D(tBloom, vUv).rgb;
+      float ba = bloom + 0.3 * haze;
+      col = mix(col, bl, ba);
+      vec3 c = tm(col * ev);
+      if (sharp > 0.0) { vec3 b = tm(mix(mix(d1.rgb, veil, f), bl, ba) * ev); c += (c - b) * sharp * (1.0 - cn); }
+      float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+      c = mix(vec3(l), c, sat);
+      c = mix(c, c * c * (3.0 - 2.0 * c), con);
+      vec2 q = (vUv - 0.5) * vec2(res.x / res.y, 1.0);
+      float r = length(q) / (0.5 * length(vec2(res.x / res.y, 1.0)));
+      c *= 1.0 - vig * smoothstep(0.5, 1.08, r);
+      float n = hash(gl_FragCoord.xy + fract(time * 7.0) * vec2(1373.0, 719.0)) + hash(gl_FragCoord.yx + fract(time * 3.0) * vec2(311.0, 977.0)) - 1.0;
+      c += n * grain * (0.006 + 0.009 * (1.0 - l)) * (1.0 + 0.35 * log2(max(ev, 1.0)));
+      c = clamp(c, 0.0, 1.0);
+      gl_FragColor = vec4(mix(pow(c, vec3(0.41666)) * 1.055 - 0.055, c * 12.92, vec3(lessThanEqual(c, vec3(0.0031308)))), 1.0);
+    }`, { tMain: U(null), tD1: U(null), tD2: U(null), tBloom: U(null), tLum: U(null), tDepth: U(null), res: U(new V2(1, 1)), nf: U(new V2()), evLim: U(new V2(0.25, 6)),
+    time: U(0), haze: U(0), key: U(0.2), bloom: U(0.07), sharp: U(0.3), grain: U(1), vig: U(0.38), sat: U(1.06), desat: U(0.3), con: U(0.2) })
+};
+function mkRT(w, h, o) {
+  return new THREE.WebGLRenderTarget(Math.max(2, w), Math.max(2, h), Object.assign({ type: THREE.HalfFloatType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false, stencilBuffer: false, generateMipmaps: false }, o));
+}
+function postDispose() {
+  if (POST.main) { if (POST.main.depthTexture) POST.main.depthTexture.dispose(); POST.main.dispose(); }
+  for (const r of POST.d.concat(POST.u)) r.dispose();
+  POST.main = null; POST.d = []; POST.u = [];
+}
+function postResize() {
+  const q = QUAL.cur;
+  if (!q.post) { postDispose(); POST.w = POST.h = 0; return; }
+  const sz = renderer.getDrawingBufferSize(new V2()), w = sz.x, h = sz.y;
+  if (POST.main && POST.w === w && POST.h === h && POST.msaa === q.msaa) return;
+  postDispose(); POST.w = w; POST.h = h; POST.msaa = q.msaa;
+  POST.main = mkRT(w, h, { depthBuffer: true, samples: q.msaa, depthTexture: new THREE.DepthTexture(w, h) });
+  for (let i = 1; i <= 5; i++) POST.d.push(mkRT(w >> i, h >> i));
+  for (let i = 2; i <= 4; i++) POST.u.push(mkRT(w >> i, h >> i)); // glare accumulates into quarter size
+  if (!POST.lum) POST.lum = mkRT(1, 1, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter });
+  POST.reset = true;
+}
+function fsPass(mat, target) { FSQ.mesh.material = mat; renderer.setRenderTarget(target); renderer.render(FSQ.scene, FSQ.cam); }
+const lowExposure = () => GRADE.low * clamp(Math.pow(CAM.dist / LIGHT.ref, LIGHT.decay * 0.8), 0.3, 1.5);
+function renderFrame(dt, time, haze) {
+  const q = QUAL.cur;
+  if (!q.post || !POST.main) {
+    renderer.setRenderTarget(null); renderer.toneMappingExposure = lowExposure();
+    renderer.render(scene, camera); return;
+  }
+  renderer.setRenderTarget(POST.main); renderer.render(scene, camera);
+  const D = POST.d, Uu = POST.u, dn = PM.down.uniforms, up = PM.up.uniforms;
+  dn.nf.value.set(camera.near, camera.far); dn.tDepth.value = POST.main.depthTexture;
+  let src = POST.main;
+  for (let i = 0; i < D.length; i++) { dn.t.value = src.texture; dn.px.value.set(1 / src.width, 1 / src.height); dn.first.value = i === 0 ? 1 : 0; fsPass(PM.down, D[i]); src = D[i]; }
+  // glare: blur pyramid from 1/32 back up to 1/4
+  src = D[4];
+  for (let i = 2; i >= 0; i--) { up.t.value = src.texture; up.px.value.set(1 / src.width, 1 / src.height); up.tAdd.value = D[i + 1].texture; up.gain.value = i === 0 ? 0.25 : 1; fsPass(PM.up, Uu[i]); src = Uu[i]; }
+  // light meter
+  const mu = PM.meter.uniforms; mu.t.value = D[4].texture; mu.k.value = POST.reset ? 1 : 1 - Math.exp(-dt * 3.2);
+  PM.meter.transparent = !POST.reset; PM.meter.blending = POST.reset ? THREE.NoBlending : THREE.NormalBlending;
+  renderer.autoClear = false; fsPass(PM.meter, POST.lum); renderer.autoClear = true; POST.reset = false;
+  const o = PM.out.uniforms;
+  o.tMain.value = POST.main.texture; o.tD1.value = D[0].texture; o.tD2.value = D[1].texture; o.tBloom.value = Uu[0].texture; o.tLum.value = POST.lum.texture; o.tDepth.value = POST.main.depthTexture;
+  o.res.value.set(POST.w, POST.h); o.nf.value.set(camera.near, camera.far); o.evLim.value.set(GRADE.evMin, GRADE.evMax);
+  o.time.value = time % 100; o.haze.value = haze; o.key.value = GRADE.key; o.bloom.value = GRADE.bloom; o.sharp.value = q.sharp; o.grain.value = REDUCED ? 0.4 * GRADE.grain : GRADE.grain; o.vig.value = GRADE.vig; o.sat.value = GRADE.sat; o.desat.value = GRADE.desat; o.con.value = GRADE.con;
+  fsPass(PM.out, null);
+}
+
+// ---------- quality setting ----------
+function applyQuality() {
+  QUAL.cur = QUAL.hdr ? QPRE[QUAL.level] : QPRE.low;
+  renderer.transmissionResolutionScale = QUAL.cur.tscale;
+  const sh = QUAL.cur.shadow;
+  head.castShadow = sh > 0;
+  if (sh && head.shadow.mapSize.x !== sh) { head.shadow.mapSize.set(sh, sh); if (head.shadow.map) { head.shadow.map.dispose(); head.shadow.map = null; } }
+  VIEW.classList.toggle('post', QUAL.cur.post);
+  matQuality(QUAL.cur);
+  resize();
+  const sel = $('selQ');
+  if (sel) { sel.value = QUAL.mode; sel.options[0].textContent = 'Quality: auto (' + QUAL.cur.name.toLowerCase() + ')'; }
+}
+function setQuality(mode, save) {
+  if (mode !== 'auto' && !QPRE[mode]) mode = 'auto';
+  QUAL.mode = mode; QUAL.level = mode === 'auto' ? 'high' : mode; QUAL.slowT = 0; QUAL.ema = 16;
+  if (save) { try { localStorage.setItem(QKEY, mode); } catch (e) {} }
+  applyQuality();
+}
+// Auto: step down when frames stay slow. It never steps back up by itself, so the picture does not keep changing.
+function qualityTick(rawDt) {
+  if (QUAL.mode !== 'auto' || document.hidden || rawDt > 0.25 || QUAL.level === 'low') return;
+  QUAL.ema = lerp(QUAL.ema, rawDt * 1000, 0.06);
+  QUAL.slowT = QUAL.ema > 30 ? QUAL.slowT + rawDt : Math.max(0, QUAL.slowT - rawDt * 2);
+  if (QUAL.slowT > 4) {
+    QUAL.level = QUAL.level === 'high' ? 'medium' : 'low'; QUAL.slowT = 0; QUAL.ema = 16; applyQuality();
+    toast('Picture quality lowered to ' + QUAL.cur.name.toLowerCase() + ' to keep the motion smooth', 'info');
+  }
+}
+
+// ---------- procedural textures ----------
+const ANISO = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+const mkCanvas = S => { const cv = document.createElement('canvas'); cv.width = cv.height = S; return cv; };
+// tileable fractal value noise over the unit square; `per` lattice cells across at the coarsest octave
+function fbmTile(per, oct, seed) {
+  const L = [];
+  for (let i = 0, p = per; i < oct; i++, p *= 2) { const a = new Float32Array(p * p), R = prng(seed * 131 + i * 977 + 5); for (let k = 0; k < a.length; k++) a[k] = R(); L.push(a); }
+  return (u, v) => {
+    let s = 0, amp = 0.5, n = 0, p = per;
+    u -= Math.floor(u); v -= Math.floor(v);
+    for (let i = 0; i < oct; i++, p *= 2, amp *= 0.5) {
+      const a = L[i], X = u * p, Y = v * p, xf = Math.floor(X), yf = Math.floor(Y), fx = X - xf, fy = Y - yf;
+      const x0 = xf % p, y0 = yf % p, x1 = (x0 + 1) % p, y1 = (y0 + 1) % p;
+      const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy), r0 = y0 * p, r1 = y1 * p;
+      s += amp * ((a[r0 + x0] * (1 - sx) + a[r0 + x1] * sx) * (1 - sy) + (a[r1 + x0] * (1 - sx) + a[r1 + x1] * sx) * sy); n += amp;
+    }
+    return s / n;
+  };
+}
+// tileable cellular noise: o[0], o[1] = distance to the nearest and second-nearest cell centre, in cells
+function cellTile(per, seed) {
+  const px = new Float32Array(per * per), py = new Float32Array(per * per), R = prng(seed * 71 + 9);
+  for (let i = 0; i < px.length; i++) { px[i] = 0.15 + 0.7 * R(); py[i] = 0.15 + 0.7 * R(); }
+  return (u, v, o) => {
+    u -= Math.floor(u); v -= Math.floor(v);
+    const X = u * per, Y = v * per, cx = Math.floor(X), cy = Math.floor(Y);
+    let f1 = 9, f2 = 9;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const k = ((cy + dy + per) % per) * per + ((cx + dx + per) % per), ex = cx + dx + px[k] - X, ey = cy + dy + py[k] - Y, d = ex * ex + ey * ey;
+      if (d < f1) { f2 = f1; f1 = d; } else if (d < f2) f2 = d;
+    }
+    o[0] = Math.sqrt(f1); o[1] = Math.sqrt(f2);
+  };
+}
+// tangent-space normal map from a tileable height function
+function normalTex(S, hf, k) {
+  const H = new Float32Array(S * S);
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) H[y * S + x] = hf(x / S, y / S);
+  const d = new Uint8Array(S * S * 4);
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const nx = (H[y * S + (x + S - 1) % S] - H[y * S + (x + 1) % S]) * k, ny = (H[((y + S - 1) % S) * S + x] - H[((y + 1) % S) * S + x]) * k, l = Math.hypot(nx, ny, 1), i = (y * S + x) * 4;
+    d[i] = (nx / l * 0.5 + 0.5) * 255; d[i + 1] = (ny / l * 0.5 + 0.5) * 255; d[i + 2] = (1 / l * 0.5 + 0.5) * 255; d[i + 3] = 255;
+  }
+  const t = new THREE.DataTexture(d, S, S, THREE.RGBAFormat);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter; t.generateMipmaps = true; t.anisotropy = ANISO; t.needsUpdate = true;
+  return t;
+}
+function drawVessel(g, S, R, x, y, ang, w, depth, col, wig, wm) {
+  wm = wm || 1;
+  const pts = [[x, y, w]], L = S / 170, steps = Math.floor((8 + R() * 30) * Math.min(1.7, 0.6 + w / (S / 600)));
+  let a = ang, cx = x, cy = y, ww = w;
+  for (let i = 0; i < steps; i++) {
+    a += (R() - 0.5) * wig; cx += Math.cos(a) * L; cy += Math.sin(a) * L; ww *= 0.982; pts.push([cx, cy, ww]);
+    if (depth > 0 && R() < 0.2) drawVessel(g, S, R, cx, cy, a + (R() < 0.5 ? 1 : -1) * (0.4 + R() * 0.8), ww * 0.62, depth - 1, col, wig * 1.15, wm);
+  }
+  g.strokeStyle = col; g.lineCap = 'round'; g.lineJoin = 'round';
+  for (let ox = -S; ox <= S; ox += S) for (let oy = -S; oy <= S; oy += S) {
+    let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+    for (const p of pts) { x0 = Math.min(x0, p[0] + ox); x1 = Math.max(x1, p[0] + ox); y0 = Math.min(y0, p[1] + oy); y1 = Math.max(y1, p[1] + oy); }
+    if (x1 < -4 || x0 > S + 4 || y1 < -4 || y0 > S + 4) continue;
+    for (let i = 0; i < pts.length - 1; i += 3) { // short runs so the width can taper
+      g.lineWidth = pts[i][2] * wm; g.beginPath(); g.moveTo(pts[i][0] + ox, pts[i][1] + oy);
+      for (let j = i + 1; j <= Math.min(i + 3, pts.length - 1); j++) g.lineTo(pts[j][0] + ox, pts[j][1] + oy);
+      g.stroke();
+    }
+  }
+}
+// Colour map for one tissue. Broad mottling is computed at half size and enlarged; vessels and grain are drawn at
+// full size so they stay crisp. o.trans also returns a map of how much light the tissue lets through.
+function tissueTex(o) {
+  const S0 = 512, S = o.size || 1024, cv0 = mkCanvas(S0), g0 = cv0.getContext('2d'), img = g0.createImageData(S0, S0), d = img.data;
+  const B = o.base, D = o.dark || o.base, P = o.pale, F = o.fat, seed = o.seed;
+  const wx = fbmTile(4, 3, seed + 33), wy = fbmTile(4, 3, seed + 57), n1 = fbmTile(o.per || 4, 5, seed), n2 = fbmTile(8, 4, seed + 91), n3 = fbmTile(3, 4, seed + 12), n4 = fbmTile(26, 2, seed + 71);
+  const cell = o.cells ? cellTile(o.cells, seed + 7) : null, co = [0, 0];
+  const tr = o.trans ? new Uint8ClampedArray(S0 * S0) : null;
+  for (let y = 0; y < S0; y++) for (let x = 0; x < S0; x++) {
+    const u = x / S0, v = y / S0, ax = (wx(u, v) - 0.5) * 0.2, ay = (wy(u, v) - 0.5) * 0.2;
+    const n = n1(u + ax * 0.5, v + ay * 0.5), t = sstep(0.3, 0.72, n) * (o.mottle == null ? 1 : o.mottle);
+    let r = lerp(B[0], D[0], t), gg = lerp(B[1], D[1], t), b = lerp(B[2], D[2], t), f = 0;
+    if (P) { const q = sstep(0.5, 0.74, n3(u + ax, v + ay)) * (o.paleAmt || 0.6); r = lerp(r, P[0], q); gg = lerp(gg, P[1], q); b = lerp(b, P[2], q); }
+    if (F) { f = sstep(o.fatTh || 0.56, (o.fatTh || 0.56) + 0.14, n2(u + ax, v + ay)) * (o.fatAmt || 0.7); r = lerp(r, F[0], f); gg = lerp(gg, F[1], f); b = lerp(b, F[2], f); }
+    if (cell) { cell(u + ax * 0.3, v + ay * 0.3, co); const cr = 1 - sstep(0.02, 0.22, co[1] - co[0]), k = cr * (F ? f : 1) * 0.5; r = lerp(r, 196, k); gg = lerp(gg, 112, k); b = lerp(b, 60, k); }
+    if (o.streak) { const q = 1 - o.streak * sstep(0.35, 0.75, n4(u, v * 0.07)); r *= q; gg *= q * q; b *= q * q; }
+    if (o.stripe) { const k = Math.exp(-Math.pow(((u + 0.5) % 1 - 0.5) / 0.05, 2)) * 0.5; r = lerp(r, 240, k); gg = lerp(gg, 208, k); b = lerp(b, 198, k); }
+    const i = (y * S0 + x) * 4;
+    d[i] = r; d[i + 1] = gg; d[i + 2] = b; d[i + 3] = 255;
+    if (tr) tr[y * S0 + x] = 255 * clamp(o.trans * (1 - f * 1.3) * (0.7 + 0.6 * n), 0, 1);
+  }
+  g0.putImageData(img, 0, 0);
+  const cv = mkCanvas(S), g = cv.getContext('2d');
+  g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high'; g.drawImage(cv0, 0, 0, S, S);
+  const R = prng(seed * 7 + 3), k = S / 512;
+  if (o.vessels) {
+    const vc = o.vcol || [128, 24, 40], a = o.va || 0.5;
+    // a faint wide stroke under each vessel reads as a vessel lying under the surface rather than on it
+    for (let i = 0; i < o.vessels; i++) {
+      const x = R() * S, y = R() * S, ang = R() * TAU, w = (o.vw || 1.5) * k * (0.45 + R()), dep = w > 1.2 * k ? 3 : 2;
+      const rs = prng(seed * 977 + i * 31 + 1), rs2 = prng(seed * 977 + i * 31 + 1);
+      drawVessel(g, S, rs, x, y, ang, w, dep, 'rgba(' + vc.join(',') + ',' + (a * 0.16).toFixed(3) + ')', o.wig || 0.7, 3.2);
+      drawVessel(g, S, rs2, x, y, ang, w, dep, 'rgba(' + vc.join(',') + ',' + a + ')', o.wig || 0.7);
+    }
+    for (let i = 0; i < (o.veins || 0); i++) drawVessel(g, S, R, R() * S, R() * S, R() * TAU, 1.9 * k * (0.6 + R()), 2, 'rgba(74,52,118,0.3)', 0.6);
+    // capillary blush: very fine, short, tortuous
+    for (let i = 0; i < (o.caps || 0); i++) drawVessel(g, S, R, R() * S, R() * S, R() * TAU, 0.55 * k, 1, 'rgba(' + vc.join(',') + ',' + (a * 0.42).toFixed(3) + ')', 0.9);
+  }
+  // fine grain
+  const gi = g.getImageData(0, 0, S, S), gd = gi.data;
+  for (let i = 0, p = 0; i < gd.length; i += 4, p++) { const n = (hashI(p % S, (p / S) | 0, seed + 5) - 0.5) * 9; gd[i] += n; gd[i + 1] += n; gd[i + 2] += n; }
+  g.putImageData(gi, 0, 0);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = ANISO;
+  if (!tr) return tex;
+  const tv = mkCanvas(S0), tg = tv.getContext('2d'), ti = tg.createImageData(S0, S0);
+  for (let i = 0; i < tr.length; i++) { ti.data[i * 4] = ti.data[i * 4 + 1] = ti.data[i * 4 + 2] = tr[i]; ti.data[i * 4 + 3] = 255; }
+  tg.putImageData(ti, 0, 0);
+  tg.globalCompositeOperation = 'multiply'; tg.drawImage(cv, 0, 0, S0, S0); tg.globalCompositeOperation = 'source-over'; // vessels and fat block light
+  const tt = new THREE.CanvasTexture(tv); tt.wrapS = tt.wrapT = THREE.RepeatWrapping;
+  tex.userData.trans = tt;
+  return tex;
+}
+function dotTex(inner, outer) {
+  const S = 64, cv = mkCanvas(S), g = cv.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gr.addColorStop(0, inner); gr.addColorStop(1, outer);
+  g.fillStyle = gr; g.fillRect(0, 0, S, S);
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+
+// ---------- surface relief ----------
+const NRM = (function () {
+  const fa = fbmTile(5, 2, 401), fb = fbmTile(22, 3, 402), fc = fbmTile(6, 4, 403), fd = fbmTile(3, 2, 404);
+  const fe = fbmTile(40, 2, 405), cl = cellTile(9, 406), co = [0, 0], ff = fbmTile(28, 2, 407);
+  const stretch = (u, v) => { // long streaks along v for ligaments and muscle
+    let s = 0;
+    for (let i = 0; i < 3; i++) s += fe(u * (1 + i), v * 0.06 * (1 + i) + i * 0.37) / (1 + i);
+    return s;
+  };
+  return {
+    // the wet film: shallow puddled undulation plus fine pebbling, which is what breaks a highlight into specks
+    micro: normalTex(512, (u, v) => 0.8 * fa(u, v) + 0.05 * fb(u, v), 13),
+    soft: normalTex(256, (u, v) => fc(u, v) + 0.5 * fd(u, v), 5),
+    fat: normalTex(512, (u, v) => { cl(u, v, co); return 0.9 * Math.pow(Math.max(0, 1 - co[0] * 1.15), 0.55) * sstep(0, 0.16, co[1] - co[0]) + 0.12 * ff(u, v); }, 7),
+    fiber: normalTex(512, (u, v) => stretch(u, v) + 0.25 * fc(u, v), 7)
+  };
+})();
+function rep(t, x, y) { const c = t.clone(); c.repeat.set(x, y); c.needsUpdate = true; return c; }
+
+const TEX = {
+  uterus: tissueTex({ seed: 3, base: [214, 138, 138], dark: [180, 100, 112], pale: [234, 192, 180], paleAmt: 0.6, vessels: 34, vw: 1.5, vcol: [132, 22, 40], va: 0.48, veins: 5, caps: 44 }),
+  perit: tissueTex({ seed: 8, base: [224, 164, 158], dark: [198, 128, 124], fat: [240, 206, 140], fatAmt: 0.32, fatTh: 0.6, mottle: 0.8, cells: 22, vessels: 16, vw: 1.5, vcol: [150, 40, 46], va: 0.36, veins: 5, caps: 14 }),
+  leaf: tissueTex({ seed: 14, base: [238, 190, 180], dark: [214, 150, 144], fat: [240, 206, 138], fatAmt: 0.5, fatTh: 0.6, cells: 20, vessels: 26, vw: 1.2, vcol: [140, 24, 36], va: 0.55, caps: 36, trans: 0.85 }),
+  bladder: tissueTex({ seed: 21, base: [220, 146, 122], dark: [190, 106, 96], fat: [234, 194, 122], fatAmt: 0.58, fatTh: 0.52, cells: 22, vessels: 38, vw: 1.5, vcol: [144, 26, 34], va: 0.5, veins: 6, caps: 48 }),
+  bowel: tissueTex({ seed: 29, base: [222, 158, 142], dark: [190, 116, 108], vessels: 30, vw: 1.1, vcol: [146, 34, 44], va: 0.45, veins: 5, caps: 40, stripe: true }),
+  ovary: tissueTex({ seed: 35, base: [238, 222, 210], dark: [214, 184, 174], vessels: 9, vw: 0.9, vcol: [172, 70, 80], va: 0.35, caps: 12 }),
+  fat: tissueTex({ seed: 41, base: [244, 206, 118], dark: [224, 170, 86], cells: 14, vessels: 14, vw: 1.0, vcol: [164, 36, 36], va: 0.5, caps: 16, mottle: 0.9 }),
+  card: tissueTex({ seed: 47, base: [234, 188, 160], dark: [206, 144, 128], fat: [240, 208, 138], fatAmt: 0.4, cells: 18, vessels: 24, vw: 1.3, vcol: [144, 26, 36], va: 0.55, veins: 6, caps: 24, trans: 0.55 }),
+  cord: tissueTex({ seed: 61, base: [255, 250, 246], dark: [232, 214, 210], mottle: 0.7, streak: 0.07, vessels: 8, vw: 0.9, vcol: [150, 40, 50], va: 0.3, caps: 8 }),
+  vag: tissueTex({ seed: 53, base: [228, 152, 148], dark: [198, 114, 118], vessels: 16, vw: 1.0, vcol: [142, 30, 44], va: 0.4, caps: 24 })
+};
+
+// ---------- materials ----------
+// Two additions to the stock surface shader.
+// 1. Sealed and charred tissue is dry: a per-vertex `dry` value takes the wet film off and roughens the surface.
+// 2. Rounded organs (uterus, bladder, ovary, pelvic wall) are textured by position instead of by wrapped coordinates,
+//    blending three flat projections. Wrapping a texture round an organ pinches it into a star at the poles.
+const TRI_PARS = `
+uniform vec3 triK; uniform mat3 normalMatrix; varying vec3 vOP; varying vec3 vON;
+vec3 triTap( sampler2D t, vec2 p, float k, vec2 sc, float k2, vec2 sc2 ) {
+	vec3 a = texture2D( t, p * k ).xyz * 2.0 - 1.0; a.xy *= sc;
+	if ( k2 > 0.0 ) { vec3 b = texture2D( t, p * k2 + 0.5 ).xyz * 2.0 - 1.0; a.xy += b.xy * sc2; }
+	return a;
+}
+// k2, sc2: an optional second, broader layer of the same relief
+vec3 triNormal( sampler2D t, float k, vec2 sc, float k2, vec2 sc2, vec3 on, vec3 tw ) {
+	vec3 a = triTap( t, vOP.zy, k, sc, k2, sc2 ), b = triTap( t, vOP.xz + 0.37, k, sc, k2, sc2 ), c = triTap( t, vOP.xy + 0.71, k, sc, k2, sc2 );
+	a = vec3( a.xy + on.zy, abs( a.z ) * on.x ); b = vec3( b.xy + on.xz, abs( b.z ) * on.y ); c = vec3( c.xy + on.xy, abs( c.z ) * on.z );
+	return normalize( normalMatrix * normalize( a.zyx * tw.x + b.xzy * tw.y + c.xyz * tw.z ) );
+}`;
+const TRI_MAP = `
+	vec3 triON = normalize( vON );
+	vec3 triW = pow( abs( triON ), vec3( 4.0 ) ); triW /= triW.x + triW.y + triW.z;
+	diffuseColor *= texture2D( map, vOP.zy * triK.x ) * triW.x + texture2D( map, vOP.xz * triK.x + 0.37 ) * triW.y + texture2D( map, vOP.xy * triK.x + 0.71 ) * triW.z;`;
+function tissueHook(tri) {
+  return sh => {
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float dry;\nvarying float vDry;' + (tri ? '\nvarying vec3 vOP;\nvarying vec3 vON;' : ''))
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvDry = dry;' + (tri ? '\n\tvOP = position; vON = normal;' : ''));
+    let f = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vDry;' + (tri ? TRI_PARS : ''))
+      .replace('#include <lights_physical_fragment>', '#include <lights_physical_fragment>\n\tmaterial.roughness = mix( material.roughness, 0.93, vDry );\n\t#ifdef USE_CLEARCOAT\n\t\tmaterial.clearcoat *= 1.0 - vDry;\n\t#endif');
+    if (tri) {
+      sh.uniforms.triK = { value: new V3(tri.k, tri.n, tri.m) };
+      f = f.replace('#include <map_fragment>', TRI_MAP)
+        .replace('#include <normal_fragment_maps>', '\tnormal = triNormal( normalMap, triK.y, normalScale, 0.0, vec2( 0.0 ), triON, triW );')
+        .replace('#include <clearcoat_normal_fragment_maps>', '\tclearcoatNormal = triNormal( clearcoatNormalMap, triK.z, clearcoatNormalScale, triK.z * 0.21, clearcoatNormalScale * 1.7, triON, triW );');
+    }
+    sh.fragmentShader = f;
+  };
+}
+// Moist tissue: a fairly matte body under a thin, almost mirror-smooth film of fluid. `mr` is how many times the
+// film's relief repeats across the mesh's texture square (about one repeat per centimetre).
+function wet(o) {
+  const mr = o.mr || [4, 4], ms = o.ms == null ? 1 : o.ms, base = o.relief || NRM.soft, bs = o.bs == null ? 0.7 : o.bs, br = o.br || [1, 1];
+  const p = Object.assign({
+    color: 0xffffff, roughness: 0.6, metalness: 0, vertexColors: true, specularIntensity: 0.5,
+    clearcoat: 1, clearcoatRoughness: 0.17, clearcoatNormalMap: rep(NRM.micro, mr[0], mr[1]), clearcoatNormalScale: new V2(ms, ms),
+    normalMap: rep(base, br[0], br[1]), normalScale: new V2(bs, bs)
+  }, o);
+  delete p.mr; delete p.ms; delete p.relief; delete p.bs; delete p.br; delete p.tri;
+  const m = new THREE.MeshPhysicalMaterial(p);
+  m.onBeforeCompile = tissueHook(o.tri); m.customProgramCacheKey = () => (o.tri ? 'tissue-tri' : 'tissue');
+  return m;
+}
+const MAT = {
+  uterus: wet({ map: TEX.uterus, tri: { k: 0.2, n: 0.3, m: 1 }, bs: 0.6 }),
+  perit: wet({ map: TEX.perit, tri: { k: 0.15, n: 0.3, m: 1 }, bs: 0.8 }),
+  leaf: wet({ map: TEX.leaf, side: THREE.DoubleSide, mr: [4, 4], bs: 0.4, roughness: 0.5, transmission: 0.45, transmissionMap: TEX.leaf.userData.trans, thickness: 0, ior: 1.4 }),
+  bladder: wet({ map: TEX.bladder, tri: { k: 0.16, n: 0.45, m: 1 }, relief: NRM.fat, bs: 0.5 }),
+  bowel: wet({ map: TEX.bowel, mr: [8, 5], br: [2, 2], bs: 0.8 }),
+  ovary: wet({ map: TEX.ovary, tri: { k: 0.35, n: 0.8, m: 1 }, bs: 1.1, clearcoatRoughness: 0.22 }),
+  fat: wet({ map: TEX.fat, side: THREE.DoubleSide, mr: [4, 3], relief: NRM.fat, br: [2.5, 2], bs: 1.2, roughness: 0.55 }),
+  card: wet({ map: TEX.card, side: THREE.DoubleSide, mr: [4, 3], relief: NRM.fiber, br: [1, 1], bs: 0.8, transmission: 0.35, transmissionMap: TEX.card.userData.trans, thickness: 0, ior: 1.4 }),
+  vag: wet({ map: TEX.vag, side: THREE.DoubleSide, mr: [4, 6], bs: 0.6 }),
+  cord: wet({ map: TEX.cord, mr: [1.2, 1.8], relief: NRM.fiber, br: [1, 0.6], bs: 0.7 }),
+  blood: new THREE.MeshPhysicalMaterial({ color: 0x6a0a0e, roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.03, transparent: true, opacity: 0.94 })
+};
+const TRANSLUCENT = [[MAT.leaf, 0.45], [MAT.card, 0.35]];
+function matQuality(q) {
+  for (const [m, t] of TRANSLUCENT) { const v = q.trans ? t : 0; if ((m.transmission > 0) !== (v > 0)) m.needsUpdate = true; m.transmission = v; }
 }
 
 // ---------- anatomy model ----------
@@ -749,9 +1065,9 @@ const relaxedPose = s => ({ yaw: 0.36 * s, pitch: PITCH0, push: 0 });
 function lerpPose(a, b, t, o) { o.yaw = lerp(a.yaw, b.yaw, t); o.pitch = lerp(a.pitch, b.pitch, t); o.push = lerp(a.push, b.push, t); return o; }
 
 const COL = {
-  lig: C(200, 106, 110), tube: C(218, 122, 126), fim: C(186, 54, 66), uo: C(208, 130, 126), ip: C(176, 100, 124),
-  art: C(200, 40, 42), vein: C(98, 84, 154), ureter: C(222, 158, 142), usl: C(190, 100, 98),
-  iliacA: C(206, 92, 88), iliacV: C(150, 108, 142), fold: C(210, 132, 114),
+  lig: C(214, 150, 140), tube: C(222, 152, 146), fim: C(190, 70, 80), uo: C(214, 150, 140), ip: C(190, 120, 130),
+  art: C(186, 66, 62), vein: C(112, 100, 152), ureter: C(232, 204, 184), usl: C(200, 128, 120),
+  iliacA: C(204, 112, 102), iliacV: C(146, 116, 146), fold: C(210, 132, 114),
   seal: C(238, 218, 186), char: C(128, 84, 58), edge: C(150, 96, 80)
 };
 const SIDEK = {};
@@ -859,7 +1175,7 @@ const AN = { side: {} };
     bowlPoint(Math.cos(th), Math.sin(th), z, 0, p);
     const up = Math.sin(th), deep = sstep(2, -8, z);
     c[0] = 1 - 0.1 * deep; c[1] = (1 + 0.1 * Math.max(0, up)) * (1 - 0.16 * deep); c[2] = (1 - 0.06 * Math.max(0, up)) * (1 - 0.16 * deep);
-  }, { closedU: true, su: 5, sv: 7 });
+  }, { closedU: true, su: 6, sv: 5 });
   AN.bowl = reg(new THREE.Mesh(g, MAT.perit), 'wall');
   scene.add(AN.bowl);
 })();
@@ -932,7 +1248,7 @@ UT.g.matrixAutoUpdate = false; scene.add(UT.g);
     UT.g.add(t.mesh);
   }
   // colpotomy cup (visible once the uterus is free) and colpotomy cut segments
-  const cup = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 1.6, 1.0, 40, 1, true), new THREE.MeshStandardMaterial({ color: 0x7db4d8, roughness: 0.38, metalness: 0.05, side: THREE.DoubleSide, envMap: ENV, envMapIntensity: 0.6 }));
+  const cup = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 1.6, 1.0, 40, 1, true), new THREE.MeshStandardMaterial({ color: 0x7db4d8, roughness: 0.38, metalness: 0.05, side: THREE.DoubleSide, envMapIntensity: 0.6 }));
   cup.position.y = -0.22; UT.g.add(cup);
   const cap = new THREE.Mesh(new THREE.CircleGeometry(1.7, 32), new THREE.MeshStandardMaterial({ color: 0xc66a74, roughness: 0.6 }));
   cap.rotation.x = Math.PI / 2; cap.position.y = 0.26; UT.g.add(cap);
@@ -1240,10 +1556,10 @@ const INST = {
   needle: { name: 'Needle driver, barbed suture', short: 'Needle driver', key: '5', use: 'Click or pinch on the vaginal edge to place a bite.' }
 };
 const IM = {
-  steel: new THREE.MeshStandardMaterial({ color: 0xcfd4da, metalness: 0.85, roughness: 0.28, envMap: ENV, envMapIntensity: 1.5 }),
-  shaft: new THREE.MeshStandardMaterial({ color: 0x15171a, metalness: 0.25, roughness: 0.42, envMap: ENV, envMapIntensity: 0.7 }),
-  ceramic: new THREE.MeshStandardMaterial({ color: 0xece8dc, roughness: 0.42, envMap: ENV, envMapIntensity: 0.4 }),
-  blue: new THREE.MeshStandardMaterial({ color: 0x2d6fb3, roughness: 0.4, metalness: 0.1, envMap: ENV, envMapIntensity: 0.5 }),
+  steel: new THREE.MeshStandardMaterial({ color: 0xcfd4da, metalness: 0.85, roughness: 0.28, envMapIntensity: 1.5 }),
+  shaft: new THREE.MeshStandardMaterial({ color: 0x15171a, metalness: 0.25, roughness: 0.42, envMapIntensity: 0.7 }),
+  ceramic: new THREE.MeshStandardMaterial({ color: 0xece8dc, roughness: 0.42, envMapIntensity: 0.4 }),
+  blue: new THREE.MeshStandardMaterial({ color: 0x2d6fb3, roughness: 0.4, metalness: 0.1, envMapIntensity: 0.5 }),
   thread: new THREE.MeshStandardMaterial({ color: 0x6a3fb0, roughness: 0.5, vertexColors: false })
 };
 function zCyl(r0, r1, len, z0, mat, seg) { const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, len, seg || 14), mat); m.rotation.x = Math.PI / 2; m.position.z = z0 + len / 2; return m; }
@@ -2797,16 +3113,25 @@ function tick(dt) {
   updateFX(dt, simTime); updateSuture();
 }
 function frame(now) {
-  const dt = Math.min(0.05, Math.max(0.001, (now - lastNow) / 1000)); lastNow = now;
+  const raw = (now - lastNow) / 1000, dt = Math.min(0.05, Math.max(0.001, raw)); lastNow = now;
   requestAnimationFrame(frame);
   if (window.__simPause) return; // automated checks drive tick() and render() themselves
   tick(dt);
-  renderer.render(scene, camera);
+  renderFrame(dt, simTime, S.haze); qualityTick(raw);
   drawOverlay(simTime); renderUI(dt); htRenderUI(dt, simTime);
 }
 S = freshState();
-buildStatic(); wire(); htWire(); resize();
+buildStatic(); wire(); htWire();
+// everything lit throws and takes shadows from the scope light, except flat marks painted on a surface and the blood pool
+scene.traverse(o => { if (o.isMesh && !o.material.isMeshBasicMaterial) { o.castShadow = o !== POOL; o.receiveShadow = true; } });
+(function () {
+  let q = null;
+  try { q = new URLSearchParams(location.search).get('q') || localStorage.getItem(QKEY); } catch (e) {}
+  setQuality(q || 'auto', false);
+  $('selQ').addEventListener('change', e => { setQuality(e.target.value, true); e.target.blur(); });
+})();
 resetWorld(false);
+window.__simBooted = performance.now(); $('nogl').hidden = true;
 requestAnimationFrame(frame);
 
 // ---------- hooks for automated checks ----------
@@ -2839,10 +3164,10 @@ window.__sim = {
   get active() { return ACTIVE; }, get PICK() { return activeHand().pick; },
   next() { const st = STEPS[S.step]; if (S.bleeders.length) { const p = S.bleeders[0].pt(new V3()); project(p, _ps); return { act: 'bleed', x: _ps.x, y: _ps.y }; } const n = st.next && st.next(); if (!n) return null; project(n.p, _ps); return { act: n.act, label: n.label, x: _ps.x, y: _ps.y, z: _ps.z, hidden: !!n.hidden, vis: visibleAt(n.p, 0.8), p: n.p.toArray() }; },
   proj(p) { project(new V3(p[0], p[1], p[2]), _ps); return { x: _ps.x, y: _ps.y }; },
-  render() { renderer.render(scene, camera); drawOverlay(simTime); renderUI(1); htRenderUI(1, simTime); }
+  render(dt) { renderFrame(dt == null ? 0.5 : dt, simTime, S.haze); drawOverlay(simTime); renderUI(1); htRenderUI(1, simTime); },
+  setQuality, QUAL, GRADE, LIGHT, MAT, POST, head, scene, camera, renderer, THREE
 };
 
-})();
 </script>
 </body>
 </html>
