@@ -7,21 +7,20 @@ export default async function (page) {
   let fails = 0;
   const check = (name, ok, detail) => { console.log((ok ? 'PASS ' : 'FAIL ') + name + (detail ? '  ' + JSON.stringify(detail) : '')); if (!ok) fails++; };
   await installHandDriver(page, 'upright');
-  await ev(() => { window.__simPause = true; window.__sim.HT.sim = true; window.__sim.DEPTH.auto = true; }); // two-handed behaviour in auto depth; free depth is covered by handdepth.mjs
+  await ev(() => { window.__simPause = true; window.__sim.HT.sim = true; }); // one camera, so auto depth; two cameras are covered by twocam.mjs
   await page.click('#btnBeginHands');
   await ev(() => { window.__drv.noise = 0.004; }); // jitter on every landmark frame
   const cal = await calibrate(page);
   check('calibration completes with jitter', cal.status === 'ready' && cal.running, cal);
-  const expectU = -1;
-  check('directions learned', Math.abs(cal.r[0] + 1) < 0.15 && Math.abs(cal.u[1] - expectU) < 0.15, { r: cal.r, u: cal.u });
+  check('one camera: auto depth, directions learned', cal.n === 1 && !cal.free && cal.right[0][0] < -0.9 && cal.J[0][0][0] < -0.8 && cal.J[0][1][1] < -0.8, { right: cal.right, J: cal.J });
 
   // 1. both instruments move at the same time, each with its own hand, in the directions the user means
-  let r = await ev(up => {
+  let r = await ev(() => {
     const d = window.__drv, S = window.__sim, a = { L: { ...S.HAND.L.ptr }, R: { ...S.HAND.R.ptr } };
-    for (let i = 0; i < 12; i++) { d.hands.L.x += 0.004; d.hands.R.x -= 0.004; d.hands.L.y += up * 0.004; d.hands.R.y += up * 0.004; d.step(1); } // user: L hand left, R hand right, both up
+    for (let i = 0; i < 12; i++) { d.move('L', -0.005, 0.004, 0); d.move('R', 0.005, 0.004, 0); d.step(1); } // L hand left, R hand right, both up
     d.step(12);
     return { dL: [S.HAND.L.ptr.x - a.L.x, S.HAND.L.ptr.y - a.L.y], dR: [S.HAND.R.ptr.x - a.R.x, S.HAND.R.ptr.y - a.R.y], on: [S.HAND.L.ptr.on, S.HAND.R.ptr.on] };
-  }, expectU);
+  });
   check('both pointers move together: L goes left, R goes right, both up', r.on[0] && r.on[1] && r.dL[0] < -25 && r.dR[0] > 25 && r.dL[1] < -25 && r.dR[1] < -25, r);
 
   // 2. skip to the right round ligament; left hand grasps the right tube and pulls, right hand seals at the same time
@@ -51,7 +50,7 @@ export default async function (page) {
     const d = window.__drv, S = window.__sim, L = d.hands.L, h = S.HAND.L;
     L.opn = 1.95; L.ap = 0.9; d.step(10);
     const held1 = !!(h.grab && h.grab.pull), on1 = h.ptr.on, tip = h.tip.clone();
-    L.x += 0.2; L.y += 0.15; d.step(15);
+    L.X[0] -= 0.08; L.X[1] -= 0.07; d.step(15);
     const moved = h.tip.distanceTo(tip), clutch = S.HT.slot.L.clutch;
     L.opn = 1.45; L.ap = 0.14; d.step(22); // come back still pinched: keep holding, no jump
     const held2 = !!(h.grab && h.grab.pull), on2 = h.ptr.on, jump = h.tip.distanceTo(tip);
@@ -83,11 +82,11 @@ export default async function (page) {
   r = await ev(() => {
     const d = window.__drv, S = window.__sim, R = d.hands.R, h = S.HAND.R;
     R.vis = false; d.step(14); const tip = h.tip.clone();
-    R.vis = true; R.x = 0.15; R.y = 0.3; let took = false;
-    for (let i = 0; i < 16; i++) { R.x += 0.04; R.y += 0.02; d.step(1); took = took || h.ptr.on; }
+    R.vis = true; R.X = [0.2, 0.12, 0]; let took = false;
+    for (let i = 0; i < 12; i++) { R.X[0] -= 0.03; R.X[1] -= 0.015; d.step(1); took = took || h.ptr.on; }
     R.vis = false; d.step(12);
     const moved = h.tip.distanceTo(tip);
-    R.vis = true; R.x = 0.32; R.y = 0.55; d.step(26);
+    R.vis = true; R.X = d.HOME.R.slice(); d.step(26);
     return { took, moved: +moved.toFixed(3), backOn: h.ptr.on };
   });
   check('a hand sweeping through the view does not take the instrument; a settled hand does', !r.took && r.moved < 0.05 && r.backOn, r);

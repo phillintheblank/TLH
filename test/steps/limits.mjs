@@ -15,7 +15,8 @@ export default async function (page) {
       state(k) {
         const h = s.HAND[k], cam = s.camera, tip = h.tip.clone(), q = tip.clone().project(cam); cam.getWorldDirection(F);
         v.copy(tip).sub(cam.position); const dist = v.length(); R.set(cam.position, v.normalize());
-        const f = R.intersectObjects(s.PICKS, false).filter(x => s.shown(x.object))[0];
+        // what hides the tip from the lens; a cord or the adnexa lying in front of it does not count as the tip being lost
+        const f = R.intersectObjects(s.PICKS, false).filter(x => s.shown(x.object) && !x.object.userData.tube && !/^(ovary|meso)$/.test(x.object.userData.ent))[0];
         return { tip: tip.toArray().map(x => +x.toFixed(2)), ndc: [+q.x.toFixed(3), +q.y.toFixed(3)], lens: +tip.clone().sub(cam.position).dot(F).toFixed(2), hidden: f ? +(dist - f.distance).toFixed(2) : 0, by: f && dist - f.distance > 0.3 ? f.object.userData.ent : '', ins: +h.ins.toFixed(2), lim: h.limT > 0, touch: h.touch };
       },
       home(k) { const h = s.HAND[k]; s.poseFromPoint(h, new T.Vector3(k === 'R' ? 3.4 : -3.4, -0.4, 4.6)); for (let i = 0; i < 15; i++) s.tick(0.033); }

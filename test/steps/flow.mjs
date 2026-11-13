@@ -1,6 +1,8 @@
 // Drive the whole case through the same "next target" data the guidance overlay draws.
-// MODE=mouse uses real mouse events. MODE=hands feeds synthetic hand landmarks through the full hand-control
-// pipeline (slot assignment, filtering, calibration, relative mapping, pinch and clutch detection).
+// MODE=free: the mouse's free depth, each tip brought to its target in space. MODE=mouse: real mouse events with
+// Auto depth on. MODE=hands: scripted hands seen by two simulated cameras (free depth). MODE=handsauto: scripted
+// hands seen by one camera (auto depth). Both hand modes go through the whole hand-control pipeline.
+// RIG picks the simulated cameras (see handdriver.mjs); NOISE adds tracker jitter.
 // Simulation time is advanced synchronously through the page's tick() so the run does not depend on frame rate.
 import fs from 'node:fs';
 import { installHandDriver, calibrate } from './handdriver.mjs';
@@ -13,10 +15,10 @@ export default async function (page) {
   const log = []; const say = s => { log.push(s); console.log(s); };
   let D; // driver: T(seconds), moveTo({x,y}), down(), up(), cut(n)
   if (MODE === 'hands' || MODE === 'handsauto') {
-    // hands: free depth, the tip is brought to each target in space. handsauto: auto depth, the hand points at the screen.
+    // hands: two cameras, free depth, the tip is brought to each target in space. handsauto: one camera, the hand points at the screen.
     const auto = MODE === 'handsauto';
-    await installHandDriver(page, process.env.CAM || 'upright');
-    await ev(([a, plain]) => { window.__simPause = true; const s = window.__sim; s.HT.sim = true; s.DEPTH.auto = a; if (plain) s.DEPTH.assist = s.DEPTH.prio = false; }, [auto, process.env.ASSIST === '0']); // ASSIST=0: depth assist and target lock off
+    await installHandDriver(page, process.env.RIG || (auto ? 'one' : 'two'));
+    await ev(() => { window.__simPause = true; window.__sim.HT.sim = true; });
     await page.click('#btnBeginHands');
     const cal = await calibrate(page);
     say('calibrated: ' + JSON.stringify(cal));
@@ -57,7 +59,7 @@ export default async function (page) {
           let n = 0; while (n++ < 260 && !h.touch && h.ins < L - 0.03) { h.cmd.dz += 0.1; s.tick(0.033); }
           if (h.touch) { h.cmd.dz += 0.15; s.tick(0.033); }
           for (let i = 0; i < 6; i++) s.tick(0.033);
-          return { hand: h.key, touch: h.touch, short: +(L - h.len).toFixed(2), ent: h.pick.ent, press: +h.press.toFixed(2), reach: [+dA.toFixed(1), +dO.toFixed(1)] };
+          return { hand: h.key, touch: h.touch, short: +(L - h.ins).toFixed(2), ent: h.pick.ent, press: +h.press.toFixed(2), reach: [+dA.toFixed(1), +dO.toFixed(1)] };
         }
       };
     });

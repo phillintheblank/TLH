@@ -88,14 +88,12 @@ for (const [k, sx, inst] of [['L', -1, 'grasper'], ['R', 1, 'bipolar']]) {
     // each hand has its own pointer, view ray and pick so both instruments can work at once
     ptr: { x: 0, y: 0, on: false, ndc: new THREE.Vector2() }, ray: new THREE.Ray(), pick: newPick(), nearFlag: false, lastUp: -9,
     // pose about the port: direction, commanded insertion, the length actually reached, and contact with tissue
-    dir: new V3(), ins: 0, len: 0, touch: false, press: 0, pressT: 0, give: 0, ahead: { hit: false, dist: 0 },
-    // depth assist: resting on tissue (hold), net travel drawn back since then (rel). Target lock: pinned to the step's
-    // target (lock), where that was (lockP), net sideways travel since (lockX, lockY), and whether it was just left (lockOut).
-    hold: false, holdOn: '', rel: 0, lock: false, lockP: new V3(), lockX: 0, lockY: 0, lockOut: false, lockT: 0, lockK: 0, lockN: 0, limT: 0, hid: false, hidT: 0,
+    dir: new V3(), ins: 0, went: 0, cross: false, touch: false, press: 0, pressT: 0, ahead: { hit: false, dist: 0 },
+    limT: 0, hid: false, hidT: 0, // limT: held at an edge of the working space just now; hid: the tip is behind tissue as the camera sees it
     // travel asked for this frame: dx, dy across the picture (pixels), dz along the shaft (cm), dv into the picture (pixels' worth); cart: the tip follows exactly
     cmd: { dx: 0, dy: 0, dz: 0, dv: 0, cart: false }
   };
-  h.dir.copy(h.tip).sub(h.port); h.ins = h.len = h.dir.length(); h.dir.normalize();
+  h.dir.copy(h.tip).sub(h.port); h.ins = h.dir.length(); h.dir.normalize();
   for (const t in INST) { h.sub[t] = buildInst(t); h.sub[t].g.visible = t === inst; h.grp.add(h.sub[t].g); }
   scene.add(h.grp); HAND[k] = h;
 }
@@ -113,16 +111,23 @@ const RAY = new THREE.Raycaster();
 // is brought there. The mouse swings the instrument and the wheel slides it along its shaft. A hand moves the tip
 // right, up and into the picture, as a robot console does, and the instrument pivots and slides to follow.
 // Auto depth: the tip rides whatever tissue lies under a pointer on the screen.
-const DEPTH = { auto: false, fulcrum: false, flip: false, wheel: 1, sens: 1, CONTACT: 0.22, GIVE: 0.55,
-  assist: true, prio: true, // hand control: depth assist, and target lock (the latter only while guidance is on)
-  SEAT: 0.08, SLOW: 1.6, REL: 0.5, JUMP: 0.8, ESC: 0.6, CAP: 0.6 };
+// Which applies: the mouse has a switch (free depth unless Auto depth is on). Hands have free depth when two cameras
+// follow them, since depth needs a second view; with one camera they have auto depth.
+// CONTACT: how close counts as touching. STOP: how far tissue dents before it stops the instrument; HARD: pressing
+// hard. BACK: how far behind the tip a surface still counts as what the tip is on.
+const DEPTH = { auto: false, fulcrum: false, flip: false, wheel: 1, sens: 1, CONTACT: 0.22, STOP: 0.55, HARD: 0.4, BACK: 0.85 };
+const tipZone = went => Math.min(4, DEPTH.BACK + 3 * went); // BACK, stretched by this frame's travel: a quick sweep still rides up over what it runs onto
+// What the side of a shaft cannot sweep through: the pelvic wall and the large organs. Cords, folds of peritoneum,
+// the adnexa and the cuff give way to it (a shaft pushes them aside), so they never hold an instrument up.
+const SOLID = { wall: 1, iliac: 1, uterus: 1, bladder: 1, rectum: 1 };
+function shaftBlocked(hits, upTo) { for (let i = 0; i < hits.length && hits[i].distance < upTo; i++) if (SOLID[hits[i].object.userData.ent] && shown(hits[i].object)) return true; return false; }
 const DKEY = 'tlh.depth.v1';
-const freeDepth = () => !DEPTH.auto;
+const freeDepth = () => (CTRL.mode === 'hands' ? !!HT.cal && HT.cal.n === 2 : !DEPTH.auto);
 function poseFromPoint(h, p) { h.dir.copy(p).sub(h.port); h.ins = h.dir.length(); h.dir.normalize(); }
 function shown(o) { for (; o; o = o.parent) if (!o.visible) return false; return true; }
 function routeMouse() { // mouse mode: the mouse drives the active hand; the other hand holds
   if (CTRL.mode !== 'mouse') return;
-  const free = !DEPTH.auto;
+  const free = freeDepth();
   for (const h of HANDS) {
     h.ptr.on = h.key === ACTIVE && (free || INP.inside);
     if (h.ptr.on && !free) { h.ptr.x = INP.x; h.ptr.y = INP.y; h.ptr.ndc.copy(INP.ndc); }
@@ -141,7 +146,7 @@ function fillPick(h, hit) {
   if (ud.tube) P.u = ud.tube.uAt(hit.face.a);
   else if (ud.strip) { const st = ud.strip.stAt(hit.face.a); if (ud.strip.map) { const m = ud.strip.map(st[0], st[1]); P.u = m[0]; P.v = m[1]; } else { P.u = st[0]; P.v = st[1]; } }
 }
-function firstShown(hits) { for (let i = 0; i < hits.length; i++) if (shown(hits[i].object)) return hits[i]; return null; }
+function firstShown(hits, from = 0) { for (let i = 0; i < hits.length; i++) if (hits[i].distance >= from && shown(hits[i].object)) return hits[i]; return null; }
 function doPick(h) { // auto depth: what lies under this hand's pointer
   let hit = null;
   if (h.ptr.on) { RAY.setFromCamera(h.ptr.ndc, camera); h.ray.copy(RAY.ray); hit = firstShown(RAY.intersectObjects(PICKS, false)); }
@@ -207,143 +212,91 @@ function limitTip(h, from, to) { // `to` is where the tip is asked to go from `f
   if (w > 0 && (Math.abs(nx) > bx || Math.abs(ny) > by)) { _fp.x = (clamp(nx, -bx, bx) * w) / pe[0]; _fp.y = (clamp(ny, -by, by) * w) / pe[5]; to.copy(_fp).applyMatrix4(camera.matrixWorld); }
   // not through the pelvic wall
   bowlClamp(to);
-  // not so far to its own side that the instrument is lost in the wall it comes through: keep the tip toward the midline
-  if (shaftShown(h, to) < WS.VIS) {
-    const need = Math.min(WS.VIS, shaftShown(h, from)), sx = h.port.x > 0 ? 1 : -1, x1 = to.x;
-    if (shaftShown(h, to) < need - 0.02) {
-      let lo = 0, hi = 4;
-      for (let i = 0; i < 7; i++) { const m = (lo + hi) / 2; to.x = x1 - sx * m; if (shaftShown(h, to) >= need - 0.02) hi = m; else lo = m; }
-      to.x = x1 - sx * hi;
-    }
-  }
-  if (_lv.distanceToSquared(to) > 0.0009) h.limT = 0.3;
+  // not so far to its own side that the instrument is lost in the wall it comes through. This one is not put right
+  // here (false): the caller gives up the sideways part of the move, or brings the tip toward the midline.
+  const ok = shaftShown(h, to) >= Math.min(WS.VIS, shaftShown(h, from)) - 0.02;
+  if (!ok || _lv.distanceToSquared(to) > 0.0009) h.limT = 0.3;
+  return ok;
+}
+// A move with no sideways part that would still lose the shaft in the wall (drawing the instrument out, mostly):
+// the tip is brought toward the midline as it goes. A limit may hold the tip back, never throw it.
+function towardMidline(h, from, to) {
+  const need = Math.min(WS.VIS, shaftShown(h, from)), sx = h.port.x > 0 ? 1 : -1, x1 = to.x; let lo = 0, hi = 4;
+  for (let i = 0; i < 7; i++) { const m = (lo + hi) / 2; to.x = x1 - sx * m; if (shaftShown(h, to) >= need) hi = m; else lo = m; }
+  if (hi > 6 * _lv.distanceTo(from) + 0.05) to.copy(from); else to.x = x1 - sx * hi;
 }
 // Free depth: apply this frame's travel to the pose. Travel across the picture is scaled by the tip's distance from
 // the lens so the tip keeps pace with the mouse or hand at any zoom. The mouse swings the instrument about its port
 // at a fixed insertion (with the fulcrum effect on, opposite to the mouse, as with a real handle); the wheel changes
-// the insertion. A hand moves the tip itself (cart), so swing and insertion both follow.
-// Depth assist (hands): forward travel slows as the tip nears tissue. Once the tip rests on tissue it stays on it,
-// riding the surface as the hand moves sideways, until the hand has clearly drawn back.
+// the insertion. A hand moves the tip itself (cart): right, up and into the picture, and the pose follows.
 function freeDrive(h) {
   const c = h.cmd;
   if ((c.dx || c.dy || c.dv || c.dz) && h.exch <= 0) {
     camera.getWorldDirection(_cv);
-    _ft.copy(h.port).addScaledVector(h.dir, h.ins); _f0.copy(_ft);
-    const depth = Math.max(2, _g.copy(_ft).sub(camera.position).dot(_cv));
+    _f0.copy(h.port).addScaledVector(h.dir, h.ins);
+    const depth = Math.max(2, _g.copy(_f0).sub(camera.position).dot(_cv));
     const k0 = ((2 * depth * Math.tan((camera.fov * DEG) / 2)) / VH) * DEPTH.sens, k = k0 * (DEPTH.fulcrum && !c.cart ? -1 : 1);
     _fr.setFromMatrixColumn(camera.matrixWorld, 0); _fu.setFromMatrixColumn(camera.matrixWorld, 1);
-    if (c.cart) {
-      let lx = c.dx * k, ly = -c.dy * k, dv = c.dv * k0, lift = false;
-      if (h.hold || h.lock) {
-        h.rel = clamp(h.rel - dv, 0, 9); dv = 0;
-        if (h.lock) { if (h.lockT > 0) { h.lockX = h.lockY = h.rel = 0; } else { h.lockX += lx; h.lockY += ly; } } // the hand was still arriving when the tip settled: that travel does not count as leaving
-        if (h.rel > DEPTH.REL) { h.hold = false; h.rel = 0; if (h.lock) { h.lock = false; h.lockOut = true; } lift = true; } // clearly drawn back: come off the tissue
-        else if (h.lock) { if (Math.hypot(h.lockX, h.lockY) > DEPTH.ESC) { h.lock = false; h.lockOut = true; } else lx = ly = 0; } // pinned to the target until the hand has clearly moved off it
-      } else if (DEPTH.assist && dv > 0 && h.ahead.hit && !(h.grab && h.grab.pull)) dv *= lerp(0.3, 1, clamp((h.ahead.dist - h.ins) / DEPTH.SLOW, 0, 1));
-      _ft.addScaledVector(_fr, lx).addScaledVector(_fu, ly).addScaledVector(_cv, dv);
-      limitTip(h, _f0, _ft);
-      poseFromPoint(h, _ft); h.ins = clamp(h.ins, 3, 34);
-      if (lift && h.ahead.hit) h.ins = Math.min(h.ins, Math.max(3, h.ahead.dist - DEPTH.CONTACT - 0.2));
-    } else {
-      _ft.addScaledVector(_fr, c.dx * k).addScaledVector(_fu, -c.dy * k);
-      _ft.sub(h.port).setLength(clamp(h.ins + c.dz, 3, 34)).add(h.port);
-      limitTip(h, _f0, _ft);
-      poseFromPoint(h, _ft); h.ins = clamp(h.ins, 3, 34);
+    // Tissue under the tip gives as far as STOP and no further: a push is cut short there, so no travel is stored up
+    // to be taken back before the tip answers. A hand's push goes into the picture, but against tissue it goes along
+    // the instrument, the way the tissue pushes back, so that pushing on does not walk the tip sideways.
+    const room = h.touch ? Math.max(0, DEPTH.STOP - h.press) : 99;
+    const aim = dx => {
+      _ft.copy(_f0).addScaledVector(_fr, dx * k).addScaledVector(_fu, -c.dy * k);
+      if (!c.cart) _ft.sub(h.port).setLength(clamp(h.ins + Math.min(c.dz, room), 3, 34)).add(h.port);
+      else if (h.touch) _ft.addScaledVector(h.dir, Math.min(c.dv * k0, room)); else _ft.addScaledVector(_cv, c.dv * k0);
+      return limitTip(h, _f0, _ft);
+    };
+    // at the wall an instrument comes in through, the sideways part of a move is cut short and the rest kept
+    if (!aim(c.dx)) {
+      let t = 0; if (c.dx) for (let lo = 0, hi = 1, i = 0; i < 5; i++) { const m = (lo + hi) / 2; if (aim(c.dx * m)) t = lo = m; else hi = m; }
+      if (!aim(c.dx * t)) towardMidline(h, _f0, _ft);
     }
-  }
+    // The side of the shaft cannot sweep through the pelvic wall or a large organ. A move that would bring one
+    // across the shaft behind the tip keeps only its travel along the instrument. An organ already across the
+    // shaft (it moved there) is left alone.
+    if (!h.cross) {
+      const L = _g.copy(_ft).sub(h.port).length(), went = _f0.distanceTo(_ft); RAY.set(h.port, _g.divideScalar(L));
+      if (shaftBlocked(RAY.intersectObjects(PICKS, false), L - tipZone(went))) {
+        const d = _g.copy(_ft).sub(_f0).dot(h.dir); _ft.copy(_f0).addScaledVector(h.dir, d);
+        if (!limitTip(h, _f0, _ft)) towardMidline(h, _f0, _ft); h.limT = 0.3;
+      }
+    }
+    poseFromPoint(h, _ft); h.ins = clamp(h.ins, 3, 34); h.went = _f0.distanceTo(_ft);
+  } else h.went = 0;
   c.dx = c.dy = c.dz = c.dv = 0; c.cart = false;
 }
-// What this step is asking for, the instrument that works there, and what kind of place it is. Worked out once a frame.
-//   ents: a named structure (a pedicle to seal, a ureter to point out, the vaginal edge to bite)
-//   spot: a bleeding point on tissue, with the structures that must not end up under the tip
-//   neither: a working point in an opened plane (an incision line, the bladder flap, the cup rim, a pool of blood)
-let AIM = null; const _aimP = new V3(), NO_ENERGY_ON = ['ureter', 'iliac', 'rectum', 'bladder'];
-function stepAim() {
-  AIM = null;
-  if (!S.running || S.ended) return;
-  if (S.bleeders.length) { AIM = { p: S.bleeders[0].pt(_aimP), tool: 'bipolar', spot: true, r: 0.4 }; return; }
-  const st = STEPS[S.step], n = st.next && st.next();
-  if (!n || n.act === 'button' || n.hidden) return;
-  AIM = { p: n.p, tool: n.act === 'suction' ? 'suction' : st.tool };
-  if (st.seal) { AIM.ents = st.seal.ent === 'meso' ? ['meso', 'tube'] : [st.seal.ent]; AIM.side = st.seal.side; AIM.r = 0.8; }
-  else if (n.act === 'hover') { AIM.ents = ['ureter']; AIM.side = n.side; AIM.r = 0.8; }
-  else if (n.act === 'bite') { AIM.ents = ['vagina']; AIM.r = 0.3; }
-}
-// Target lock (hand control, with guidance on): when the tip of the instrument this step needs comes close to the
-// step's target, it settles onto the target and stays there, so a pinch acts on the target and not on its neighbour.
-// It lets go when the hand has clearly moved off or drawn back. Returns what the instrument then rests on.
-const RAYL = new THREE.Raycaster(), _ld = new V3(), _la = new V3(), _lb = new V3(), _lq = new V3(), LOCK_AIR = {};
-const LOCK_RING = [[0, 0], [0.2, 0], [-0.2, 0], [0, 0.2], [0, -0.2], [0.14, 0.14], [-0.14, 0.14], [0.14, -0.14], [-0.14, -0.14], [0.4, 0], [-0.4, 0], [0, 0.4], [0, -0.4]];
-function lockHit(h, k) { // the tissue met on the line from this port to the k-th point of a small ring round the target
-  _ld.copy(AIM.p).sub(h.port).normalize();
-  _la.crossVectors(_ld, Math.abs(_ld.y) < 0.9 ? _lq.set(0, 1, 0) : _lq.set(1, 0, 0)).normalize(); _lb.crossVectors(_ld, _la);
-  _lq.copy(AIM.p).addScaledVector(_la, LOCK_RING[k][0]).addScaledVector(_lb, LOCK_RING[k][1]).sub(h.port).normalize();
-  RAYL.set(h.port, _lq); return firstShown(RAYL.intersectObjects(PICKS, false));
-}
-function lockOK(hit) { // is that the thing the step is after?
-  if (!hit || hit.point.distanceTo(AIM.p) > AIM.r) return false;
-  const ud = hit.object.userData;
-  return AIM.spot ? !NO_ENERGY_ON.includes(ud.ent) : AIM.ents.includes(ud.ent) && (AIM.side == null || ud.side === AIM.side);
-}
-function targetLock(h, hands) {
-  const ok = hands && DEPTH.prio && S.guided && AIM && (AIM.tool === 'any' || AIM.tool === h.inst) && !(h.grab && h.grab.pull) && h.exch <= 0;
-  if (!ok) { h.lock = false; h.lockOut = false; return null; }
-  if (h.lock && h.lockP.distanceTo(AIM.p) > 0.5) h.lock = false; // the step has moved on to another target
-  _ld.copy(AIM.p).sub(h.tip); const along = _ld.dot(h.dir), lat = Math.sqrt(Math.max(0, _ld.lengthSq() - along * along));
-  const cap = lat < DEPTH.CAP && along > -0.8 && along < 1.6;
-  if (h.lockOut && lat > DEPTH.CAP + 0.25) h.lockOut = false;
-  if (!h.lock && (!cap || h.lockOut || !HT.slot[h.key].engaged)) return null;
-  const take = () => { if (!h.lock) { h.lock = true; h.lockX = h.lockY = 0; h.rel = 0; h.lockT = 0.3; } h.lockP.copy(AIM.p); };
-  if (AIM.ents || AIM.spot) {
-    // settle on the structure itself: the line to the target if that meets it, else the nearest line beside it that does
-    let hit = lockHit(h, h.lockK);
-    if (!lockOK(hit)) { hit = null; if (h.lock || (h.lockN = (h.lockN + 1) % 3) === 0) for (let k = 0; k < LOCK_RING.length && !hit; k++) { const f = lockHit(h, k); if (lockOK(f)) { hit = f; h.lockK = k; } } }
-    if (!hit) { h.lock = false; return null; } // this port has no clear line to it
-    take(); h.dir.copy(_lq); h.ins = hit.distance + DEPTH.SEAT; h.hold = true;
-    return hit;
-  }
-  // a working point: hold the tip at the point itself, just clear of whatever lies beyond it
-  const hit = lockHit(h, 0), L = h.port.distanceTo(AIM.p);
-  if (hit && hit.distance < L - 0.2) { h.lock = false; return null; } // tissue lies between this port and the point
-  take(); h.dir.copy(_lq); h.ins = Math.min(L, hit ? hit.distance - DEPTH.CONTACT - 0.11 : L); h.hold = false;
-  return LOCK_AIR;
-}
-// Free depth: the first tissue along the shaft is what the tip will meet. Short of it the instrument touches
-// nothing. At it the tip is in contact. Pushed further, the tissue gives a little and then stops the instrument.
+// Free depth: the first tissue along the shaft, from just behind the tip onward, is what the tip meets. Short of it
+// the instrument touches nothing. At it the tip is in contact. Pushed further, the tip dents the tissue, which
+// then stops it: the tip is always where the hand or mouse has put it, with no hidden travel to take up before
+// it answers. A structure across the shaft further back never pulls the tip back to itself: the shaft passes
+// through it (a cord or fold, which really would be pushed aside, or an organ that has moved onto the shaft).
 function freePick(h, dt) {
   const P = h.pick, A = h.ahead;
-  const hands = CTRL.mode === 'hands', held = !!(h.grab && h.grab.pull);
-  let hit = targetLock(h, hands);
-  if (!hit || hit === LOCK_AIR) { RAY.set(h.port, h.dir); hit = firstShown(RAY.intersectObjects(PICKS, false)); }
+  RAY.set(h.port, h.dir);
+  const hits = RAY.intersectObjects(PICKS, false), from = h.ins - tipZone(h.went), hit = firstShown(hits, from);
+  h.cross = shaftBlocked(hits, from);
   h.ray.origin.copy(h.port); h.ray.direction.copy(h.dir);
   fillPick(h, hit);
   A.hit = !!hit; A.dist = hit ? hit.distance : 99;
-  // depth assist: a tip resting on tissue stays on it and rides it; it is let go where the tissue falls away
-  if (hands && DEPTH.assist && !held && h.exch <= 0) {
-    const what = hit ? hit.object.userData.ent + '|' + (hit.object.userData.side || '') : '', gap = A.dist - h.ins;
-    if (h.hold) {
-      // Follow the structure the tip is resting on. Something nearer is simply in the way, so rest on that. But when
-      // the tissue under the tip falls away or is drawn off it, stay put: never drop onto whatever lies behind.
-      if (A.hit && (gap < DEPTH.SEAT + 0.02 || (what === h.holdOn && gap < DEPTH.JUMP))) { h.ins = A.dist + DEPTH.SEAT; h.holdOn = what; } else h.hold = false;
-    } else if (A.hit && gap < DEPTH.CONTACT && HT.slot[h.key].engaged) { h.hold = true; h.rel = 0; h.ins = A.dist + DEPTH.SEAT; h.holdOn = what; }
-  } else if (!h.lock) h.hold = false;
-  h.limT = Math.max(0, h.limT - dt); h.lockT = Math.max(0, h.lockT - dt);
+  h.limT = Math.max(0, h.limT - dt);
   if ((h.hidT -= dt) <= 0) { // now and then: has the tip gone behind tissue, as the camera sees it?
-    h.hidT = 0.12; _g.copy(h.tip).sub(camera.position); const dd = _g.length(); RAYL.set(camera.position, _g.normalize());
-    const f = firstShown(RAYL.intersectObjects(PICKS, false)); h.hid = !!f && dd - f.distance > 0.9;
+    h.hidT = 0.12; _g.copy(h.tip).sub(camera.position); const dd = _g.length(); RAY.set(camera.position, _g.normalize());
+    const f = firstShown(RAY.intersectObjects(PICKS, false)); h.hid = !!f && dd - f.distance > 0.9;
   }
-  const press = h.ins - A.dist;
+  let press = h.ins - A.dist;
+  // An instrument that is working on tissue holds what it has: as the tissue shrinks under the heat, or the hand
+  // trembles, the tip stays on it. Drawing the hand clearly away still lets go.
+  if (h.firing && h.touch && h.inst !== 'suction' && A.hit && press < 0 && press > -0.5) { const s = Math.min(-press, 1.5 * dt); h.ins += s; press += s; }
   h.touch = A.hit && press > -(h.touch ? DEPTH.CONTACT + 0.08 : DEPTH.CONTACT); // a little slack once in contact, so tremor does not make and break it
-  h.give = press > 0 ? DEPTH.GIVE * (1 - Math.exp(-press / DEPTH.GIVE)) : 0;
-  h.len = A.hit ? Math.min(h.ins, A.dist + h.give) : h.ins;
-  if (press > DEPTH.GIVE * 2.4) h.ins = A.dist + DEPTH.GIVE * 2.4; // so backing out answers at once
-  h.press = clamp(press, 0, DEPTH.GIVE * 2.4);
+  if (press > DEPTH.STOP) h.ins = A.dist + DEPTH.STOP; // tissue that moves onto the tip pushes it back
+  h.press = clamp(press, 0, DEPTH.STOP);
   if (hit) h.surf.copy(hit.point);
   if (!h.touch) { P.hit = false; P.ent = null; P.side = null; P.mesh = null; }
   // the label and contact marker sit at the tip
-  _fp.copy(h.port).addScaledVector(h.dir, h.len).project(camera);
+  _fp.copy(h.port).addScaledVector(h.dir, h.ins).project(camera);
   h.ptr.ndc.set(_fp.x, _fp.y); h.ptr.x = (_fp.x * 0.5 + 0.5) * VW; h.ptr.y = (-_fp.y * 0.5 + 0.5) * VH;
-  if (h.press > DEPTH.GIVE * 1.3 && S.running && !h.grab) { h.pressT += dt; if (h.pressT > 1.2) { h.pressT = 0; hint('press', 'You are pressing the instrument into tissue. Back it out a little.'); } } else h.pressT = Math.max(0, h.pressT - dt);
+  if (h.press > DEPTH.HARD && S.running && !h.grab) { h.pressT += dt; if (h.pressT > 1.2) { h.pressT = 0; hint('press', 'You are pressing the instrument into tissue. Back it out a little.'); } } else h.pressT = Math.max(0, h.pressT - dt);
 }
 function updateHands(dt) {
   const free = freeDepth();
@@ -364,7 +317,7 @@ function updateHands(dt) {
       }
       h.goal.copy(pl.nat).add(pl.off); h.tip.copy(h.goal);
     } else if (free) {
-      if (h.exch <= 0) h.goal.copy(h.port).addScaledVector(h.dir, h.len);
+      if (h.exch <= 0) h.goal.copy(h.port).addScaledVector(h.dir, h.ins);
     } else if (act && h.exch <= 0) {
       if (P.hit) { h.surf.copy(P.point).addScaledVector(P.normal, 0.1); h.depth = P.dist; }
       else h.surf.copy(h.ray.origin).addScaledVector(h.ray.direction, h.depth);
@@ -377,9 +330,9 @@ function updateHands(dt) {
     const held = !!(h.grab && h.grab.pull);
     h.near = held || (free ? h.touch : h.tip.distanceTo(h.surf) < 0.7);
     // tissue under a pressing tip dents; a held or absent contact does not
-    const dent = free && h.touch && !held && h.exch <= 0 ? h.give : 0;
+    const dent = free && h.touch && !held && h.exch <= 0 ? h.press : 0;
     DENT.pos.value[i].set(h.surf.x, h.surf.y, h.surf.z, dent); DENT.dir.value[i].copy(h.dir);
-    if (!free) { poseFromPoint(h, h.tip); h.len = h.ins; h.touch = h.near; h.press = 0; } // keep the pose current so switching modes is seamless
+    if (!free) { poseFromPoint(h, h.tip); h.touch = h.near; h.press = 0; } // keep the pose current so switching modes is seamless
     let retract = 0;
     if (h.exch > 0) {
       h.exch -= dt / 0.55;

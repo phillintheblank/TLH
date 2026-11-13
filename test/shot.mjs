@@ -1,4 +1,4 @@
-// Serve docs/ on localhost, load it in headless Chrome (with a fake camera), run an optional script, screenshot.
+// Serve docs/ on localhost, load it in headless Chrome (with a fake camera, or CAMS=2 of them), run an optional script, screenshot.
 import { chromium } from '/opt/npm-tools/node_modules/playwright/index.mjs';
 import fs from 'node:fs';
 import http from 'node:http';
@@ -15,7 +15,7 @@ const url = 'http://127.0.0.1:' + server.address().port + '/';
 const out = process.argv[2] || path.join(root, '../test/out/shot.png');
 const script = process.argv[3] || '';
 const W = +(process.env.W || 1440), H = +(process.env.H || 900);
-const browser = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--no-sandbox', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] });
+const browser = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--no-sandbox', '--use-fake-device-for-media-stream' + (process.env.CAMS ? '=device-count=' + process.env.CAMS : ''), '--use-fake-ui-for-media-stream'] });
 const ctx = await browser.newContext({ viewport: { width: W, height: H }, permissions: ['camera'] });
 const page = await ctx.newPage();
 const errs = [];

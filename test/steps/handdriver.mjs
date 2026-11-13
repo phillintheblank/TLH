@@ -1,38 +1,48 @@
-// A scripted pair of hands for tests. It generates landmark frames at 30 fps and feeds them to the page's
-// hand-control pipeline, so everything from slot assignment to pinch and clutch detection is exercised.
-// The hands move in real directions (right, up, forward); a camera model says what the camera sees of each:
-//   'upright' = user-facing webcam: the picture is mirrored, lifting a hand moves it up the picture, and pushing
-//               it forward (toward the camera) makes it look bigger.
-//   'tilted'  = lid tilted down at the desk: pushing a hand forward moves it down the picture (and slightly nearer),
-//               lifting it brings it toward the camera so it looks bigger (and drifts a little up the picture).
-// Each entry is what the camera sees, as [x, y, depth signal], for one unit of travel in that direction.
-export async function installHandDriver(page, cam) {
-  await page.evaluate(cam => {
-    const S = window.__sim, T3 = S.THREE;
-    const CAMS = { upright: { r: [-1, 0, 0], u: [0, -1, 0], f: [0, 0, 1] }, tilted: { r: [-1, 0, 0], u: [0, -0.2, 1], f: [0, 1, 0.3] } };
-    const HOME = { L: { x: 0.68, y: 0.55 }, R: { x: 0.32, y: 0.55 } };
+// A scripted pair of hands for tests. Each hand is a point in the user's own space (metres: x to the user's right,
+// y up, z forward, away from the user). One or two simulated cameras look at the hands with true perspective, so
+// their pictures have the distortions a real lens gives, and what each camera sees goes through the page's whole
+// hand-control pipeline at 30 fps: matching hands to instruments, combining the cameras, pinch and clutch.
+// A rig lists the cameras: el = how far the camera looks down from level (degrees), dist = metres from the hands,
+// f = focal length in picture-heights. The first camera is the one in front; a second, if any, is higher.
+export const RIGS = {
+  one: [{ el: 12, dist: 0.55, f: 0.9 }],
+  tilted: [{ el: 50, dist: 0.5, f: 0.9 }], // one camera, lid tilted down at the hands
+  two: [{ el: 12, dist: 0.55, f: 0.9 }, { el: 55, dist: 0.62, f: 0.78 }],
+  shallow: [{ el: 12, dist: 0.55, f: 0.9 }, { el: 24, dist: 0.62, f: 0.78 }] // second camera too low to see forward movement well
+};
+export async function installHandDriver(page, rig) {
+  rig = typeof rig === 'string' ? RIGS[rig === 'upright' ? 'one' : rig] : rig || RIGS.one;
+  await page.evaluate(rig => {
+    const S = window.__sim, T3 = S.THREE, PALM = 0.095;
+    S.HT.simN = rig.length;
+    const cams = rig.map(c => { const e = (c.el * Math.PI) / 180; return { n: [0, -Math.sin(e), -Math.cos(e)], dn: [0, -Math.cos(e), Math.sin(e)], C: [0, c.dist * Math.sin(e), c.dist * Math.cos(e)], f: c.f }; });
+    // where a point of the user's space falls in camera c's picture (x, y in 0..1), and how large a palm looks there
+    const see = (X, ci) => { const c = cams[ci], d = [X[0] - c.C[0], X[1] - c.C[1], X[2] - c.C[2]], depth = d[0] * c.n[0] + d[1] * c.n[1] + d[2] * c.n[2]; return { x: 0.5 + (c.f * -d[0]) / depth / S.HT.cams[ci].aspect, y: 0.5 + (c.f * (d[1] * c.dn[1] + d[2] * c.dn[2])) / depth, size: (c.f * PALM) / depth }; };
+    const HOME = { L: [-0.14, 0, 0], R: [0.14, 0, 0] }, U = rig[0].dist / rig[0].f; // U: metres of hand travel per picture-height in the front camera
+    const hand = k => ({ X: HOME[k].slice(), ap: 0.62, opn: 1.45, vis: true, lost: [false, false], gz: [0, 0], apSeen: [null, null] }); // lost: hidden from that camera; gz, apSeen: how that camera sees the grip
     const drv = window.__drv = {
-      t: 0, noise: 0, cam: CAMS[cam || 'upright'],
-      hands: { L: { x: 0.68, y: 0.55, size: 0.2, ap: 0.62, opn: 1.45, vis: true }, R: { x: 0.32, y: 0.55, size: 0.2, ap: 0.62, opn: 1.45, vis: true } },
+      t: 0, noise: 0, cams, see, U, HOME, hands: { L: hand('L'), R: hand('R') },
       step(n) {
         for (let i = 0; i < (n || 1); i++) {
           this.t += 1 / 30;
-          const dets = [];
-          for (const k of ['L', 'R']) { const h = this.hands[k]; if (h.vis) dets.push(S.fakeHand({ x: h.x + (Math.random() - 0.5) * this.noise, y: h.y + (Math.random() - 0.5) * this.noise, size: h.size * (1 + (Math.random() - 0.5) * this.noise * 3), ap: h.ap, opn: h.opn, hide: h.hide })); }
-          S.htIngest(dets, this.t); S.tick(1 / 30);
+          for (let ci = 0; ci < cams.length; ci++) {
+            const dets = [];
+            for (const k of ['L', 'R']) { const h = this.hands[k]; if (!h.vis || h.lost[ci]) continue; const p = see(h.X, ci); dets.push(S.fakeHand({ cam: ci, x: p.x + (Math.random() - 0.5) * this.noise, y: p.y + (Math.random() - 0.5) * this.noise, size: p.size * (1 + (Math.random() - 0.5) * this.noise * 5), ap: h.apSeen[ci] == null ? h.ap : h.apSeen[ci], opn: h.opn, gz: h.gz[ci] })); }
+            S.htIngest(dets, this.t, ci);
+          }
+          S.tick(1 / 30);
         }
       },
-      // move a hand by (right, up, forward), in picture-heights of travel; false if that would leave the working space
+      // move a hand right, up and forward, in front-camera picture-heights of travel; false if that would leave a camera's view
       move(k, a, b, c) {
-        const h = this.hands[k], m = this.cam, ox = a * m.r[0] + b * m.u[0] + c * m.f[0], oy = a * m.r[1] + b * m.u[1] + c * m.f[1], oz = a * m.r[2] + b * m.u[2] + c * m.f[2];
-        const nx = h.x + ox / S.HT.aspect, ny = h.y + oy, ns = h.size * Math.exp(oz / 1.1);
-        if (nx < 0.08 || nx > 0.92 || ny < 0.1 || ny > 0.9 || ns < 0.11 || ns > 0.36) return false;
+        const h = this.hands[k], X = [h.X[0] + a * U, h.X[1] + b * U, h.X[2] + (c || 0) * U];
+        for (let ci = 0; ci < cams.length; ci++) { const p = see(X, ci); if (p.x < 0.08 || p.x > 0.92 || p.y < 0.1 || p.y > 0.9) return false; }
         const o = this.hands[k === 'R' ? 'L' : 'R']; // two real hands cannot pass through each other
-        if (o.vis && Math.abs(nx - o.x) < 0.15 && Math.abs(ny - o.y) < 0.3 && Math.abs(nx - o.x) < Math.abs(h.x - o.x)) return false;
-        h.x = nx; h.y = ny; h.size = ns; return true;
+        if (o.vis && Math.abs(X[0] - o.X[0]) < 0.07 && Math.abs(X[1] - o.X[1]) < 0.12 && Math.abs(X[0] - o.X[0]) < Math.abs(h.X[0] - o.X[0])) return false;
+        h.X = X; return true;
       },
       // open the hand flat (clutch), bring it back to a comfortable spot, curl it again
-      clutch(k) { const h = this.hands[k], ap = h.ap; h.opn = 1.95; h.ap = 0.9; this.step(8); h.x = HOME[k].x; h.y = HOME[k].y; h.size = 0.2; this.step(8); h.opn = 1.45; h.ap = ap > 0.4 ? ap : 0.62; this.step(20); },
+      clutch(k) { const h = this.hands[k], ap = h.ap; h.opn = 1.95; h.ap = 0.9; this.step(8); h.X = HOME[k].slice(); this.step(8); h.opn = 1.45; h.ap = ap > 0.4 ? ap : 0.62; this.step(20); },
       // auto depth, closed loop: nudge the hand until that hand's pointer reaches (tx, ty) in view pixels
       moveTo(k, tx, ty) {
         const hand = S.HAND[k]; let clutches = 0, steady = 0;
@@ -51,19 +61,20 @@ export async function installHandDriver(page, cam) {
       // Returns how far the tip was from W. vm caps the hand's travel per frame.
       nudge(k, W, vm) {
         const hand = S.HAND[k], cam = S.camera, st = this._st || (this._st = { R: new T3.Vector3(), U: new T3.Vector3(), F: new T3.Vector3(), e: new T3.Vector3(), tip: new T3.Vector3() });
-        const sl = S.HT.slot[k];
+        const sl = S.HT.slot[k], HT = S.HT;
         if (!sl.engaged) { this.step(1); return -1; }
         const VH = document.getElementById('ov').getBoundingClientRect().height;
         st.R.setFromMatrixColumn(cam.matrixWorld, 0); st.U.setFromMatrixColumn(cam.matrixWorld, 1); cam.getWorldDirection(st.F);
         st.tip.copy(hand.port).addScaledVector(hand.dir, hand.ins); st.e.copy(W).sub(st.tip);
-        const err = st.e.length(), depth = Math.max(2, st.tip.clone().sub(cam.position).dot(st.F)), k0 = (2 * depth * Math.tan((cam.fov * Math.PI) / 360)) / VH, g = S.HT.tune.gain * VH, zg = S.HT.tune.zgain;
+        const err = st.e.length(), depth = Math.max(2, st.tip.clone().sub(cam.position).dot(st.F)), k0 = (2 * depth * Math.tan((cam.fov * Math.PI) / 360)) / VH, g = HT.tune.gain * VH;
         // The tracker smooths what it sees, so the instrument trails the hand a little. A person allows for that and
         // does not keep pushing while the tip catches up: steer by where the tip will settle for the hand as it is now.
-        const inv = S.HT.cal.inv, band = 0.002 + 0.014 * S.HT.tune.zsteady, lx = sl.rawx - sl.x, ly = sl.rawy - sl.y, zr = sl.rawz - sl.zb, lz = zr > band ? zr - band : zr < -band ? zr + band : 0;
-        st.e.addScaledVector(st.R, -(inv[0] * lx + inv[1] * ly + inv[2] * lz) * g * k0).addScaledVector(st.U, -(inv[3] * lx + inv[4] * ly + inv[5] * lz) * g * k0).addScaledVector(st.F, -(inv[6] * lx + inv[7] * ly + inv[8] * lz) * g * zg * k0);
+        const G = sl.G, D = [];
+        for (let i = 0; i < HT.n; i++) { const w = sl.c[i]; if (HT.clock - w.tSeen < 0.3) D.push(w.rawx - w.x, w.rawy - w.y); }
+        const lag = r => (G && G[r] && G[r].length === D.length ? G[r].reduce((s, c, j) => s + c * D[j], 0) * g * k0 : 0);
+        st.e.addScaledVector(st.R, -lag(0)).addScaledVector(st.U, -lag(1)).addScaledVector(st.F, -lag(2));
         const lim = v => Math.max(-vm, Math.min(vm, v));
-        const a = lim((st.e.dot(st.R) / k0 / g) * 0.5), b = lim((st.e.dot(st.U) / k0 / g) * 0.5), c = lim((st.e.dot(st.F) / k0 / (g * zg)) * 0.5);
-        if (!this.move(k, a, b, c)) { this.clutch(k); this.clutches++; return err; }
+        if (!this.move(k, lim((st.e.dot(st.R) / k0 / g) * 0.5), lim((st.e.dot(st.U) / k0 / g) * 0.5), lim((st.e.dot(st.F) / k0 / g) * 0.5))) { this.clutch(k); this.clutches++; return err; }
         this.step(1); return err;
       },
       // bring the commanded tip to W. stopOnTouch: stop as soon as the tip is in contact with tissue.
@@ -136,10 +147,10 @@ export async function installHandDriver(page, cam) {
         const inView = W => { const q = W.clone().project(cam); return q.z < 1 && Math.abs(q.x) < 0.9 && Math.abs(q.y) < 0.9; };
         const own = len => hand.port.clone().addScaledVector(hand.dir, len), line = len => hand.port.clone().addScaledVector(d, len);
         const good = () => hand.touch && (want ? is(hand.pick, hand.pick.point) && hand.tip.distanceTo(P) < 1 : hand.tip.distanceTo(P) < 0.6);
-        const lift = (by) => { for (let i = 0; i < 4 && hand.touch; i++) { const W = own(Math.max(4, Math.min(hand.ins, hand.len) - by)); if (!inView(W)) break; this.tipTo(k, W, 0.2, false, 90); } };
+        const lift = (by) => { for (let i = 0; i < 4 && hand.touch; i++) { const W = own(Math.max(4, hand.ins - by)); if (!inView(W)) break; this.tipTo(k, W, 0.2, false, 90); } };
         const out = { tries: 0, feel: 0, aim: +off.length().toFixed(2) };
         // the other hand goes back to its own side first, as a person's would, so the two never cross in the picture
-        { const ok = k === 'R' ? 'L' : 'R', oh = this.hands[ok]; if (oh.vis && oh.ap > 0.4 && Math.hypot(oh.x - HOME[ok].x, oh.y - HOME[ok].y) > 0.06) this.clutch(ok); }
+        { const ok = k === 'R' ? 'L' : 'R', oh = this.hands[ok]; if (oh.vis && oh.ap > 0.4 && Math.hypot(oh.X[0] - HOME[ok][0], oh.X[1] - HOME[ok][1], oh.X[2] - HOME[ok][2]) > 0.03) this.clutch(ok); }
         // rest the tip on the tissue firmly enough that a little tremor does not lift it off again
         const rest = () => { for (let i = 0; i < 25 && hand.touch && hand.ins - hand.ahead.dist < 0; i++) this.nudge(k, own(hand.ins + 0.2), 0.002); if (hand.touch) this.step(4); };
         if (good() && !tryNo) { rest(); if (good()) return Object.assign(out, { ok: true, touch: true, good: true, hand: k, short: 0, off: +hand.tip.distanceTo(P).toFixed(2), ent: hand.pick.ent, press: +hand.press.toFixed(2) }); }
@@ -153,7 +164,7 @@ export async function installHandDriver(page, cam) {
           const sw = this.tipTo(k, line(s0).addScaledVector(UP, up), 0.15, false, 300); out.swing = sw.ok;
           if (out.swing) { if (up > 0) this.tipTo(k, line(s0), 0.15, false, 200, 0.01); break; }
           up += 1.5; lift(1);
-          const W = own(Math.min(hand.ins, hand.len)).addScaledVector(UP, 1.5); if (inView(W)) this.tipTo(k, W, 0.25, false, 120);
+          const W = own(hand.ins).addScaledVector(UP, 1.5); if (inView(W)) this.tipTo(k, W, 0.25, false, 120);
         }
         // slide in to just short of where the tissue is expected, line up carefully there, then come down onto it
         const land = () => {
@@ -163,6 +174,15 @@ export async function installHandDriver(page, cam) {
           return this.lineTo(k, d, L + 0.2);
         };
         let r = land();
+        // Went past it without touching (a thin edge, a cord): do as a person does on a flat screen. Put the tip over
+        // the target in the picture, a little short of it, then push into the picture until it touches.
+        const byEye = () => {
+          const A = P.clone().add(off), ray = A.clone().sub(cam.position).normalize(), W0 = A.clone().addScaledVector(ray, -1);
+          if (!inView(W0)) return;
+          lift(1); this.tipTo(k, own(Math.max(4, hand.ins - 1)), 0.2, false, 90); this.tipTo(k, W0, 0.08, false, 220, 0.01);
+          r = this.tipTo(k, A.addScaledVector(ray, 0.5), 0.04, true, 160, 0.005); out.byEye = (out.byEye || 0) + 1;
+        };
+        if (!hand.touch && !r.touch) byEye();
         // met something else first, or only brushed past: feel for the target. With a named structure, move on to
         // the next most open aim point; otherwise aim a little to the side that the obstacle faces.
         const nrm = new T3.Vector3();
@@ -176,30 +196,33 @@ export async function installHandDriver(page, cam) {
         }
         // centre the tip on the aim point, as a person does before pinching; come back down if that lifted it off; then
         if (good()) { this.tipTo(k, line(hand.ins), 0.06, false, 60, 0.004); if (!hand.touch) r = this.lineTo(k, d, L + 0.2, 150); }
+        if (!good()) byEye(); // on the wrong spot, or held up on the way to the line: come at it by eye
         rest();
-        return Object.assign(out, r, { good: good(), hand: k, short: +(L - hand.len).toFixed(2), off: +hand.tip.distanceTo(P).toFixed(2), ent: hand.pick.ent, press: +hand.press.toFixed(2) });
+        return Object.assign(out, r, { good: good(), hand: k, short: +(L - hand.ins).toFixed(2), off: +hand.tip.distanceTo(P).toFixed(2), ent: hand.pick.ent, press: +hand.press.toFixed(2) });
       }
     };
-  }, cam);
+  }, rig);
 }
 // Walk through the on-screen calibration the way a user would.
 export async function calibrate(page) {
   return page.evaluate(() => {
     const d = window.__drv, S = window.__sim, R = d.hands.R, HT = S.HT;
-    const waitStep = (i, max) => { for (let k = 0; k < max && HT.calib && HT.calib.i === i; k++) d.step(1); return !HT.calib || HT.calib.i !== i; };
+    const ids = ['hands', 'right', 'up', ...(HT.n === 2 ? ['fwd'] : []), 'pinch', 'grip', 'flat'];
+    const wait = (id, max) => { const i = ids.indexOf(id); for (let k = 0; k < max && HT.calib && HT.calib.i === i; k++) d.step(1); return !HT.calib || HT.calib.i !== i; };
     const glide = (key, to, n) => { const from = R[key]; for (let i = 1; i <= n; i++) { R[key] = from + ((to - from) * i) / n; d.step(1); } };
-    const travel = (a, b, c, n) => { for (let i = 0; i < n; i++) { d.move('R', a / n, b / n, c / n); d.step(1); } };
+    let refused = 0; const travel = (a, b, c, n) => { for (let i = 0; i < n; i++) { if (!d.move('R', a / n, b / n, c / n)) refused++; d.step(1); } };
+    const fail = id => ({ fail: id, note: HT.calib.note, prog: HT.calib.prog });
     d.step(5);
-    if (!waitStep(0, 90)) return { fail: 'hands', note: HT.calib.note };
-    travel(0.24, 0, 0, 10); if (!waitStep(1, 90)) return { fail: 'right', note: HT.calib.note, prog: HT.calib.prog };
-    travel(0, 0.16, 0, 10); if (!waitStep(2, 90)) return { fail: 'up', note: HT.calib.note, prog: HT.calib.prog };
-    travel(0, 0, 0.17, 10); if (!waitStep(3, 90)) return { fail: 'forward', note: HT.calib.note, prog: HT.calib.prog };
-    glide('ap', 0.14, 6); if (!waitStep(4, 90)) return { fail: 'pinch', note: HT.calib.note };
-    glide('ap', 0.62, 6); if (!waitStep(5, 90)) return { fail: 'grip', note: HT.calib.note };
+    if (!wait('hands', 90)) return fail('hands');
+    travel(0.17, 0, 0, 10); if (!wait('right', 90)) return fail('right');
+    travel(0, 0.14, 0, 10); if (!wait('up', 90)) return fail('up');
+    if (HT.n === 2) { travel(0, 0, 0.16, 10); if (!wait('fwd', 90)) return fail('forward'); }
+    glide('ap', 0.14, 6); if (!wait('pinch', 90)) return fail('pinch');
+    glide('ap', 0.62, 6); if (!wait('grip', 90)) return fail('grip');
     R.ap = 0.9; glide('opn', 1.95, 6); for (let k = 0; k < 90 && HT.calib; k++) d.step(1);
-    if (HT.calib) return { fail: 'flat', note: HT.calib.note };
+    if (HT.calib) return fail('flat');
     glide('opn', 1.45, 5); R.ap = 0.62; d.clutch('R'); d.step(30);
     const c = HT.cal, r = v => +v.toFixed(2);
-    return { status: HT.status, mode: S.CTRL.mode, running: S.S.running, r: [r(c.rx), r(c.ry), r(c.rz)], u: [r(c.ux), r(c.uy), r(c.uz)], f: [r(c.fx), r(c.fy), r(c.fz)], pinchOn: r(c.pinchOn), pinchOff: r(c.pinchOff), flatOn: r(c.flatOn), flatOff: r(c.flatOff), L: S.HAND.L.ptr.on, R: S.HAND.R.ptr.on };
+    return { status: HT.status, mode: S.CTRL.mode, running: S.S.running, refused, n: c.n, travel: c.L.map(r), free: S.freeDepth(), depthNoise: r(c.depthNoise), right: c.right.map(v => v.map(r)), J: c.J.map(Ji => Ji.map(row => row.map(r))), K: c.K.map(Ki => Ki.map(r)), pinchOn: r(c.pinchOn), pinchOff: r(c.pinchOff), flatOn: r(c.flatOn), flatOff: r(c.flatOff), L: S.HAND.L.ptr.on, R: S.HAND.R.ptr.on };
   });
 }

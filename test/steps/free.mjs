@@ -7,7 +7,7 @@ export default async function (page) {
   await page.click('#btnBegin');
   await ev(() => { window.__simPause = true; });
   const box = await page.locator('#ov').boundingBox(), cx = box.x + box.width / 2, cy = box.y + box.height / 2;
-  const st = () => ev(() => { const s = window.__sim, h = s.HAND[s.active], q = s.proj(h.tip.toArray()); return { x: q.x, y: q.y, ins: h.ins, len: h.len, touch: h.touch, press: h.press, ent: h.pick.ent, hit: h.pick.hit, dent: s.DENT.pos.value[s.active === 'L' ? 0 : 1].w, lock: s.INP.lock, noLock: s.INP.noLock, act: s.S.stats.activations, firing: h.firing, grab: h.grab && h.grab.pull ? h.grab.pull.off.length() : -1, auto: s.DEPTH.auto, camIns: s.CAM.userIns }; });
+  const st = () => ev(() => { const s = window.__sim, h = s.HAND[s.active], q = s.proj(h.tip.toArray()); return { x: q.x, y: q.y, ins: h.ins, touch: h.touch, press: h.press, ent: h.pick.ent, hit: h.pick.hit, dent: s.DENT.pos.value[s.active === 'L' ? 0 : 1].w, lock: s.INP.lock, noLock: s.INP.noLock, act: s.S.stats.activations, firing: h.firing, grab: h.grab && h.grab.pull ? h.grab.pull.off.length() : -1, auto: s.DEPTH.auto, camIns: s.CAM.userIns }; });
   ok(await ev(() => window.__sim.freeDepth()), 'mouse mode starts in free depth');
 
   // the first click takes the instruments and must not fire them
@@ -53,8 +53,7 @@ export default async function (page) {
   ok(a.touch && a.hit && !!a.ent, 'advancing reaches contact with ' + a.ent + ' after ' + n + ' wheel steps');
   for (let i = 0; i < 12; i++) { await page.mouse.wheel(0, -100); await T(0.1); }
   b = await st();
-  ok(b.len - (b.ins - b.press) < 0.56 && b.len - (b.ins - b.press) > 0.3, 'pressing dents the tissue ' + (b.len - (b.ins - b.press)).toFixed(2) + ' cm and stops');
-  ok(b.press <= 0.55 * 2.4 + 0.01, 'commanded over-travel is capped (' + b.press.toFixed(2) + ' cm)');
+  ok(b.press > 0.3 && b.press <= 0.71, 'pressing dents the tissue ' + b.press.toFixed(2) + ' cm and is stopped there');
   ok(b.dent > 0.3, 'the dent is drawn (' + b.dent.toFixed(2) + ' cm)');
   await T(1.6); const toast = await page.locator('#toast').textContent();
   ok(/pressing/i.test(toast), 'a warning appears while pressing: "' + toast + '"');

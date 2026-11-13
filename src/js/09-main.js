@@ -42,10 +42,10 @@ function wire() {
   // mouse settings
   // On a Mac the system default ("natural" scrolling) reverses the wheel, so start reversed there: wheel forward should push in.
   DEPTH.flip = /Mac/i.test(navigator.platform || navigator.userAgent || '');
-  try { const d = JSON.parse(localStorage.getItem(DKEY) || 'null'); if (d) { DEPTH.auto = !!d.auto; DEPTH.fulcrum = !!d.fulcrum; DEPTH.flip = !!d.flip; if (d.wheel > 0.2 && d.wheel < 4) DEPTH.wheel = d.wheel; if (d.assist === false) DEPTH.assist = false; if (d.prio === false) DEPTH.prio = false; } } catch (_) {}
-  const saveD = () => { try { localStorage.setItem(DKEY, JSON.stringify({ auto: DEPTH.auto, fulcrum: DEPTH.fulcrum, flip: DEPTH.flip, wheel: DEPTH.wheel, assist: DEPTH.assist, prio: DEPTH.prio })); } catch (_) {} };
+  try { const d = JSON.parse(localStorage.getItem(DKEY) || 'null'); if (d) { DEPTH.auto = !!d.auto; DEPTH.fulcrum = !!d.fulcrum; DEPTH.flip = !!d.flip; if (d.wheel > 0.2 && d.wheel < 4) DEPTH.wheel = d.wheel; } } catch (_) {}
+  const saveD = () => { try { localStorage.setItem(DKEY, JSON.stringify({ auto: DEPTH.auto, fulcrum: DEPTH.fulcrum, flip: DEPTH.flip, wheel: DEPTH.wheel })); } catch (_) {} };
   const dtog = (id, key) => { const b = $(id), sync = () => { b.classList.toggle('on', DEPTH[key]); b.setAttribute('aria-pressed', DEPTH[key] ? 'true' : 'false'); }; b.addEventListener('click', () => { DEPTH[key] = !DEPTH[key]; sync(); saveD(); uiDirty(); }); sync(); };
-  dtog('btnAuto', 'auto'); dtog('btnFulcrum', 'fulcrum'); dtog('btnFlip', 'flip'); dtog('btnAssist', 'assist'); dtog('btnPrio', 'prio');
+  dtog('btnAuto', 'auto'); dtog('btnFulcrum', 'fulcrum'); dtog('btnFlip', 'flip');
   $('mWheel').value = Math.round(DEPTH.wheel * 100);
   $('mWheel').addEventListener('input', e => { DEPTH.wheel = e.target.value / 100; saveD(); });
   $('handL').addEventListener('click', () => setActive('L')); $('handR').addEventListener('click', () => setActive('R'));
@@ -113,9 +113,8 @@ function tick(dt) {
   const hm = CTRL.mode === 'hands';
   if (hm) htPointers(dt); else routeMouse();
   const free = freeDepth(), live = S.running && !S.ended;
-  stepAim();
   for (const h of HANDS) {
-    if (!free) { h.hold = h.lock = false; doPick(h); snapPick(h); continue; }
+    if (!free) { doPick(h); snapPick(h); continue; }
     if (live && (hm ? HT.slot[h.key].engaged : h.key === ACTIVE)) freeDrive(h); else { h.cmd.dx = h.cmd.dy = h.cmd.dz = h.cmd.dv = 0; h.cmd.cart = false; }
     freePick(h, dt);
   }
@@ -162,22 +161,22 @@ function forceStep() {
   else if (st.id === 'cuff') { for (const x of [1.5, 0.9, 0.3, -0.3, -0.9, -1.5]) S.cuff.stitches.push({ x, da: 0.8, dp: 0.8 }); S.cuff.frontGoal = -2.8; S.cuff.done = true; }
   else if (st.id === 'final') { S.lowP = true; S.ureterOK.R = S.ureterOK.L = true; endCase(); }
 }
-// A synthetic hand for tests: 21 landmarks that produce the given palm position, pinch aperture and finger extension.
-// A synthetic hand for tests: a fixed 3-D hand shape (wl, metres) drawn into the picture at (x, y) with its palm
-// `size` picture-heights long. opn spreads the fingers, ap parts the thumb from the fingertips.
+// A synthetic hand for tests: a fixed 3-D hand shape (wl, metres) drawn into camera o.cam's picture at (x, y) with
+// its palm `size` picture-heights long. opn spreads the fingers, ap parts the thumb from the fingertips, and gz is the
+// share of that gap lying along the camera's line of sight (0: the camera sees the grip side-on, clearly).
 function fakeHand(o) {
-  const lm = [], wl = [], P = 0.095, a = HT.aspect, sz = o.size || 0.2;
+  const lm = [], wl = [], P = 0.095, a = HT.cams[o.cam || 0].aspect, sz = o.size || 0.2, gz = o.gz || 0;
   for (let i = 0; i < 21; i++) wl.push({ x: 0, y: 0, z: 0 });
   wl[1] = { x: -0.03, y: -0.02, z: 0 };
   [[5, 8, -0.3], [9, 12, 0], [13, 16, 0.25], [17, 20, 0.5]].forEach(([m, t, an]) => { const dx = Math.sin(an), dy = -Math.cos(an); wl[m] = { x: dx * P, y: dy * P, z: 0 }; wl[t] = { x: dx * P * o.opn, y: dy * P * o.opn, z: 0 }; for (const q of [1, 2]) wl[m + q] = { x: lerp(wl[m].x, wl[t].x, q / 3), y: lerp(wl[m].y, wl[t].y, q / 3), z: 0 }; });
-  wl[4] = o.hide ? { x: (wl[5].x + wl[8].x) / 2, y: (wl[5].y + wl[8].y) / 2, z: 0.5 * P } : { x: wl[8].x - o.ap * P, y: wl[8].y, z: 0 }; // hide: the thumb tip is behind the index finger, where the camera cannot see it
+  wl[4] = { x: wl[8].x - o.ap * P * Math.sqrt(1 - gz * gz), y: wl[8].y, z: o.ap * P * gz };
   for (const q of [1, 2]) wl[1 + q] = { x: lerp(wl[1].x, wl[4].x, q / 3), y: lerp(wl[1].y, wl[4].y, q / 3), z: lerp(0, wl[4].z, q / 3) };
   const cx = (wl[0].x + wl[5].x + wl[17].x) / 3, cy = (wl[0].y + wl[5].y + wl[17].y) / 3, k = sz / P;
   for (let i = 0; i < 21; i++) lm.push({ x: o.x + ((wl[i].x - cx) * k) / a, y: o.y + (wl[i].y - cy) * k, z: (wl[i].z * k) / a });
   return { lm, wl };
 }
 window.__sim = {
-  forceStep, visibleAt, colpPt, SEALSPEC, URETER, VG, UT, BL, HT, HANDS, CTRL, fakeHand, htIngest, htEnable, htDisable, calibFinish,
+  forceStep, visibleAt, colpPt, SEALSPEC, URETER, VG, UT, BL, HT, HANDS, CTRL, fakeHand, htIngest, htEnable, htDisable, calibFinish, calBuild, camFillPickers,
   get S() { return S; }, STEPS, HAND, CAM, AN, INP, tick, setPoseGoal, setInst, setActive, cutAction, startCase,
   get active() { return ACTIVE; }, get PICK() { return activeHand().pick; },
   next() { const st = STEPS[S.step]; if (S.bleeders.length) { const p = S.bleeders[0].pt(new V3()); project(p, _ps); return { act: 'bleed', x: _ps.x, y: _ps.y, p: p.toArray(), want: { spot: 0.35, avoid: ['ureter', 'iliac', 'rectum', 'bladder'] } }; } const n = st.next && st.next(); if (!n) return null; project(n.p, _ps); const um = /(right|left) ureter/.exec(n.label || ''), want = st.seal ? { ents: st.seal.ent === 'meso' ? ['meso', 'tube'] : [st.seal.ent], side: st.seal.side } : um ? { ents: ['ureter'], side: um[1] === 'right' ? 'R' : 'L' } : n.act === 'bite' ? { cuff: { edge: S.cuff.pending ? 'post' : 'ant', x: S.cuff.pending ? S.cuff.pending.x : st.nextX() } } : null; return { act: n.act, label: n.label, x: _ps.x, y: _ps.y, z: _ps.z, hidden: !!n.hidden, vis: visibleAt(n.p, 0.8), p: n.p.toArray(), want }; },

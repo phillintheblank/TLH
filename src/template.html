@@ -135,12 +135,23 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 .sheet .log{max-height:150px;overflow:auto}
 .sheet.cal{width:min(860px,100%);display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:20px;align-items:start}
 .cal-cam{width:100%;aspect-ratio:4/3;border-radius:8px;background:#05080a;border:1px solid var(--line);display:block}
+.sheet.cal.two{width:min(1020px,100%);grid-template-columns:minmax(0,1.55fr) minmax(0,1fr)}
+.cal-views{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;min-width:0}
+.cal-views .cal-cam{grid-column:span 2}
+.cal-views .cal-cam[hidden]{display:none}
+.two .cal-views .cal-cam{grid-column:auto}
+.cal-pick{grid-column:span 2;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px 8px;font-size:12.5px;color:var(--mut,#9fb0b8)}
+.cal-pick label{display:grid;grid-template-columns:minmax(0,1fr);gap:3px;align-content:space-between;min-width:0}
+.cal-pick select{background:#0b1418;color:inherit;border:1px solid var(--line);border-radius:6px;padding:5px 6px;font:inherit;width:100%}
+.cal-pick .fine{grid-column:span 2;margin:0}
+.cam-prev[hidden]{display:none}
 .cal-side h2{font-size:26px;margin-top:8px}
 .cal-note{min-height:2.9em;color:var(--warn);font-size:13px;margin:0}
 .cal-pose{display:flex;align-items:center;gap:12px;margin:10px 0 2px;color:var(--mut,#9fb0b8);font-size:12.5px;line-height:1.35}
 .cal-pose canvas{width:112px;height:112px;flex:none;border:1px solid var(--line);border-radius:8px;background:#05080a}
 .cam-video{position:absolute;width:2px;height:2px;opacity:0;pointer-events:none}
-.cam-prev{width:100%;aspect-ratio:4/3;border-radius:6px;background:#05080a;border:1px solid var(--line);display:block;margin-bottom:8px}
+.cam-prevs{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:6px;margin-bottom:8px}
+.cam-prev{width:100%;aspect-ratio:4/3;border-radius:6px;background:#05080a;border:1px solid var(--line);display:block}
 .ht-status{margin:0 0 8px;font-size:13px;color:#b9c8cf}.ht-status.err{color:var(--warn)}
 .tune{font-size:12.5px;color:var(--muted);margin:2px 0 8px}
 .tune summary{cursor:pointer;color:var(--text);font-size:13px;padding:2px 0}
@@ -165,7 +176,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 <body>
 <div id="app">
   <header class="bar">
-    <div class="brand"><h1>TLH Simulator</h1><p>Build 0.3c &middot; total laparoscopic hysterectomy, bilateral salpingectomy</p></div>
+    <div class="brand"><h1>TLH Simulator</h1><p>Build 0.4 &middot; total laparoscopic hysterectomy, bilateral salpingectomy</p></div>
     <div class="bar-ctl">
       <select id="selQ" class="sel" title="Picture quality. Auto starts at High and steps down if the frame rate drops." aria-label="Picture quality"><option value="auto">Quality: auto</option><option value="high">Quality: high</option><option value="medium">Quality: medium</option><option value="low">Quality: low</option></select>
       <button type="button" id="btnHands" class="tog" title="Drive both instruments with your hands through this device's camera">Hand control</button>
@@ -197,15 +208,15 @@ input[type=range]{width:100%;accent-color:var(--accent)}
             <p>46-year-old with heavy menstrual bleeding and fibroids after failed medical management. Mobile 10-week uterus, no previous abdominal surgery.</p>
             <p>She is in lithotomy and Trendelenburg with a uterine manipulator and colpotomy cup in place. 10 mm umbilical scope, two 5 mm lateral ports, pneumoperitoneum at 15 mmHg. You are looking toward the pelvis: her right is on the right of the screen.</p>
             <div class="cta"><button type="button" class="primary" id="btnBeginHands">Begin with hand control</button><button type="button" class="ghost" id="btnBegin">Begin with the mouse</button></div>
-            <p class="fine">Hand control uses this device's camera. The video is analysed in your browser and is never recorded or sent anywhere. A short calibration sets directions and your pinch, so the lid can be upright or tilted down at your hands.</p>
+            <p class="fine">Hand control uses this device's camera. The video is analysed in your browser and is never recorded or sent anywhere. A short calibration learns directions and your pinch from your own movements, for whichever cameras you use.</p>
             <h3>With your hands</h3>
             <ul class="keys">
-              <li><b>Move a hand</b><span>Its instrument's tip follows: right, up, and forward to go in. Both work at once.</span></li>
-              <li><b>Resting on tissue</b><span>The tip slows as it nears tissue and stays on it. Draw your hand clearly back to lift off.</span></li>
-              <li><b>Near a target</b><span>With guidance on, the instrument the step needs settles onto the target. Move clearly away to let go.</span></li>
+              <li><b>Move a hand</b><span>Its instrument follows. Both work at once.</span></li>
+              <li><b>Two cameras</b><span>A second camera, higher and looking down, adds depth: push forward to go in</span></li>
+              <li><b>One camera</b><span>The tip follows the tissue under it, so depth takes care of itself</span></li>
               <li><b>Pinch</b><span>Thumb to first two fingers: grasp and hold, seal, cut with the hook, aspirate, place a bite</span></li>
               <li><b>Pinch again</b><span>On a sealed pedicle, after relaxing: fires the cut blade</span></li>
-              <li><b>Open hand flat</b><span>Clutch: that instrument holds still, in depth too, until you curl the hand again</span></li>
+              <li><b>Open hand flat</b><span>Clutch: that instrument holds still until you curl the hand again</span></li>
             </ul>
             <h3>With the mouse</h3>
             <ul class="keys">
@@ -227,8 +238,16 @@ input[type=range]{width:100%;accent-color:var(--accent)}
           </div>
         </div>
         <div id="calModal" class="modal" hidden>
-          <div class="sheet cal">
-            <canvas id="calCanvas" class="cal-cam"></canvas>
+          <div class="sheet cal" id="calSheet">
+            <div class="cal-views">
+              <canvas id="calCanvas" class="cal-cam"></canvas>
+              <canvas id="calCanvas2" class="cal-cam" hidden></canvas>
+              <div class="cal-pick">
+                <label for="camSelA">Camera in front of you<select id="camSelA"></select></label>
+                <label for="camSelB">Second camera, higher and looking down<select id="camSelB"></select></label>
+                <p class="fine" id="camHint"></p>
+              </div>
+            </div>
             <div class="cal-side">
               <div class="eyebrow"><span>Hand control setup</span><span id="calCount"></span></div>
               <h2 id="calTitle">Getting ready</h2>
@@ -243,11 +262,11 @@ input[type=range]{width:100%;accent-color:var(--accent)}
                 <button type="button" class="ghost" id="calStd" hidden>Skip: standard webcam</button>
                 <button type="button" class="ghost" id="calCancel">Use the mouse instead</button>
               </div>
-              <p class="fine">The preview is mirrored, like a mirror. Once it knows your hands, the right is drawn in amber and the left in teal.</p>
+              <p class="fine">Each preview is mirrored, like a mirror. Once it knows your hands, the right is drawn in amber and the left in teal.</p>
             </div>
           </div>
         </div>
-        <video id="camVideo" class="cam-video" playsinline muted></video>
+        <video id="camVideo" class="cam-video" playsinline muted></video><video id="camVideo2" class="cam-video" playsinline muted></video>
         <div id="debrief" class="modal" hidden>
           <div class="sheet">
             <div class="db-top"><div><h2>Case debrief</h2><p class="sub" id="dbGrade" style="margin:0"></p></div><div class="db-score"><span id="dbScore">0</span><small> / 100</small></div></div>
@@ -302,9 +321,9 @@ input[type=range]{width:100%;accent-color:var(--accent)}
       </section>
       <section class="block mousepanel">
         <h3>Depth and mouse</h3>
-        <p class="ht-status" id="msNote">Instrument tips move freely in depth. Mouse: move to swing the instrument about its port, wheel to slide it in and out. Hands: push forward to go in.</p>
+        <p class="ht-status" id="msNote">Mouse: move to swing the instrument about its port, wheel to slide it in and out. Hands: with two cameras, push forward to go in; with one camera the tip follows the tissue.</p>
         <div class="btnrow">
-          <button type="button" class="tog" id="btnAuto" title="The tip follows the tissue under the pointer, as in earlier builds, with the mouse or with hands. With the mouse, the wheel then moves the scope.">Auto depth</button>
+          <button type="button" class="tog" id="btnAuto" title="Mouse only: the tip follows the tissue under the pointer and the wheel moves the scope.">Auto depth</button>
           <button type="button" class="tog" id="btnFulcrum" title="The tip moves opposite to the mouse, as it does with a real laparoscopic handle outside the abdomen. Mouse only.">Fulcrum effect</button>
           <button type="button" class="tog" id="btnFlip" title="Swap which way the wheel pushes the instrument in">Reverse wheel</button>
         </div>
@@ -314,21 +333,14 @@ input[type=range]{width:100%;accent-color:var(--accent)}
         <h3>Hand control</h3>
         <p class="ht-status" id="htStatus">Off. The mouse controls the instruments.</p>
         <div id="htLive" hidden>
-          <canvas id="camPrev" class="cam-prev"></canvas>
+          <div class="cam-prevs"><canvas id="camPrev" class="cam-prev"></canvas><canvas id="camPrev2" class="cam-prev" hidden></canvas></div>
           <div class="chips"><span class="chip" id="htL">Left</span><span class="chip" id="htR">Right</span></div>
-          <div class="btnrow">
-            <button type="button" class="tog" id="btnAssist" title="The tip slows as it nears tissue, then stays on the tissue and rides over it as your hand moves sideways. Draw your hand clearly back to lift it off.">Depth assist</button>
-            <button type="button" class="tog" id="btnPrio" title="While guidance is on, the instrument this step needs settles onto the step's target when it comes close, so a pinch acts on the target and not on its neighbour. Move your hand clearly away, or draw it back, to let go.">Target lock</button>
-            <button type="button" class="tog" id="btnGhold" title="When the camera cannot see your thumb (it is behind the fingers, or the hand is side-on), the instrument keeps its open or closed state instead of flickering. Opening the hand flat always releases.">Grip hold</button>
-          </div>
           <details class="tune">
             <summary>Tuning</summary>
             <label for="tGain">Sensitivity: instrument travel per hand movement<input type="range" id="tGain" min="8" max="45" value="20"></label>
             <label for="tSmooth">Smoothing: steadier, but slower to follow<input type="range" id="tSmooth" min="0" max="100" value="50"></label>
             <label for="tPinch">Pinch: right triggers sooner, left needs a firmer pinch<input type="range" id="tPinch" min="-100" max="100" value="0"></label>
             <label for="tOpen">Clutch: right triggers on a less open hand<input type="range" id="tOpen" min="-100" max="100" value="0"></label>
-            <label for="tZGain">Depth speed: instrument travel in and out per hand movement<input type="range" id="tZGain" min="30" max="300" value="100"></label>
-            <label for="tZSteady">Depth steadiness: steadier, but slower to follow<input type="range" id="tZSteady" min="0" max="100" value="50"></label>
           </details>
         </div>
         <div class="btnrow"><button type="button" class="mini" id="htOn">Turn on hand control</button><button type="button" class="mini" id="htRecal" hidden>Recalibrate</button><button type="button" class="mini" id="htOff" hidden>Turn off</button></div>
