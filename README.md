@@ -1,11 +1,13 @@
 # MIGS Simulator
 
 A browser-based simulator of laparoscopic gynaecological surgery: a 3D scope view of the pelvis, a uterine
-manipulator, instruments driven by your hands or the mouse, complications and an end-of-case debrief. Two cases
+manipulator, instruments driven by your hands or the mouse, complications and an end-of-case debrief. Three cases
 share the one pelvis, and you choose between them on the start screen:
 
 - **Total laparoscopic hysterectomy** with bilateral salpingectomy: 21 steps, five instruments.
 - **Laparoscopic myomectomy** of a single anterior fundal fibroid: 9 steps, seven instruments.
+- **Laparoscopic salpingectomy** for a ruptured right tubal ectopic pregnancy with haemoperitoneum: 7 steps, three
+  instruments.
 
 Two things set it apart. **Hand control:** cameras track both hands, each hand drives its own instrument at the
 same time, a pinch works the instrument, and an open, flat hand acts as a clutch. With two cameras a hand also
@@ -30,13 +32,14 @@ does not replace supervised training. The score comes from the simulator's own r
 | Hold an instrument still | Open that hand flat (clutch); curl it again to carry on | `Space` or `X` switches hands; the other holds |
 
 Keyboard in either mode: the number keys change the selected hand's instrument (`1` to `5` in the hysterectomy,
-`1` to `7` in the myomectomy), `W A S D` tilt and deviate the uterus,
+`1` to `7` in the myomectomy, `1` to `3` in the salpingectomy), `W A S D` tilt and deviate the uterus,
 `Q E` push the cup, `+` and `-` advance and withdraw the scope, arrow keys aim it, `G` guidance, `L` anatomy labels,
 `M` sound. With the mouse, `Esc` frees the cursor for the panels and a click on the picture takes the instruments again.
 
 ## Cases
 
-The start screen offers the cases; the choice is remembered, and `?case=tlh` or `?case=myo` in the address picks one.
+The start screen offers the cases; the choice is remembered, and `?case=tlh`, `?case=myo` or `?case=ect` in the
+address picks one.
 Everything outside the case is shared: the pelvis, the instruments, hand and mouse control, depth, the picture,
 bleeding, the step engine and the debrief.
 
@@ -72,9 +75,40 @@ to conceive.
 - **The uterus** swells smoothly over the fibroid, opens along the incision, drapes over the fibroid as it comes
   up, is left with a bed, and sinks back as each layer of the repair goes in. Vasopressin blanches it.
 
+**Laparoscopic salpingectomy for a ruptured tubal ectopic.** A 7-week pregnancy in the ampulla of the right tube
+has ruptured. About 500 mL of blood and clot lie in the pelvis and the tube is still bleeding. The uterus, the left
+tube and both ovaries are normal, and the uterine manipulator is in place.
+
+| Step | What you do | What it teaches |
+|---|---|---|
+| Aspirate | Put the suction tip in the blood; hold it on the clot over the right adnexa until the clot clears | Clear the view first; the pelvis will not stay dry while the tube bleeds |
+| Find the pregnancy | Hold a tip beside the uterus, the swollen right tube and the left tube | Confirm the diagnosis and look at the other tube before removing anything |
+| Lift the tube | Grasp the tube beside the pregnancy, toward its fimbrial end, lift it, and keep hold | Hold the tube, not the pregnancy; lifting stands the mesosalpinx up |
+| Mesosalpinx | With the bipolar in the other hand, two bites just under the tube, fimbrial end first: seal, then cut | Stay on the tube and off the ovary's supply; the same bites stop the bleeding |
+| Isthmus | Seal the tube about 1 cm from the cornu, then cut | A short stump, off the cornu; the tube comes away in the grasper |
+| Remove the tube | Bag it (a button) | Contained removal; histology |
+| Wash out and check | Lower the pressure, control the ooze from the stump, aspirate the remaining blood and clot | Look again at low pressure |
+
+- **The blood** starts at 500 mL and covers the floor of the pelvis. Suction takes it down. Four clots, one of them
+  over the right adnexa, clear only with the suction tip held on them. The estimated blood loss on the screen and in
+  the debrief counts the 500 mL that was there on entry.
+- **The rupture bleeds until its supply is sealed:** 30 mL a minute, 12 after the first bite of mesosalpinx, none
+  after the second. Time spent before the mesosalpinx is blood lost.
+- **Grasping the pregnancy itself** tears it: the jaws let go, 12 mL is lost at once and the rupture bleeds half as
+  fast again.
+- **Once the tube is divided** it goes where the grasper that holds it goes. Let go, it falls onto whatever lies
+  under it.
+- **What counts against you:** energy on the left tube, an ovary, an infundibulopelvic ligament, the bladder, the
+  bowel, a ureter or the iliac vessels; mesosalpinx or isthmus cut without a full seal (the stump bleeds briskly);
+  the pregnancy grasped; the tube let go before it is bagged; the isthmus divided flush with the cornu, or leaving a
+  long stump; a step started without its exposure (uterus deviated to the patient's left, tube lifted); more than
+  150 mL lost during the operation.
+
 A case is its list of steps (each with its own targets, checks and teaching text), the instruments on its tray, how
-its uterus differs from the model's, and how it is scored. In the source that is one file per case
-(`06a-hysterectomy.js`, `06b-myomectomy.js`), and `06z-cases.js` lists them.
+its pelvis differs from the model's (a fibroid in the wall, blood and clot, a swollen tube), and how it is scored.
+In the source that is one file per case (`06a-hysterectomy.js`, `06b-myomectomy.js`, `06c-ectopic.js`).
+`06-steps.js` holds what the cases share, such as the steps that seal and divide a pedicle, and `06z-cases.js`
+lists the cases and runs their steps.
 
 ## Depth
 
@@ -138,7 +172,8 @@ the jaws and energy needs contact. There are three ways to drive it.
 
 | Build | Added | Removed | Play it |
 |---|---|---|---|
-| 0.5 | A second case, laparoscopic myomectomy, and a case chooser on the start screen. Laparoscopic tenaculum and injection needle. A fibroid uterus that opens, gives up its fibroid and is repaired in two layers. Each case in its own file | The single-case wiring: the fixed tray and number keys, the hysterectomy's own debrief and suture code inside the interface, and the name *TLH Simulator* on the page | https://phillintheblank.github.io/TLH/ |
+| 0.6 | A third case: laparoscopic salpingectomy for a ruptured right tubal ectopic. Haemoperitoneum to aspirate, clots, a rupture that bleeds until the mesosalpinx is sealed, a swollen tube, a tube divided at the isthmus and carried out in the grasper | The myomectomy's own specimen bag and its own search for a place where the blood pool is in view (both now shared by the cases); the rule inside the cut blade that swung the tube free (now the hysterectomy step's own); a bagged specimen travelling into the lens (it now leaves by the top of the picture) | https://phillintheblank.github.io/TLH/ |
+| 0.5 | A second case, laparoscopic myomectomy, and a case chooser on the start screen. Laparoscopic tenaculum and injection needle. A fibroid uterus that opens, gives up its fibroid and is repaired in two layers. Each case in its own file | The single-case wiring: the fixed tray and number keys, the hysterectomy's own debrief and suture code inside the interface, and the name *TLH Simulator* on the page | https://phillintheblank.github.io/TLH/v0.5/ |
 | 0.4 | Second camera for hand control of depth; camera choosers; one calibration watched by both cameras, with a check of where the second camera sits; grip read from the camera with the clearer view; a hand lost by one camera keeps moving as the other sees it. Tissue contact with no hidden travel; structures across the shaft no longer pull the tip back | Depth from palm size, with its smoothing, dead band and the *Depth speed* and *Depth steadiness* sliders; depth assist; target lock; grip hold; the forward calibration step with one camera | https://phillintheblank.github.io/TLH/v0.4/ |
 | 0.3c | Depth assist, target lock, working-space limits, hold-near ureter identification, grip hold, pose pictures in calibration | Pinch to identify a ureter | https://phillintheblank.github.io/TLH/v0.3c/ |
 | 0.3b | Depth from the hands, read from palm size: push forward to go in | | https://phillintheblank.github.io/TLH/v0.3b/ |
@@ -148,17 +183,19 @@ the jaws and energy needs contact. There are three ways to drive it.
 
 Each build's source is kept on a `checkpoint/…` branch (`checkpoint/v0.1-hands`, `checkpoint/v0.2-realism`,
 `checkpoint/v0.3a-depth`, `checkpoint/v0.3b-handdepth`, `checkpoint/v0.3c-assist`, `checkpoint/v0.4-twocam`,
-`checkpoint/v0.5-myomectomy`), and
+`checkpoint/v0.5-myomectomy`, `checkpoint/v0.6-ectopic`), and
 the built page of each earlier build stays in `docs/` under its version number.
 
-Each build removes what it replaces. Size is tracked, with no target. Build 0.5 grew by a whole second case
-(500 lines) and its tests:
+Each build removes what it replaces. Size is tracked, with no target. Builds 0.5 and 0.6 each grew by a whole case
+and its tests (the salpingectomy is 250 lines, against 492 for the myomectomy, because it reuses the steps that seal
+and divide a pedicle):
 
 | Build | Source (`src/`) | Tests (`test/`) | Built page |
 |---|---|---|---|
 | 0.3c | 3,832 lines | 1,044 lines | 269 KB |
 | 0.4 | 3,901 lines | 1,047 lines | 274 KB |
 | 0.5 | 4,493 lines | 1,157 lines | 327 KB |
+| 0.6 | 4,773 lines | 1,276 lines | 354 KB |
 
 ## Hand control
 
@@ -194,9 +231,20 @@ Each build removes what it replaces. Size is tracked, with no target. Build 0.5 
 
 ### Limits of this build
 
-- The myomectomy is new and has been played by script only: start to finish with the mouse in both depth modes and
-  with simulated hands. No person has played it yet, and its clinical content (the case, the steps, the teaching
-  text, what is scored) has not been reviewed by a surgeon.
+- The salpingectomy is new and has been played by script only: start to finish with the mouse in both depth modes
+  and with simulated hands. No person has played it yet, and its clinical content (the case, the order of steps, the
+  teaching text, the bleeding rates, what is scored) has not been reviewed by a surgeon.
+- The salpingectomy is simplified. Blood is a level pool that the suction lowers, with no irrigation, and clot is
+  four separate lumps. The rupture bleeds at a fixed rate that the two bites of mesosalpinx turn down and off. The
+  tube does not tear when pulled, only when the pregnancy itself is grasped. The mesosalpinx is always two bites.
+  Bagging is a button. The patient's pulse and pressure do not change. The other tube and the ovaries are always
+  normal, so the choice between salpingectomy and salpingotomy never arises.
+- A tube that is lifted is a thin target for the other hand in free depth, about 3 mm across at the isthmus and
+  standing clear of everything else: the bipolar has to meet it in depth as well as on the screen.
+- With two cameras and tracker jitter the scripted hands do not finish every run. On this build they finished the
+  salpingectomy in 5 of 6 runs (the sixth could not bring the bipolar to rest on the isthmus), the myomectomy in 1
+  of 2 (the other could not place a bite on the serosal edge) and the hysterectomy in 1 of 1. With the mouse, and
+  with hands and one camera, every case plays through every time.
 - The myomectomy is simplified. One fibroid, modelled as a ball. Its attachments are eight separate strands, the
   last a single pedicle. A stitch is two bites and ties itself. Aspiration before injecting, bagging and tissue
   extraction are a line of text or a button. The cavity is entered only by energy on the floor of the bed. The
@@ -231,15 +279,16 @@ Each build removes what it replaces. Size is tracked, with no target. Build 0.5 
 4. Depth from the hands, from palm size in one camera (tried in 0.3b and 0.3c; too coarse; removed in 0.4)
 5. Assists for one-camera depth: depth assist, target lock, grip hold (tried in 0.3c; removed in 0.4)
 6. A second camera for hand control of depth (done)
-7. A second case on the same pelvis, laparoscopic myomectomy, and a case chooser (this build)
-8. Scope control with both hands: two open palms moved together pan, tilt and advance the view
-9. Contact along the instrument shaft, lifting tissue with the side of an instrument, and instruments that cannot
-   pass through each other
-10. Side-by-side stereo for XR glasses and 3D displays
-11. Wrist orientation driving a wristed instrument tip
-12. Robotic instrument set and multiport robotic case flow
-13. Voice commands for the uterine manipulator and instrument exchanges
-14. Wristed suturing
+7. A second case on the same pelvis, laparoscopic myomectomy, and a case chooser (done)
+8. A third case, salpingectomy for a ruptured tubal ectopic with haemoperitoneum (this build)
+9. Scope control with both hands: two open palms moved together pan, tilt and advance the view
+10. Contact along the instrument shaft, lifting tissue with the side of an instrument, and instruments that cannot
+    pass through each other
+11. Side-by-side stereo for XR glasses and 3D displays
+12. Wrist orientation driving a wristed instrument tip
+13. Robotic instrument set and multiport robotic case flow
+14. Voice commands for the uterine manipulator and instrument exchanges
+15. Wristed suturing
 
 If two webcams do not give steady enough depth with real hands, the fallback is a sensor made for hand tracking.
 
@@ -252,16 +301,19 @@ npm run build          # writes docs/ (the published site); bundles and minifies
 ```
 
 Serve `docs/` with any static web server and open it on `localhost`. Source is in `src/` (`template.html` plus the
-numbered files in `src/js/`, concatenated in order; each case is one `06…` file). `docs/` is what GitHub Pages serves.
+numbered files in `src/js/`, concatenated in order; each case is one `06…` file, beside `06-steps.js` for what they
+share). `docs/` is what GitHub Pages serves.
 
 Tests drive a headless Chrome through Playwright (`test/shot.mjs <screenshot> <script>`):
 
 - `test/steps/free.mjs` checks free depth through real mouse events: swing, fulcrum inversion, wheel travel, contact
   and the stop, working only in contact, traction, complications.
-- `test/steps/flow.mjs` plays a whole case (`QUERY=case=myo` for the myomectomy): in free depth (`MODE=free`), with real mouse events in auto depth
+- `test/steps/flow.mjs` plays a whole case (`QUERY=case=myo` for the myomectomy, `QUERY=case=ect` for the
+  salpingectomy): in free depth (`MODE=free`), with real mouse events in auto depth
   (`MODE=mouse`), or with scripted hands pushed through the full hand-control pipeline, seen by two simulated cameras
   (`MODE=hands`, free depth) or by one (`MODE=handsauto`, auto depth). `RIG` picks the cameras (`one`, `tilted`,
-  `two`, `shallow`) and `NOISE=0.004` adds tracker jitter.
+  `two`, `shallow`) and `NOISE=0.004` adds tracker jitter. Jitter is random, so a jittered run differs each time;
+  a line of script in `EVAL` that replaces `Math.random` with a seeded generator makes one repeatable.
 - `test/steps/twocam.mjs` checks two-camera hand control: calibration under jitter, the mapping from hand travel to
   tip travel in each direction and for each hand, both hands at once, that a pinch or a change in how large a hand
   looks does not move the tip, no creep at rest, the clutch, each camera losing a hand and finding it again, the
@@ -272,7 +324,11 @@ Tests drive a headless Chrome through Playwright (`test/shot.mjs <screenshot> <s
   the lens stays in the cavity and in view, and reversing answers at once; also with the real mouse and wheel.
 - `test/steps/handdriver.mjs` is the scripted pair of hands and the simulated cameras those tests use. It steers the
   way a person does: it lines the tip up with the target, slides in until the tip touches, comes at a thin target by
-  eye when it misses, checks what it is resting on before pinching, and clutches when a hand runs out of room.
+  eye when it misses, checks what it is resting on before pinching, and clutches when a hand runs out of room. Its
+  two hands cannot cross: the idle one goes back to its own side first, and one that is holding clutches back still
+  pinched. When tremor breaks a contact it has just made, it closes the last few millimetres again. `flow.mjs`
+  pinches for the cut blade only once the jaws sit steady on the sealed zone, and opens a grasper that closed on
+  nothing.
 - `test/steps/bimanual.mjs` checks two-handed behaviour with one camera: simultaneous motion, traction with one hand
   while the other seals, the clutch, a lost hand and tracking jitter.
 - `test/steps/hazards.mjs` exercises the hysterectomy's complication paths: bleeding from an unsealed cut and its
@@ -282,6 +338,11 @@ Tests drive a headless Chrome through Playwright (`test/shot.mjs <screenshot> <s
   dissection, the pedicle (not divided bluntly; bleeding when divided unsealed, and its control), a fibroid let go
   in the wrong place, the cavity entered, bipolar on the wall, the order and matching of bites, energy on a tube,
   the score, and each case played to its debrief after the other.
+- `test/steps/ect.mjs` checks the salpingectomy's rules: the blood and clot on entry and what suction does to them,
+  the rupture's bleeding and how each bite of mesosalpinx turns it down, energy held off while identifying, the
+  pregnancy grasped, the exposure checks, the isthmus (where it may be divided; bleeding from the stump when it is
+  divided unsealed, and its control), the tube carried, let go and bagged, the ooze at low pressure, energy on the
+  other tube, the score, and each case played to its debrief after another.
 - `test/steps/realcam.mjs` loads the real camera and model pipeline against Chrome's fake camera (`LIVE=1 QUERY=q=low`).
 - `test/steps/handviews.mjs` takes screenshots of the setup screen and of hand control at work (`RIG=two|one`);
   `look.mjs` and `views.mjs` take screenshots of chosen steps for judging the picture.

@@ -141,9 +141,10 @@ export default async function (page) {
   d = await ev(() => {
     const dr = window.__drv, k = window.__pk || 'R', h = window.__sim.HAND[k], tip = () => h.port.clone().addScaledVector(h.dir, h.ins), o = { step: 0 };
     let p = tip(); const walk = (n, dz) => { for (let i = 0; i < n; i++) { dr.move(k, 0, 0, dz); dr.step(1); const q = tip(); o.step = Math.max(o.step, q.distanceTo(p)); p = q; } };
+    const mean = n => { const m = tip().multiplyScalar(0); for (let i = 0; i < n; i++) { dr.step(1); m.add(tip()); } return m.multiplyScalar(1 / n); }; // where the tip is, with the tremor averaged out
     for (let i = 0; i < 40 && !h.touch; i++) walk(1, 0.003); o.ent = h.pick.ent;
-    walk(12, 0.004); for (let i = 0; i < 30 && h.press < 0.5; i++) walk(1, 0.004); dr.step(10); const a = tip(); o.press = h.press; o.touch = h.touch; // up to the stop
-    walk(12, 0.004); dr.step(10); o.slide = tip().distanceTo(a); o.press2 = h.press; // 3 cm more of hand travel
+    walk(12, 0.004); for (let i = 0; i < 30 && h.press < 0.5; i++) walk(1, 0.004); const a = mean(10); o.press = h.press; o.touch = h.touch; // up to the stop
+    walk(12, 0.004); o.slide = mean(10).distanceTo(a); o.press2 = h.press; // 3 cm more of hand travel
     const b = tip(); walk(6, -0.004); dr.step(8); o.back = tip().distanceTo(b); // 1.5 cm of hand travel back
     for (let i = 0; i < 12 && !h.touch; i++) walk(1, 0.003); walk(3, 0.003); dr.step(10); o.onTissue = h.touch;
     const c = window.__av(k); dr.hands[k].ap = 0.4; dr.step(12); o.grip = window.__gap(c, window.__av(k)); dr.hands[k].ap = 0.62; dr.step(10); // fingers closing, short of a pinch

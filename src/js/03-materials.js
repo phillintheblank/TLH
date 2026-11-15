@@ -268,6 +268,7 @@ const MAT = {
   fibroid: wet({ map: TEX.fibroid, tri: { k: 0.3, n: 0.45, m: 1 }, bs: 0.7, clearcoatRoughness: 0.2 }),
   areolar: wet({ map: TEX.card, side: THREE.DoubleSide, mr: [4, 3], relief: NRM.fiber, bs: 0.8, alphaMap: rep(WEB, 2, 1.6), alphaTest: 0.45, alphaToCoverage: true, color: 0xfff2d8 }),
   cord: wet({ map: TEX.cord, mr: [1.2, 1.8], relief: NRM.fiber, br: [1, 0.6], bs: 0.7 }),
+  clot: new THREE.MeshPhysicalMaterial({ color: 0x33050a, roughness: 0.2, clearcoat: 1, clearcoatRoughness: 0.12, clearcoatNormalMap: rep(NRM.micro, 3, 3), clearcoatNormalScale: new V2(0.6, 0.6) }), // blood clot: dark, wet, jelly-like
   blood: new THREE.MeshPhysicalMaterial({ color: 0x5e080c, roughness: 0.14, clearcoat: 1, clearcoatRoughness: 0.1, transparent: true, opacity: 0.95, clearcoatNormalMap: rep(NRM.micro, 5, 5), clearcoatNormalScale: new V2(0.9, 0.9), normalMap: rep(NRM.micro, 2, 2), normalScale: new V2(0.5, 0.5) }),
   bloodWet: new THREE.MeshPhysicalMaterial({ color: 0x6e0a10, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.14 })
 };

@@ -1,19 +1,23 @@
-// Drive the whole case through the same "next target" data the guidance overlay draws. QUERY=case=myo plays the myomectomy.
+// Drive the whole case through the same "next target" data the guidance overlay draws. QUERY=case=myo plays the
+// myomectomy, QUERY=case=ect the salpingectomy for an ectopic.
 // MODE=free: the mouse's free depth, each tip brought to its target in space. MODE=mouse: real mouse events with
 // Auto depth on. MODE=hands: scripted hands seen by two simulated cameras (free depth). MODE=handsauto: scripted
 // hands seen by one camera (auto depth). Both hand modes go through the whole hand-control pipeline.
 // RIG picks the simulated cameras (see handdriver.mjs); NOISE adds tracker jitter.
+// For looking into a run: FROM and STOP name steps to start at and stop after, SHOTS lists steps to photograph,
+// SHOTAT="step:label" photographs the first time that prompt comes up, MISS=1 reports and photographs each time a
+// scripted hand comes to rest off its target, EVAL runs a line of script first, VERBOSE prints every move.
 // Simulation time is advanced synchronously through the page's tick() so the run does not depend on frame rate.
 import fs from 'node:fs';
 import { installHandDriver, calibrate } from './handdriver.mjs';
 const OUT = new URL('../out/', import.meta.url).pathname;
 const STOP = process.env.STOP || '', FROM = process.env.FROM || '', MODE = process.env.MODE || 'mouse';
 const SHOTS = (process.env.SHOTS || '').split(',').filter(Boolean);
-const VERBOSE = !!process.env.VERBOSE;
+const VERBOSE = !!process.env.VERBOSE, HANDMODE = MODE === 'hands' || MODE === 'handsauto';
 export default async function (page) {
   const ev = (fn, a) => page.evaluate(fn, a);
   const log = []; const say = s => { log.push(s); console.log(s); };
-  let D; // driver: T(seconds), moveTo({x,y}), down(), up(), cut(n)
+  let missN = 0, shotAt = false, D; // driver: T(seconds), moveTo({x,y}), down(), up(), cut(n)
   if (MODE === 'hands' || MODE === 'handsauto') {
     // hands: two cameras, free depth, the tip is brought to each target in space. handsauto: one camera, the hand points at the screen.
     const auto = MODE === 'handsauto';
@@ -28,19 +32,27 @@ export default async function (page) {
       moveTo: auto
         ? async n => { const k = (n.tryNo || 0) % 5, r = await ev(n => window.__drv.moveTo(window.__sim.active, n.x, n.y), { x: n.x + [0, 6, -6, 0, 0][k], y: n.y + [0, 0, 0, 6, -6][k] }); /* a retry aims a few pixels to one side, as a person would */ if (!r.ok) say('   (pointer did not reach target: ' + JSON.stringify(r) + ')'); await D.T(0.5); }
         : async n => { // use whichever hand has the clear line from its port, with the instrument this step needs
-          const r = await ev(([p, tryNo, want, fixed]) => {
+          const r = await ev(([p, tryNo, want, fixed, dip]) => {
             const s = window.__sim, d = window.__drv, T3 = s.THREE, R = new T3.Raycaster(), P = new T3.Vector3().fromArray(p);
             const reach = h => { const v = P.clone().sub(h.port), L = v.length(); R.set(h.port, v.normalize()); const f = R.intersectObjects(s.PICKS, false).filter(x => s.shown(x.object))[0]; return f ? f.distance - L : 9; };
             let h = s.HAND[s.active]; const o = s.HAND[h.key === 'R' ? 'L' : 'R'], dA = reach(h), dO = reach(o);
             if (!fixed && !o.grab && dA < -0.65 && dO > dA + 0.3) { const tool = h.inst; s.setActive(o.key); if (o.inst !== tool) s.setInst(o.key, tool); h = o; d.step(30); }
+            if (h.grab && h.grab.pull) { d.park(h.key); const q = d.tipTo(h.key, P, 0.3, false, 260); return { ok: q.ok, carried: true, good: true, hand: h.key, short: +h.tip.distanceTo(P).toFixed(2), clutches: q.clutches }; } // carrying something: take the tip there in space
+            if (dip) { d.park(h.key); const q = d.tipTo(h.key, P, 0.35, false, 260), short = h.tip.distanceTo(P); if (short < 1) return { ok: q.ok, dip: true, good: true, hand: h.key, short: +short.toFixed(2) }; } // into a pool: there is nothing to feel for
             return d.reach(h.key, p, tryNo, want);
-          }, [n.p, n.tryNo || 0, n.want || null, !!n.hand]);
+          }, [n.p, n.tryNo || 0, n.want || null, !!n.hand, n.act === 'suction']);
           if (VERBOSE || !r.ok) say('   reach ' + JSON.stringify(r));
+          if (process.env.MISS && !r.good) { say('   miss: ' + JSON.stringify(await ev(() => { const s = window.__sim; return ['L', 'R'].map(k => { const h = s.HAND[k]; return { k, inst: h.inst, tip: h.tip.toArray().map(v => +v.toFixed(2)), ins: +h.ins.toFixed(2), touch: h.touch, ent: h.pick.ent, side: h.pick.side, hit: h.pick.hit, cross: h.cross, lim: h.lim, ahead: +h.ahead.dist.toFixed(2) }; }); })) + ' target ' + JSON.stringify(n.p.map(v => +v.toFixed(2)))); await shot('miss-' + (missN++)); }
           return r.good; // a person looks at where the tip is resting before pinching
         },
       down: () => ev(() => { const d = window.__drv; d.hands[window.__sim.active].ap = 0.14; d.step(3); }),
       up: () => ev(() => { const d = window.__drv; d.hands[window.__sim.active].ap = 0.62; d.step(3); }),
-      cut: async () => { await D.T(0.4); await D.down(); await D.T(0.2); await D.up(); }
+      // a person waits until the jaws sit steady on the sealed zone, and only then pinches: a pinch anywhere else is a burst of energy
+      cut: async () => {
+        await D.T(0.3);
+        const ready = await ev(() => { const s = window.__sim, d = window.__drv, h = s.HAND[s.active]; for (let i = 0, run = 0; i < 45; i++) { run = s.cutReady(h) ? run + 1 : 0; if (run >= 2) return true; d.step(1); } return false; });
+        if (ready) { await D.down(); await D.T(0.2); await D.up(); } else if (VERBOSE) say('   (not on the sealed zone: no pinch)');
+      }
     };
   } else if (MODE === 'free') {
     // Free depth, driven the way the engine is: swing the better-placed hand at the target, then slide it in
@@ -88,7 +100,7 @@ export default async function (page) {
   }
   const T = D.T;
   const next = () => ev(() => window.__sim.next());
-  const info = () => ev(() => { const s = window.__sim, st = s.STEPS[s.S.step], h = s.HAND[s.active], P = h.pick; return { i: s.S.step, id: st.id, tool: st.tool, rec: st.rec, ended: s.S.ended, t: s.S.t, ebl: s.S.ebl, nb: s.S.bleeders.length, inj: Object.keys(s.S.injuries).join(','), nev: s.S.events.length, xm: s.S.stats.expoMiss, pick: { ent: P.ent, side: P.side, u: +P.u.toFixed(3), v: +P.v.toFixed(3) }, near: h.near, inst: h.inst, on: h.ptr.on, prog: st.progress ? st.progress() : '' }; });
+  const info = () => ev(() => { const s = window.__sim, st = s.STEPS[s.S.step], h = s.HAND[s.active], P = h.pick; return { i: s.S.step, id: st.id, tool: st.tool, rec: st.rec, ended: s.S.ended, t: s.S.t, ebl: s.S.ebl, nb: s.S.bleeders.length, inj: Object.keys(s.S.injuries).join(','), nev: s.S.events.length, xm: s.S.stats.expoMiss, pick: { ent: P.ent, side: P.side, u: +P.u.toFixed(3), v: +P.v.toFixed(3) }, near: h.near, inst: h.inst, on: h.ptr.on, holds: ['L', 'R'].filter(k => s.HAND[k].grab && s.HAND[k].grab.pull).join(''), prog: st.progress ? st.progress() : '' }; });
   const setPose = async p => { await ev(p => window.__sim.setPoseGoal(p), p); await T(1.4); };
   const setHand = async k => { if ((await ev(() => window.__sim.active)) === k) return; await ev(k => window.__sim.setActive(k), k); await T(0.3); };
   const freeHand = async () => { const k = await ev(() => { const s = window.__sim, h = s.HAND[s.active]; return h.grab && h.grab.pull ? (h.key === 'R' ? 'L' : 'R') : null; }); if (k) await setHand(k); }; // never change the instrument in a hand that is holding
@@ -108,6 +120,8 @@ export default async function (page) {
       if (lastStep >= 0) { say('done ' + prevId + ' at t=' + I.t.toFixed(1)); if (SHOTS.includes(prevId)) await shot('f-' + prevId); if (STOP === prevId) break; }
       lastStep = I.i; prevId = I.id; stuck = 0;
       if (I.rec) await setPose(I.rec);
+      if (HANDMODE) await ev(() => { const s = window.__sim, d = window.__drv; for (const k of ['L', 'R']) if (!s.HAND[k].grab && d.hands[k].ap < 0.3) d.hands[k].ap = 0.62; d.step(3); }); // a hand left pinched on something that has since gone
+      await freeHand();
       if (I.tool !== 'any') await setInst(I.tool);
       await T(0.8);
       if (SHOTS.includes('pre-' + I.id)) await shot('pre-' + I.id);
@@ -115,6 +129,7 @@ export default async function (page) {
     }
     const n = await next();
     if (!n) { await T(0.3); if (++stuck > 30) { say('STUCK (no next) at ' + I.id + ' ' + JSON.stringify(I)); break; } continue; }
+    if (process.env.SHOTAT && !shotAt && (I.id + ':' + n.label).startsWith(process.env.SHOTAT)) { shotAt = true; await shot('at'); } // SHOTAT="meso:Seal: bite toward": a picture the first time that prompt comes up
     if (n.act === 'bleed') { await freeHand(); await setInst('bipolar'); n.tryNo = stuck; if ((await D.moveTo(n)) === false) { if (++stuck > 8) { say('NO PROGRESS at ' + I.id + ': the tip never came to rest on the bleeder'); break; } continue; } stuck = 0; await D.down(); await T(1.7); await D.up(); if (I.tool !== 'any') await setInst(I.tool); continue; }
     if (n.act === 'button') { await ev(() => window.__sim.render()); const b2 = await page.locator('#stepBtn2').isVisible(); await page.click(b2 ? '#stepBtn2' : '#stepBtn1'); await T(0.6); continue; }
     if (I.id === 'colp' && (n.hidden || !n.vis)) { await setPose(colpPoses[colpI++ % colpPoses.length]); if (colpI > 40) { say('STUCK colp ' + I.prog); break; } continue; }
@@ -129,8 +144,10 @@ export default async function (page) {
     if (n.act === 'suction') await setInst('suction'); else if (n.tool) await setInst(n.tool); else if (I.tool !== 'any') await setInst(I.tool);
     n.tryNo = stuck;
     if ((await D.moveTo(n)) === false && n.want && !n.want.cuff) { if (++stuck > 8) { say('NO PROGRESS at ' + I.id + ' act=' + n.act + ' label=' + n.label + ': the tip never came to rest on the target'); await shot('stuck-' + I.id); break; } continue; }
-    if (VERBOSE) { const J = await info(); say('   ' + I.id + ' ' + n.act + ' "' + n.label + '" pick=' + JSON.stringify(J.pick) + ' near=' + J.near + ' on=' + J.on); }
+    if (VERBOSE) { const J = await info(); say('   ' + I.id + ' ' + n.act + ' "' + n.label + '" pick=' + JSON.stringify(J.pick) + ' near=' + J.near + ' on=' + J.on + (J.holds ? ' holding=' + J.holds : '')); }
     if (n.act === 'hover') await T(1.3); // hold near: no press
+    else if (n.act === 'pull') await T(0.6); // carry what is held: no press
+    else if (n.act === 'grasp' && n.keep && HANDMODE) { await D.down(); await T(0.5); if (!(await info()).holds) { await D.up(); await T(0.3); } } // by hand the grasper holds only while pinched: stay pinched, unless the jaws closed on nothing
     else if (n.act === 'click' || n.act === 'bite' || n.act === 'grasp' || n.act === 'place') { await D.down(); await T(0.1); await D.up(); await T(n.act === 'bite' ? 1.2 : 0.3); }
     else if (n.act === 'cut') { await D.cut(n); await T(0.5); }
     else if (n.act === 'seal' || n.act === 'inject') { await D.down(); for (let k = 0; k < 40; k++) { await T(0.2); const m = await next(); if (!m || m.act !== n.act || m.label !== n.label) break; } await D.up(); await T(0.2); }
@@ -140,7 +157,7 @@ export default async function (page) {
     const after = JSON.stringify([J.prog, m && m.act, m && m.label]);
     if (J.i === I.i && after === before) { if (++stuck > 5) { say('NO PROGRESS at ' + I.id + ' act=' + n.act + ' label=' + n.label + ' pick=' + JSON.stringify(J.pick) + ' near=' + J.near + ' on=' + J.on + ' inst=' + J.inst + ' prog=' + J.prog); await shot('stuck-' + I.id); break; } } else stuck = 0;
   }
-  const fin = await ev(() => { const s = window.__sim.S; return { step: s.step, ended: s.ended, t: +s.t.toFixed(1), ebl: +s.ebl.toFixed(1), injuries: Object.keys(s.injuries), stats: s.stats, stitches: s.cuff.stitches.length, bites: s.cuff.stitches.map(b => [b.x, b.da, b.dp].map(v => +v.toFixed(2)).join('/')), score: window.__sim.CASE.score(), myo: s.myo && { fib: s.myo.fib, cavity: s.myo.cavity, coag: +s.myo.coag.toFixed(1), untold: s.myo.untold, dropped: s.myo.dropped, deep: s.myo.deep.st.map(b => [b.x, b.a, b.b].map(v => +v.toFixed(2)).join('/')), sero: s.myo.sero.st.map(b => [b.x, b.a, b.b].map(v => +v.toFixed(2)).join('/')) } }; });
+  const fin = await ev(() => { const s = window.__sim.S; return { step: s.step, ended: s.ended, t: +s.t.toFixed(1), ebl: +s.ebl.toFixed(1), injuries: Object.keys(s.injuries), stats: s.stats, stitches: s.cuff.stitches.length, bites: s.cuff.stitches.map(b => [b.x, b.da, b.dp].map(v => +v.toFixed(2)).join('/')), score: window.__sim.CASE.score(), ect: s.ect && { tear: s.ect.tear, dropped: s.ect.dropped, tCtrl: s.ect.tCtrl && +s.ect.tCtrl.toFixed(1), pool: +s.pool.toFixed(1), stump: +s.side.R.isth.uc.toFixed(3), clots: s.ect.clots }, myo: s.myo && { fib: s.myo.fib, cavity: s.myo.cavity, coag: +s.myo.coag.toFixed(1), untold: s.myo.untold, dropped: s.myo.dropped, deep: s.myo.deep.st.map(b => [b.x, b.a, b.b].map(v => +v.toFixed(2)).join('/')), sero: s.myo.sero.st.map(b => [b.x, b.a, b.b].map(v => +v.toFixed(2)).join('/')) } }; });
   say(JSON.stringify(fin));
   fs.writeFileSync(OUT + 'flow-' + MODE + '.log', log.join('\n'));
   await ev(() => window.__sim.render());

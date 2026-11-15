@@ -557,7 +557,7 @@ const HAZ = {
   iliac: { th: 0.3, text: k => 'Major vascular injury: ' + sideName(k) + ' external iliac vessels' },
   ovary: { th: 0.9, text: k => 'Thermal injury to the ' + sideName(k) + ' ovary' },
   ip: { th: 1.3, text: k => sideName(k, true) + ' infundibulopelvic ligament coagulated: ovarian blood supply compromised' },
-  tube: { th: 0.6, text: k => 'Thermal injury to the ' + sideName(k) + ' fallopian tube' } // only in a case that keeps the tubes (CASE.spare)
+  tube: { th: 0.6, text: k => 'Thermal injury to the ' + sideName(k) + ' fallopian tube' } // only in a case that keeps a tube (CASE.spare: 1 for both sides, or the side)
 };
 const sideName = (k, cap) => (k === 'R' ? (cap ? 'Right' : 'right') : cap ? 'Left' : 'left');
 function heatUp(h, type, k, dt, info) {
@@ -587,7 +587,7 @@ function thermal(h, dt, radius) {
     else if (e === 'ovary') heatUp(h, 'ovary', P.side, dt);
     else if (e === 'ip') heatUp(h, 'ip', P.side, dt);
     else if (e === 'ureter') heatUp(h, 'ureter', P.side, dt * 2, { u: P.u });
-    else if (CASE.spare && CASE.spare[e]) heatUp(h, e, P.side, dt);
+    else if (CASE.spare && (CASE.spare[e] === 1 || CASE.spare[e] === P.side)) heatUp(h, e, P.side, dt);
   }
 }
 // Is this tip at working point p? Auto depth also accepts a pointer aimed at it from just short of it, since the tip
@@ -614,7 +614,8 @@ const SEALSPEC = {
   uo: { w: 0.04, T: 2.1, lo: 0.04, hi: 0.17, flow: 80, base: 4, label: 'utero-ovarian pedicle' },
   ua: { w: 0.07, T: 2.5, lo: 0.05, hi: 0.4, flow: 300, base: 6, arterial: true, label: 'uterine vessels' },
   card: { w: 0.1, T: 2.0, lo: 0.1, hi: 0.4, flow: 55, base: 4, label: 'cardinal ligament' },
-  meso: { w: 0.26, T: 1.7, lo: 0, hi: 1, flow: 28, base: 2, label: 'mesosalpinx' }
+  meso: { w: 0.26, T: 1.7, lo: 0, hi: 1, flow: 28, base: 2, label: 'mesosalpinx' },
+  isth: { w: 0.045, T: 1.8, lo: 0.03, hi: 0.33, flow: 45, base: 2, label: 'tubal isthmus' }
 };
 function sealTarget(h) {
   const P = h.pick;
@@ -622,7 +623,7 @@ function sealTarget(h) {
   let ent = P.ent;
   const side = P.side, want = STEPS[S.step].seal;
   if (!side) return null;
-  if (want && want.ent === 'meso' && ent === 'tube' && side === want.side) ent = 'meso';
+  if (want && (want.ent === 'meso' || want.ent === 'isth') && ent === 'tube' && side === want.side) ent = want.ent; // the tube stands for its mesosalpinx, or for its own isthmus
   if (!SEALSPEC[ent]) return null;
   if (!want || want.ent !== ent || want.side !== side) return { wrong: true, ent, side };
   return { ent, side, u: P.u, v: P.v, e: S.side[side][ent], spec: SEALSPEC[ent] };
@@ -635,6 +636,7 @@ function canCleanCut(h) {
   const tg = sealTarget(h);
   return !!tg && !tg.wrong && covered(tg.e, tg.u) && !(tg.e.cut && tg.ent !== 'meso');
 }
+const cutReady = h => { const st = STEPS[S.step]; return st.canCut ? st.canCut(h) : canCleanCut(h); }; // are this hand's jaws on a seal that this step lets it divide?
 function bipolarTick(h, dt) {
   const P = h.pick;
   S.stats.energyTime += dt; S.haze = Math.min(0.6, S.haze + dt * 0.05);
@@ -684,7 +686,6 @@ function cutAction(hand) {
     if (bite === 0 && tg.u < 0.45) { hint('mesoorder', 'Start at the fimbrial end and work toward the cornu'); return; }
     if (bite === 1 && tg.u > 0.62) { hint('mesoorder2', 'That part is already divided. Take the next bite toward the cornu.'); return; }
     S.mesoBite[tg.side]++; st.meso.pGoal = S.mesoBite[tg.side] >= 2 ? 1 : 0.5; st.meso.seals = []; st.meso.act = null;
-    if (S.mesoBite[tg.side] >= 2) st.tubeGoal = 1;
     if (tg.v < 0.3 && h.pick.ent !== 'tube') logEvent('tech', 'Mesosalpinx taken close to the ovary: stay just under the tube to protect the ovarian arcade');
   } else {
     if (e.cut) return;
@@ -704,6 +705,7 @@ function cutAction(hand) {
       if (key === 'uo') { const G = stt.rel.upper ? stt.rel.upper.lat : sdd.cur; return sampleArr(G.ridge, uc + 0.04, o); }
       if (key === 'ua') { const G = stt.rel.ua ? stt.rel.ua.lat : sdd.cur; return sampleArr(G.ua, uc + 0.06, o); }
       if (key === 'card') { const G = stt.rel.card ? stt.rel.card.lat : sdd.cur; return sampleArr(G.ua, uc + 0.1, o).lerp(sampleArr(G.cardLow, uc + 0.1, _g), 0.5); }
+      if (key === 'isth') return sampleArr(sdd.cur.tubeAtt, Math.max(0.02, uc - 0.03), o); // the stump on the cornu
       return o.copy(pt0);
     };
     addBleeder(getter, sp.flow * (1 - q), sp.arterial, sp.label);
@@ -731,12 +733,16 @@ function hookTick(h, dt) {
 function suctionTick(h, dt) {
   sustain('suc', 900, 'noise', 0.035);
   if (S.pool > 0 && POOL.visible && h.tip.y < POOL.position.y + 1.0) { const v = Math.min(S.pool, 28 * dt); S.pool -= v; }
+  if (CASE.suction) CASE.suction(h, dt);
   const st = STEPS[S.step];
   if (st.blunt) st.blunt(h, dt);
 }
 function releaseGrab(h) {
   const g = h.grab;
-  if (g && g.pull) { const i = S.pulls.indexOf(g.pull); if (i >= 0) S.pulls.splice(i, 1); }
+  if (g && g.pull) {
+    const i = S.pulls.indexOf(g.pull); if (i >= 0) S.pulls.splice(i, 1);
+    const sp = g.pull.curve === 'tube' && S.side[g.side].spec; if (sp) sp.off.add(g.pull.off); // a tube cut free stays where it is let go
+  }
   h.grab = null; h.openGoal = 0.7;
   if (g && g.onRelease) g.onRelease(h);
 }
@@ -748,8 +754,9 @@ function graspOn(h) {
   if (P.hit && h.near && P.ent === 'fibroid') hint('slip', 'An atraumatic grasper slips off a fibroid. Use the tenaculum.');
   h.openGoal = 0.02;
   if (P.hit && h.near && map[P.ent] && P.side && !S.side[P.side].rel.upper && !(P.ent === 'tube' && S.side[P.side].tubeGoal > 0)) {
-    const side = P.side, pull = { curve: map[P.ent], s: AN.side[side].s, u: P.ent === 'ovary' ? 0.4 : clamp(P.u, 0.08, 0.92), off: new V3(), nat: P.point.clone(), max: 1.6 }; // max: how far it stretches
+    const side = P.side, pull = { curve: map[P.ent], s: AN.side[side].s, u: P.ent === 'ovary' ? 0.4 : clamp(P.u, 0.08, 0.92), off: new V3(), nat: P.point.clone(), max: P.ent === 'tube' && S.side[side].spec ? 99 : 1.6 }; // max: how far it stretches
     S.pulls.push(pull); h.grab = { pull, ent: P.ent, side }; S.stats.traction++;
+    if (CASE.grasped) CASE.grasped(h);
   } else h.grab = { pull: null };
 }
 function dropGrabsOnSide(side) { for (const h of HANDS) if (h.grab && h.grab.side === side) releaseGrab(h); }
@@ -764,7 +771,7 @@ function primaryDown(h) {
   if (h.inst === 'grasper') { if (h.grab) { if (CTRL.mode === 'mouse') { releaseGrab(h); sfx.click(); } } else graspOn(h); }
   else if (h.inst === 'tenaculum') { if (h.grab) { releaseGrab(h); sfx.click(); } else if (!(CASE.clamp && CASE.clamp(h))) hint('tenac', 'The tenaculum is for holding a fibroid'); }
   else if (h.inst === 'needle') hint('needle', CASE.needleHint);
-  else if (h.inst === 'bipolar' && CTRL.mode === 'hands' && S.t - h.lastUp > 0.25 && (st.canCut ? st.canCut(h) : canCleanCut(h))) cutAction(h);
+  else if (h.inst === 'bipolar' && CTRL.mode === 'hands' && S.t - h.lastUp > 0.25 && cutReady(h)) cutAction(h);
   else { h.firing = true; h.nearFlag = false; if (h.inst === 'bipolar' || h.inst === 'hook') S.stats.activations++; }
 }
 function primaryUp(h) {

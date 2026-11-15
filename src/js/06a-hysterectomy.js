@@ -1,56 +1,10 @@
 // ---------- case: total laparoscopic hysterectomy ----------
-const _w = new V3(), _w2 = new V3();
-const curG = k => AN.side[k].cur;
-const WORD = { R: 'right', L: 'left' }, OPP = { R: 'left', L: 'right' }, CAP = { R: 'Right', L: 'Left' };
-const yawFor = k => (k === 'R' ? -0.5 : 0.5);
-const exSide = k => ({ label: 'Uterus deviated to the patient\'s ' + OPP[k], ok: () => (k === 'R' ? S.pose.yaw < -0.25 : S.pose.yaw > 0.25) });
 const exPush = { label: 'Cup pushed cephalad', ok: () => S.pose.push > 0.7 };
 const exAnt = { label: 'Uterus anteverted', ok: () => S.pose.pitch > 0.5 };
 const exMid = { label: 'Uterus in the midline', ok: () => Math.abs(S.pose.yaw) < 0.2 };
 const TRACK_URETER = () => ['ua', 'card', 'colp'].includes(STEPS[S.step].kind);
-let STEPS = null, CASE = null; // the steps of the case in hand, and the case (see CASES)
 const KI = 6;
-const cutLabel = () => (CTRL.mode === 'hands' ? 'Cut: relax, then pinch again' : 'Cut');
 
-function sealStep(o) {
-  const k = o.side, ent = o.ent;
-  const pointAt = (u, out) => {
-    const G = curG(k);
-    if (ent === 'round') return sampleArr(G.round, u, out);
-    if (ent === 'uo') return sampleArr(G.ridge, u, out);
-    if (ent === 'ua') return sampleArr(G.ua, u, out).lerp(sampleArr(G.uv, u, _w), 0.4);
-    return sampleArr(G.cardLow, u, out).lerp(sampleArr(G.ua, u, _w), 0.55);
-  };
-  return Object.assign({
-    kind: ent, tool: 'bipolar', seal: { ent, side: k },
-    next() {
-      const e = S.side[k][ent]; if (e.cut) return null;
-      if (e.seals.length) return { p: pointAt(e.seals[e.seals.length - 1].u, new V3()), act: 'cut', label: cutLabel() };
-      return { p: pointAt(e.act ? e.act.u : o.uT, new V3()), act: 'seal', label: 'Seal', prog: e.act ? e.act.p : 0 };
-    },
-    done() { return S.side[k][ent].cut; },
-    progress() { const e = S.side[k][ent]; return e.cut ? 'Divided' : e.seals.length ? 'Sealed. Cut through the sealed zone.' : e.act ? 'Sealing ' + Math.round(e.act.p * 100) + '%' : 'Not sealed'; },
-    frac() { const e = S.side[k][ent]; return e.cut ? 1 : e.seals.length ? 0.66 : e.act ? e.act.p * 0.6 : 0; },
-    focus(out) { return pointAt(o.uT, out); }
-  }, o);
-}
-function mesoStep(o) {
-  const k = o.side;
-  const pt = (w, out) => { const G = curG(k); return sampleArr(G.ridge, 0.6 * w, out).lerp(sampleArr(G.tubeAtt, w, _w), 0.82); };
-  return Object.assign({
-    kind: 'meso', tool: 'bipolar', seal: { ent: 'meso', side: k },
-    next() {
-      const b = S.mesoBite[k]; if (b >= 2) return null;
-      const e = S.side[k].meso, w = b === 0 ? 0.78 : 0.3;
-      if (e.seals.length) return { p: pt(e.seals[e.seals.length - 1].u, new V3()), act: 'cut', label: cutLabel() };
-      return { p: pt(e.act ? e.act.u : w, new V3()), act: 'seal', label: b === 0 ? 'Seal: fimbrial bite' : 'Seal: bite toward cornu', prog: e.act ? e.act.p : 0 };
-    },
-    done() { return S.mesoBite[k] >= 2; },
-    progress() { return 'Bite ' + Math.min(2, S.mesoBite[k] + 1) + ' of 2' + (S.side[k].meso.seals.length ? ': sealed, now cut' : ''); },
-    frac() { const e = S.side[k].meso; return Math.min(1, S.mesoBite[k] / 2 + (e.seals.length ? 0.33 : e.act ? e.act.p * 0.3 : 0)); },
-    focus(out) { return pt(0.55, out); }
-  }, o);
-}
 function inciseStep(o) {
   const k = o.side, which = o.which;
   const cp = (i, out) => {
@@ -138,7 +92,7 @@ const SIDE_STEPS = k => [
     pearl: 'CO₂ tracks into the opened leaf and separates the loose areolar plane for you. Let it show you where to cut.'
   }),
   mesoStep({
-    id: 'meso' + k, side: k, phase: CAP[k] + ' side', short: CAP[k] + ' salpingectomy',
+    id: 'meso' + k, side: k, swing: true, phase: CAP[k] + ' side', short: CAP[k] + ' salpingectomy',
     title: 'Free the ' + WORD[k] + ' tube: mesosalpinx', dist: 10.5, rec: { yaw: yawFor(k), pitch: 0.5, push: 0.3 }, expo: [exSide(k)],
     text: ['With the advanced bipolar, take the mesosalpinx just under the tube in two bites, fimbrial end first.', 'Seal, then cut, each bite.', 'The tube stays attached at the cornu and comes out with the uterus.'],
     pearl: 'Hug the tube. The ovarian arcade runs in the mesovarium just below, and it is the conserved ovary\'s collateral supply.'

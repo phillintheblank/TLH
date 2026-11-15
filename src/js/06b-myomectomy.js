@@ -132,8 +132,6 @@ function fbFocus(out) { return out.copy(FB.N0).addScaledVector(FB.A, 0.8).applyM
   fg.setAttribute('color', new THREE.BufferAttribute(fc, 3)); fg.computeVertexNormals();
   FB.fib = reg(new THREE.Mesh(fg, MAT.fibroid), 'fibroid'); scene.add(FB.fib);
   FB.str = FB.ATT.map(() => { const t = new Tube(5, 6, MAT.cord, 1, 1); scene.add(t.mesh); return t; }); FB.sarr = vecArr(3);
-  FB.bag = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), new THREE.MeshPhysicalMaterial({ color: 0xc6dcf0, roughness: 0.3, transparent: true, opacity: 0.62, side: THREE.DoubleSide }));
-  FB.bag.scale.set(FB.R * 1.25, FB.R * 1.45, FB.R * 1.25); scene.add(FB.bag);
 })();
 // The table behind fbRho: a ray from the centre in each direction, met with the triangles of the wall near enough to
 // matter. Made the first time the case is taken up.
@@ -154,7 +152,7 @@ function rhoBuild() {
 }
 function myoShow(on) {
   if (on && !RHO.t) rhoBuild();
-  UT.mesh.visible = !on; UT.myo.visible = on; for (const f of FB.flap) f.mesh.visible = on; if (!on) { FB.fib.visible = FB.bag.visible = false; for (const t of FB.str) t.mesh.visible = false; }
+  UT.mesh.visible = !on; UT.myo.visible = on; for (const f of FB.flap) f.mesh.visible = on; if (!on) { FB.fib.visible = false; for (const t of FB.str) t.mesh.visible = false; }
 }
 
 function myoUpdate(dt) {
@@ -171,10 +169,10 @@ function myoUpdate(dt) {
   if (m.fib === 'in') { m.pos.copy(seat); if (g) { g.pull.nat.copy(seat).add(g.gp); m.pos.add(g.pull.off); } }
   else if (m.fib === 'free') { if (g) m.pos.copy(h.tip).sub(g.gp); }
   else if (m.fib === 'park') { m.pos.x = damp(m.pos.x, FB.park.x, 3.5, dt); m.pos.y = damp(m.pos.y, FB.park.y, 3.5, dt); m.pos.z = damp(m.pos.z, FB.park.z, 3.5, dt); }
-  else if (m.fib === 'bag') { m.bag += dt; if (m.bag > 0.8) m.pos.lerp(CAM.pivot, 1 - Math.exp(-2.2 * dt)); if (m.bag > 2.4) { m.fib = 'out'; toast('Specimen out in its bag, through the umbilical incision', 'ok'); uiDirty(); } }
+  else if (m.fib === 'bag') { m.bag += dt; if (m.bag > 0.8) m.pos.lerp(bagExit(), 1 - Math.exp(-2.2 * dt)); if (m.bag > 2.4) { m.fib = 'out'; toast('Specimen out in its bag, through the umbilical incision', 'ok'); uiDirty(); } }
   FB.F.copy(m.pos).applyMatrix4(UT.Minv); FB.fibIn = !gone && FB.F.distanceTo(FB.C) < 3.2;
   FB.fib.visible = m.fib !== 'out'; FB.fib.position.copy(m.pos); FB.fib.quaternion.setFromRotationMatrix(UT.M);
-  FB.bag.visible = m.fib === 'bag'; if (FB.bag.visible) { FB.bag.position.copy(m.pos); FB.bag.quaternion.copy(camera.quaternion); }
+  BAG.visible = m.fib === 'bag'; if (BAG.visible) { BAG.scale.set(FB.R * 1.25, FB.R * 1.45, FB.R * 1.25); BAG.position.copy(m.pos); BAG.quaternion.copy(camera.quaternion); }
   // geometry, only when what shapes it has changed
   const f3 = v => v.toFixed(3), sU = [m.c, m.beta, m.vaso[0] + m.vaso[1] + m.vaso[2]].map(f3).join(), sF = sU + [m.inc, m.G, m.deepFront, m.seroFront, FB.F.x, FB.F.y, FB.F.z].map(f3).join() + FB.fibIn;
   // a burn mark on the wall stays on it as it sinks: where it is, and how far it stands off the serosa
@@ -425,17 +423,11 @@ const MYO_STEPS = [
     pearl: 'Record how deep the dissection went and whether the cavity was entered. Those two facts guide the advice on how long to wait before conceiving and on how to deliver.',
     bipolar: myoCoag,
     button: { label: 'Lower pressure to 8 mmHg', fn() { if (S.lowP) return; S.lowP = true; S.pressureGoal = 8; addBleeder(o => fbSero(-0.3 * FB.SM, 0.05, 0.03, o), 12, false, 'suture line'); toast('Pressure down: ooze from a needle hole in the repair', 'bleed'); uiDirty(); }, hide: () => S.lowP },
-    poolSpot() { // a place where the pool lies in view: with this uterus in the way, a small one shows only toward the scope
-      if (this.spot && Math.abs(S.t - this.spotT) < 0.5) return this.spot;
-      const p = this.spot || (this.spot = new V3()); this.spotT = S.t;
-      for (const z of [4, 3, 5, 2, 1, 6, 0, -1.5]) for (const x of [0, 1.2, -1.2, 2.4, -2.4]) if (visibleAt(p.set(x, POOL.position.y + 0.1, z), 0.3)) return p;
-      return p.set(0, POOL.position.y + 0.1, 3);
-    },
     button2: { label: 'Place the adhesion barrier and end the case', fn() { endCase(); }, show: () => S.lowP && !S.bleeders.length && S.pool < 8 },
     next() {
       if (!S.lowP) return { p: fbFocus(new V3()), act: 'button', label: 'Lower the pressure' };
       if (S.bleeders.length) return null;
-      if (S.pool >= 8) return { p: this.poolSpot().clone(), act: 'suction', label: 'Aspirate the pool' };
+      if (S.pool >= 8) return { p: poolSpot().clone(), act: 'suction', label: 'Aspirate the pool' }; // with this uterus in the way, a small pool shows only toward the scope
       return { p: fbFocus(new V3()), act: 'button', label: 'End the case' };
     },
     done() { return S.ended; }, progress() { return !S.lowP ? 'At 15 mmHg' : S.bleeders.length ? 'Ooze to control' : S.pool >= 8 ? 'Blood to aspirate: ' + Math.round(S.pool) + ' mL' : 'Dry'; },

@@ -97,7 +97,8 @@ class SideGeom {
     const t1 = c.t1.lerpVectors(cT, fim, 0.35); t1.y += 0.8; t1.z += 0.2;
     const t2 = c.t2.lerpVectors(cT, fim, 0.72); t2.x += 0.5 * s; t2.y += 0.7; t2.z += 0.2;
     spline([cT, t1, t2, fim], this.tubeAtt);
-    if (st && st.tubeFree > 0) {
+    if (st && st.spec) { for (let i = 0; i < NS; i++) this.tube[i].copy(st.spec.pts[i]).add(st.spec.off); this.tubeCur = this.tube; }
+    else if (st && st.tubeFree > 0) {
       const k = easeIO(st.tubeFree);
       t1.lerp(this.L(c.f1, 3.3 * s, 7.4, -0.35), k); t2.lerp(this.L(c.f2, 3.65 * s, 6.7, -1.1), k); fim.lerp(this.L(c.f3, 3.2 * s, 5.5, -1.55), k);
       spline([cT, t1, t2, fim], this.tube); this.tubeCur = this.tube;
@@ -111,10 +112,10 @@ class SideGeom {
     spline([this.L(c.a0, 2.1 * s, 5.6, 0), K.ft1, K.ft2], this.fatTop);
     if (pulls) for (const p of pulls) {
       if (p.s !== s) continue;
-      const arr = p.curve === 'tube' ? this.tubeCur : this[p.curve];
+      const arr = p.curve === 'tube' ? this.tubeCur : this[p.curve], rigid = p.curve === 'tube' && st && st.spec; // a tube cut free comes along whole
       sampleArr(arr, p.u, p.nat);
       for (let i = 0; i < NS; i++) {
-        const ui = i / (NS - 1), w = Math.exp(-Math.pow((ui - p.u) / 0.2, 2)) * sstep(0, 0.1, ui) * (p.curve === 'tube' ? 1 : sstep(1, 0.9, ui));
+        const ui = i / (NS - 1), w = rigid ? 1 : Math.exp(-Math.pow((ui - p.u) / 0.2, 2)) * sstep(0, 0.1, ui) * (p.curve === 'tube' ? 1 : sstep(1, 0.9, ui));
         arr[i].addScaledVector(p.off, w);
       }
       if (p.curve === 'ridge') this.ovC.addScaledVector(p.off, Math.exp(-Math.pow((0.4 - p.u) / 0.2, 2)));
@@ -128,10 +129,11 @@ let S = null;
 function newSide(s, name) {
   const ent = uc => ({ uc, cut: false, gk: 0, seals: [], act: null });
   return {
-    s, name, round: ent(0.45), uo: ent(0.1), ua: ent(0.14), card: ent(0.2),
+    s, name, round: ent(0.45), uo: ent(0.1), ua: ent(0.14), card: ent(0.2), isth: ent(0.12), // isth: the tube's isthmus, by distance along the tube
     meso: { p: 0, pGoal: 0, seals: [], act: null, cut: false, uc: 0, gk: 0 },
     antP: 0, antGoal: 0, postP: 0, postGoal: 0, roofGk: 0, roofCut: false, tubeFree: 0, tubeGoal: 0,
-    rel: { upper: null, ua: null, card: null }
+    rel: { upper: null, ua: null, card: null },
+    spec: null // a tube cut free of the uterus: { pts: its shape, off: how far it has been carried, gone: taken out }
   };
 }
 function freshState() { // what every case has; a case adds its own (CASE.state)
@@ -302,7 +304,7 @@ function mkSide(name, s) {
   const T = (k, n, m, ent, extra) => { const t = new Tube(n, m, MAT.cord, 1, 3); reg(t.mesh, ent, name, Object.assign({ tube: t, piece: k }, extra)); t.mesh.matrixAutoUpdate = false; scene.add(t.mesh); sd.t[k] = t; return t; };
   T('roundA', 26, 10, 'round'); T('roundB', 26, 10, 'round');
   T('uoA', 12, 10, 'uo'); T('uoB', 12, 10, 'uo'); T('ip', 16, 10, 'ip');
-  T('tube', 30, 10, 'tube');
+  T('tube', 30, 10, 'tube'); T('tubeS', 6, 10, 'tube');
   T('uaA', 14, 8, 'ua'); T('uaB', 32, 8, 'ua'); T('uvA', 14, 8, 'ua'); T('uvB', 32, 8, 'ua');
   T('usl', 14, 8, 'usl');
   const P = (k, ns, nt, mat, ent, uvS, uvT) => { const p = new Strip(ns, nt, mat, uvS, uvT); reg(p.mesh, ent, name, { strip: p, piece: k }); p.mesh.matrixAutoUpdate = false; scene.add(p.mesh); sd.st[k] = p; return p; };
@@ -333,6 +335,10 @@ reg(VUF.up.mesh, 'vuf'); reg(VUF.lo.mesh, 'vuf'); scene.add(VUF.up.mesh, VUF.lo.
 // blood pool in the cul-de-sac
 const POOL = new THREE.Mesh(new THREE.CircleGeometry(9, 40), MAT.blood);
 POOL.rotation.x = -Math.PI / 2 + 0.06; POOL.position.set(0, -7, -1.5); POOL.visible = false; scene.add(POOL);
+
+// a specimen bag, for whichever case takes something out in one
+const BAG = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), new THREE.MeshPhysicalMaterial({ color: 0xc6dcf0, roughness: 0.3, transparent: true, opacity: 0.62, side: THREE.DoubleSide }));
+BAG.visible = false; scene.add(BAG);
 
 const IDENT = new THREE.Matrix4();
 const _tp = {}, _tp2 = {}, _a = new V3(), _b = new V3(), _m4 = new THREE.Matrix4();
@@ -371,7 +377,7 @@ function sealK(e, u) {
 }
 function cordCol(e, base, gapHalf) {
   return (u, c) => {
-    c[0] = base[0]; c[1] = base[1]; c[2] = base[2];
+    if (typeof base === 'function') base(u, c); else { c[0] = base[0]; c[1] = base[1]; c[2] = base[2]; }
     const fl = fleckAt(u);
     for (let i = 0; i < e.seals.length; i++) { const z = e.seals[i]; sealPaint(c, Math.abs(u - z.u) / z.w, 1, fl); }
     if (e.act) sealPaint(c, Math.abs(u - e.act.u) / e.act.w, e.act.p, fl);
@@ -426,8 +432,13 @@ function updateSide(sd, time) {
   t.uoB.set(Ul.ridge, uU + gU, 0.22, u => 0.23 * taper(u, uU + gU, uo.gk, 0.02) * (1 - 0.3 * sealK(uo, u)), cordCol(uo, COL.uo, 0.035));
   t.ip.set(Ul.ridge, 0.56, 1, u => 0.3 + 0.06 * Math.sin(u * 40), (u, c) => { const k = 0.5 + 0.5 * Math.sin(u * 55); c[0] = lerp(COL.ip[0], COL.lig[0], k); c[1] = lerp(COL.ip[1], COL.lig[1], k); c[2] = lerp(COL.ip[2], COL.lig[2], k); });
   sd.ovary.position.copy(Ul.ovC); sd.ovary.quaternion.setFromUnitVectors(_a.set(1, 0, 0), Ul.ovA);
-  // fallopian tube
-  t.tube.set(cur.tubeCur, 0, 1, u => lerp(0.15, 0.27, sstep(0.15, 0.8, u)) + 0.2 * sstep(0.9, 1, u), (u, c) => { const k = sstep(0.86, 1, u); c[0] = lerp(COL.tube[0], COL.fim[0], k); c[1] = lerp(COL.tube[1], COL.fim[1], k); c[2] = lerp(COL.tube[2], COL.fim[2], k); });
+  // fallopian tube: in one piece unless its isthmus has been divided, which leaves a stump at the cornu. A case can change how it looks (CASE.tube).
+  const it = st.isth, uI = it.cut ? it.uc : 0, gI = 0.03 * it.gk, look = CASE.tube && CASE.tube(sd.name);
+  const tubeR = u => (lerp(0.15, 0.27, sstep(0.15, 0.8, u)) + 0.2 * sstep(0.9, 1, u) + (look ? look.rad(u) : 0)) * (1 - 0.3 * sealK(it, u));
+  const tubeC = cordCol(it, (u, c) => { const k = sstep(0.86, 1, u); c[0] = lerp(COL.tube[0], COL.fim[0], k); c[1] = lerp(COL.tube[1], COL.fim[1], k); c[2] = lerp(COL.tube[2], COL.fim[2], k); if (look) look.col(u, c); }, 0.03);
+  t.tube.on = !(st.spec && st.spec.gone);
+  t.tube.set(cur.tubeCur, uI + gI, 1, u => tubeR(u) * taper(u, uI + gI, it.gk, 0.02), tubeC);
+  t.tubeS.set(cur.tubeAtt, 0, uI - gI, u => tubeR(u) * taper(u, uI - gI, it.gk, 0.02), tubeC);
   // uterine artery + vein
   const ua = st.ua, uA = ua.uc, gA = 0.045 * ua.gk, pl = 1 + 0.07 * pulse(time), dead = ua.cut ? 1 : pl;
   t.uaA.set(Am.ua, 0, uA - gA, u => 0.17 * dead * taper(u, uA - gA, ua.gk, 0.03) * (1 - 0.3 * sealK(ua, u)), cordCol(ua, COL.art, 0.045)); setM(t.uaA.mesh, AT);
@@ -500,7 +511,7 @@ function updateAnatomy(dt, time) {
   if (S.specimen === 'delivering') { S.deliv = Math.min(1, S.deliv + dt / 1.6); if (S.deliv >= 1) { S.specimen = 'out'; S.manipOut = true; onSpecimenOut(); } }
   for (const k of ['R', 'L']) {
     const st = S.side[k];
-    for (const e of ['round', 'uo', 'ua', 'card']) st[e].gk = damp(st[e].gk, st[e].cut ? 1 : 0, 7, dt);
+    for (const e of ['round', 'uo', 'ua', 'card', 'isth']) st[e].gk = damp(st[e].gk, st[e].cut ? 1 : 0, 7, dt);
     st.antP = damp(st.antP, st.antGoal, 9, dt); st.postP = damp(st.postP, st.postGoal, 9, dt);
     st.meso.p = damp(st.meso.p, st.meso.pGoal, 6, dt);
     st.roofGk = damp(st.roofGk, st.roofCut ? 1 : 0, 5, dt);
@@ -513,7 +524,7 @@ function updateAnatomy(dt, time) {
   for (const k of ['R', 'L']) {
     const sd = AN.side[k], vis = S.specimen !== 'out';
     updateSide(sd, time);
-    if (!vis) for (const m of [sd.t.roundA, sd.t.uoA, sd.t.tube, sd.t.uaA, sd.t.uvA]) m.mesh.visible = false;
+    if (!vis) for (const m of [sd.t.roundA, sd.t.uoA, sd.t.tube, sd.t.tubeS, sd.t.uaA, sd.t.uvA]) m.mesh.visible = false;
     for (const m of ['antM', 'roofM', 'postM', 'mesoM', 'cardM']) sd.st[m].mesh.visible = vis;
     // ureters with peristalsis, iliac pulse
     const U = URETER[k], ph = ((time + U.phase) % 5.2) / 1.7;
@@ -549,7 +560,7 @@ function updateAnatomy(dt, time) {
   for (let k = 0; k < 16; k++) UT.segs[k].visible = S.colp[k] >= 1 && !S.colpDone;
   updateCuff();
   POOL.visible = S.pool > 2;
-  if (POOL.visible) POOL.position.y = -6.95 + 2.3 * Math.pow(Math.min(S.pool, 600) / 300, 0.45);
+  if (POOL.visible) POOL.position.y = CASE.poolY ? CASE.poolY(S.pool) : -6.95 + 2.3 * Math.pow(Math.min(S.pool, 600) / 300, 0.45);
   if (CASE.update) CASE.update(dt, time);
 }
 function vufPt(u, out) { sampleArr(VUF.e0, u, _a); sampleArr(VUF.e1, u, _b); return out.lerpVectors(_a, _b, 0.35); }

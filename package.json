@@ -1,6 +1,6 @@
 {
   "name": "tlh-simulator",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "description": "Browser-based laparoscopic gynaecological surgery simulator (hysterectomy, myomectomy) with camera hand control",
   "type": "module",

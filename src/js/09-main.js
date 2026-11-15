@@ -168,14 +168,14 @@ function fakeHand(o) {
 }
 window.__sim = {
   forceStep, visibleAt, colpPt, SEALSPEC, URETER, VG, UT, BL, HT, HANDS, CTRL, fakeHand, htIngest, htEnable, htDisable, calibFinish, calBuild, camFillPickers,
-  get S() { return S; }, get STEPS() { return STEPS; }, get CASE() { return CASE; }, CASES, setCase, FB, fbSero, HAND, CAM, AN, INP, tick, setPoseGoal, setInst, setActive, cutAction, startCase,
+  get S() { return S; }, get STEPS() { return STEPS; }, get CASE() { return CASE; }, CASES, setCase, FB, fbSero, EC, POOL, BAG, HAND, CAM, AN, INP, tick, setPoseGoal, setInst, setActive, cutAction, cutReady, startCase,
   get active() { return ACTIVE; }, get PICK() { return activeHand().pick; },
   next() { // the target the guidance is showing, as a scripted player needs it
     const st = STEPS[S.step];
     if (S.bleeders.length) { const p = S.bleeders[0].pt(new V3()); project(p, _ps); return { act: 'bleed', x: _ps.x, y: _ps.y, p: p.toArray(), want: { spot: 0.35, avoid: ['ureter', 'iliac', 'rectum', 'bladder'] } }; }
     const n = st.next && st.next(); if (!n) return null;
     project(n.p, _ps);
-    return { act: n.act, label: n.label, tool: n.tool || null, hand: n.hand || null, x: _ps.x, y: _ps.y, z: _ps.z, hidden: !!n.hidden, vis: visibleAt(n.p, 0.8), p: n.p.toArray(), want: CASE.want ? CASE.want(st, n) : null };
+    return { act: n.act, label: n.label, tool: n.tool || null, hand: n.hand || null, keep: !!n.keep, x: _ps.x, y: _ps.y, z: _ps.z, hidden: !!n.hidden, vis: visibleAt(n.p, 0.8), p: n.p.toArray(), want: CASE.want ? CASE.want(st, n) : null };
   },
   proj(p) { project(new V3(p[0], p[1], p[2]), _ps); return { x: _ps.x, y: _ps.y }; },
   cuffAt(p) { const lp = new V3(p[0], p[1], p[2]).applyMatrix4(new THREE.Matrix4().copy(VG.M).invert()); return { x: lp.x, edge: lp.z < 0 ? 'ant' : 'post', depth: Math.max(0, -lp.y) }; }, // where on the vaginal cuff a point lies, as the bite check sees it

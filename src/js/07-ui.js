@@ -17,7 +17,7 @@ const ENT_NAME = {
   usl: k => CAP[k] + ' uterosacral ligament', ureter: k => CAP[k] + ' ureter', iliac: k => CAP[k] + ' external iliac vessels', bladder: () => 'Bladder',
   rectum: () => 'Rectosigmoid', ant: k => 'Broad ligament, anterior leaf', roof: k => 'Broad ligament', post: k => 'Broad ligament, posterior leaf',
   meso: k => CAP[k] + ' mesosalpinx', areolar: () => 'Areolar tissue', vuf: () => 'Vesicouterine peritoneum', vagina: () => (S.specimen === 'out' ? 'Vaginal cuff' : 'Vagina over the cup'),
-  fibroid: () => 'Fibroid'
+  fibroid: () => 'Fibroid', clot: () => 'Blood clot'
 };
 const LABELS = [
   ['Uterus', () => _w.set(0, 7.6, 0).applyMatrix4(UT.M), () => S.specimen !== 'out' && !CASE.labels],
@@ -260,7 +260,7 @@ function renderUI(dt) {
   $('btnCut').disabled = hm ? !HANDS.some(x => x.inst === 'bipolar') : h.inst !== 'bipolar';
   $('trayNote').textContent = hm ? 'Number keys and these buttons change the selected hand\'s instrument' : 'The mouse drives the selected hand; the other holds its position';
   // HUD
-  $('hudT').textContent = fmtT(S.t); $('hudEBL').textContent = Math.round(S.ebl) + ' mL'; $('hudP').textContent = S.pressure.toFixed(0) + ' mmHg';
+  $('hudT').textContent = fmtT(S.t); $('hudEBL').textContent = Math.round(S.ebl + (CASE.ebl0 || 0)) + ' mL'; $('hudP').textContent = S.pressure.toFixed(0) + ' mmHg';
   const tg = st.seal ? S.side[st.seal.side][st.seal.ent] : null;
   let prox = null;
   for (const x of HANDS) {
@@ -294,7 +294,7 @@ function setPoseGoal(p) { if (S.manipOut) return; if (p.yaw != null) S.poseGoal.
 function showDebrief() {
   const sc = CASE.score(), s = S.stats, row = (k, v, cls) => '<div class="row ' + (cls || '') + '"><span>' + k + '</span><b>' + v + '</b></div>', rows = CASE.debrief(row);
   $('dbGrade').textContent = sc.grade; $('dbScore').textContent = sc.pts;
-  $('dbA').innerHTML = row('Operative time', fmtT(S.t)) + row('Estimated blood loss', Math.round(S.ebl) + ' mL', S.ebl > CASE.eblWarn ? 'warn' : '') + row('Energy activations', s.activations) + row('Energy time', s.energyTime.toFixed(0) + ' s') + row('Instrument exchanges', s.exchanges);
+  $('dbA').innerHTML = row('Operative time', fmtT(S.t)) + row('Estimated blood loss', Math.round(S.ebl + (CASE.ebl0 || 0)) + ' mL', S.ebl > CASE.eblWarn ? 'warn' : '') + row('Energy activations', s.activations) + row('Energy time', s.energyTime.toFixed(0) + ' s') + row('Instrument exchanges', s.exchanges);
   $('dbB').innerHTML = rows[0]; $('dbC').innerHTML = rows[1];
   $('dbNotes').innerHTML = sc.notes.length ? sc.notes.map(n => '<li>' + n + '</li>').join('') : '<li class="good">No deductions. Clean case.</li>';
   $('dbLog').innerHTML = S.events.length ? S.events.map(e => '<li class="' + e.type + '"><time>' + fmtT(e.t) + '</time>' + e.text + '</li>').join('') : '<li class="none">No events recorded</li>';
@@ -329,6 +329,7 @@ function resetWorld(running) {
 function setCase(id) {
   CASE = CASES[id] || CASES.tlh; STEPS = CASE.steps; UTW.a = CASE.warp[0]; UTW.b = CASE.warp[1];
   for (const k in CASES) if (CASES[k].show) CASES[k].show(CASES[k] === CASE);
+  BAG.visible = false; POOL.scale.setScalar(CASE.poolWide || 1);
   try { localStorage.setItem(KEYS, CASE.id); } catch (_) {}
   buildCaseUI(); resetWorld(false);
 }

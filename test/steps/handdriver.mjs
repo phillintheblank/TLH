@@ -41,11 +41,15 @@ export async function installHandDriver(page, rig) {
         if (o.vis && Math.abs(X[0] - o.X[0]) < 0.07 && Math.abs(X[1] - o.X[1]) < 0.12 && Math.abs(X[0] - o.X[0]) < Math.abs(h.X[0] - o.X[0])) return false;
         h.X = X; return true;
       },
-      // open the hand flat (clutch), bring it back to a comfortable spot, curl it again
-      clutch(k) { const h = this.hands[k], ap = h.ap; h.opn = 1.95; h.ap = 0.9; this.step(8); h.X = HOME[k].slice(); this.step(8); h.opn = 1.45; h.ap = ap > 0.4 ? ap : 0.62; this.step(20); },
+      // open the hand flat (clutch), bring it back to a comfortable spot, curl it again: still pinched if its grasper is holding, relaxed otherwise
+      clutch(k) { const h = this.hands[k], ap = h.ap, g = S.HAND[k].grab, held = !!(g && g.pull); h.opn = 1.95; h.ap = 0.9; this.step(8); h.X = HOME[k].slice(); this.step(8); h.opn = 1.45; h.ap = ap > 0.4 || held ? ap : 0.62; this.step(20); },
+      // before hand k moves, the other one goes back to its own side, as a person's would, so the two never cross in the picture.
+      // A hand whose grasper is holding clutches back still pinched; one pinched on anything else stays where it is.
+      park(k) { const ok = k === 'R' ? 'L' : 'R', oh = this.hands[ok], g = S.HAND[ok].grab; if (oh.vis && (oh.ap > 0.4 || (g && g.pull)) && Math.hypot(oh.X[0] - HOME[ok][0], oh.X[1] - HOME[ok][1], oh.X[2] - HOME[ok][2]) > 0.03) this.clutch(ok); },
       // auto depth, closed loop: nudge the hand until that hand's pointer reaches (tx, ty) in view pixels
       moveTo(k, tx, ty) {
         const hand = S.HAND[k]; let clutches = 0, steady = 0;
+        this.park(k);
         for (let i = 0; i < 320; i++) {
           if (!hand.ptr.on) { this.step(1); continue; }
           const ex = tx - hand.ptr.x, ey = ty - hand.ptr.y;
@@ -117,7 +121,7 @@ export async function installHandDriver(page, rig) {
           if (!want || !ud) return false;
           if (want.cuff) { if (ud.ent !== 'vagina') return false; const c = S.cuffAt(pt.toArray()); const post = want.cuff.edge === 'post'; return c.edge === want.cuff.edge && Math.abs(c.x - want.cuff.x) < (post ? 0.45 : 0.3) && c.depth > (post ? 0.42 : 0.5) && c.depth < (post ? 1.45 : 1.2); } // a full bite, in line, on the right edge
           if (want.spot) return !want.avoid.includes(ud.ent) && pt.distanceTo(P) < want.spot; // a spot to coagulate, and what must not be under the tip
-          return want.ents.includes(ud.ent) && ud.side === want.side;
+          return want.ents.includes(ud.ent) && (ud.side || null) === (want.side || null); // a midline structure has no side
         };
         const plan = tryNo => {
           off.set(0, 0, 0);
@@ -149,10 +153,15 @@ export async function installHandDriver(page, rig) {
         const good = () => hand.touch && (want ? is(hand.pick, hand.pick.point) && hand.tip.distanceTo(P) < 1 : hand.tip.distanceTo(P) < 0.6);
         const lift = (by) => { for (let i = 0; i < 4 && hand.touch; i++) { const W = own(Math.max(4, hand.ins - by)); if (!inView(W)) break; this.tipTo(k, W, 0.2, false, 90); } };
         const out = { tries: 0, feel: 0, aim: +off.length().toFixed(2) };
-        // the other hand goes back to its own side first, as a person's would, so the two never cross in the picture
-        { const ok = k === 'R' ? 'L' : 'R', oh = this.hands[ok]; if (oh.vis && oh.ap > 0.4 && Math.hypot(oh.X[0] - HOME[ok][0], oh.X[1] - HOME[ok][1], oh.X[2] - HOME[ok][2]) > 0.03) this.clutch(ok); }
-        // rest the tip on the tissue firmly enough that a little tremor does not lift it off again
-        const rest = () => { for (let i = 0; i < 25 && hand.touch && hand.ins - hand.ahead.dist < 0; i++) this.nudge(k, own(hand.ins + 0.2), 0.002); if (hand.touch) this.step(4); };
+        this.park(k);
+        // rest the tip on the tissue firmly enough that a little tremor does not lift it off again. Tremor can also make
+        // contact a moment early and then break it: with tissue a few millimetres ahead, close that gap first. Only when
+        // the step names what the tip should be on, so that what it comes to rest on is checked before any pinch.
+        const rest = () => {
+          for (let i = 0; want && i < 40 && !hand.touch && hand.ahead.dist - hand.ins < 0.6; i++) this.nudge(k, own(hand.ins + 0.2), 0.002);
+          for (let i = 0; i < 25 && hand.touch && hand.ins - hand.ahead.dist < 0; i++) this.nudge(k, own(hand.ins + 0.2), 0.002);
+          if (hand.touch) this.step(4);
+        };
         if (good() && !tryNo) { rest(); if (good()) return Object.assign(out, { ok: true, touch: true, good: true, hand: k, short: 0, off: +hand.tip.distanceTo(P).toFixed(2), ent: hand.pick.ent, press: +hand.press.toFixed(2) }); }
         lift(1);
         let s0 = L - 0.8; for (const c of [L - 2.5, L - 1.5]) if (c > 3 && inView(line(c))) { s0 = c; break; }
@@ -173,7 +182,7 @@ export async function installHandDriver(page, rig) {
           if (!hand.touch) this.tipTo(k, line(Math.max(4, Math.min(stop, Math.max(hand.ins, stop - 1)))), 0.05, false, 90, 0.005);
           return this.lineTo(k, d, L + 0.2);
         };
-        let r = land();
+        let r = land(); rest();
         // Went past it without touching (a thin edge, a cord): do as a person does on a flat screen. Put the tip over
         // the target in the picture, a little short of it, then push into the picture until it touches.
         const byEye = () => {
