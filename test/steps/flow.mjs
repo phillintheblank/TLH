@@ -1,4 +1,4 @@
-// Drive the whole case through the same "next target" data the guidance overlay draws.
+// Drive the whole case through the same "next target" data the guidance overlay draws. QUERY=case=myo plays the myomectomy.
 // MODE=free: the mouse's free depth, each tip brought to its target in space. MODE=mouse: real mouse events with
 // Auto depth on. MODE=hands: scripted hands seen by two simulated cameras (free depth). MODE=handsauto: scripted
 // hands seen by one camera (auto depth). Both hand modes go through the whole hand-control pipeline.
@@ -26,15 +26,15 @@ export default async function (page) {
     D = {
       T: dt => ev(n => window.__drv.step(n), Math.max(1, Math.ceil(dt * 30))),
       moveTo: auto
-        ? async n => { const k = (n.tryNo || 0) % 5, r = await ev(n => window.__drv.moveTo('R', n.x, n.y), { x: n.x + [0, 6, -6, 0, 0][k], y: n.y + [0, 0, 0, 6, -6][k] }); /* a retry aims a few pixels to one side, as a person would */ if (!r.ok) say('   (pointer did not reach target: ' + JSON.stringify(r) + ')'); await D.T(0.5); }
+        ? async n => { const k = (n.tryNo || 0) % 5, r = await ev(n => window.__drv.moveTo(window.__sim.active, n.x, n.y), { x: n.x + [0, 6, -6, 0, 0][k], y: n.y + [0, 0, 0, 6, -6][k] }); /* a retry aims a few pixels to one side, as a person would */ if (!r.ok) say('   (pointer did not reach target: ' + JSON.stringify(r) + ')'); await D.T(0.5); }
         : async n => { // use whichever hand has the clear line from its port, with the instrument this step needs
-          const r = await ev(([p, tryNo, want]) => {
+          const r = await ev(([p, tryNo, want, fixed]) => {
             const s = window.__sim, d = window.__drv, T3 = s.THREE, R = new T3.Raycaster(), P = new T3.Vector3().fromArray(p);
             const reach = h => { const v = P.clone().sub(h.port), L = v.length(); R.set(h.port, v.normalize()); const f = R.intersectObjects(s.PICKS, false).filter(x => s.shown(x.object))[0]; return f ? f.distance - L : 9; };
             let h = s.HAND[s.active]; const o = s.HAND[h.key === 'R' ? 'L' : 'R'], dA = reach(h), dO = reach(o);
-            if (dA < -0.65 && dO > dA + 0.3) { const tool = h.inst; s.setActive(o.key); if (o.inst !== tool) s.setInst(o.key, tool); h = o; d.step(30); }
+            if (!fixed && !o.grab && dA < -0.65 && dO > dA + 0.3) { const tool = h.inst; s.setActive(o.key); if (o.inst !== tool) s.setInst(o.key, tool); h = o; d.step(30); }
             return d.reach(h.key, p, tryNo, want);
-          }, [n.p, n.tryNo || 0, n.want || null]);
+          }, [n.p, n.tryNo || 0, n.want || null, !!n.hand]);
           if (VERBOSE || !r.ok) say('   reach ' + JSON.stringify(r));
           return r.good; // a person looks at where the tip is resting before pinching
         },
@@ -50,10 +50,16 @@ export default async function (page) {
       window.__simPause = true; const s = window.__sim, T = s.THREE, R = new T.Raycaster(); s.DEPTH.auto = false; s.INP.noLock = true;
       const reach = (h, P) => { const d = P.clone().sub(h.port), L = d.length(); R.set(h.port, d.normalize()); const f = R.intersectObjects(s.PICKS, false).filter(x => s.shown(x.object))[0]; return f ? f.distance - L : 9; };
       window.__free = {
-        go(p) {
+        go(p, fixed) {
           const P = new T.Vector3().fromArray(p); let h = s.HAND[s.active]; const o = h.key === 'R' ? s.HAND.L : s.HAND.R;
           const dA = reach(h, P), dO = reach(o, P);
-          if (dA < -0.65 && dO > dA + 0.3) { const tool = h.inst; s.setActive(o.key); if (o.inst !== tool) s.setInst(o.key, tool); h = o; for (let i = 0; i < 45; i++) s.tick(0.033); }
+          if (h.grab && h.grab.pull) { // carrying something: take the tip there in space
+            const a = h.port.clone().addScaledVector(h.dir, h.ins);
+            for (let i = 1; i <= 45; i++) { s.poseFromPoint(h, a.clone().lerp(P, i / 45)); s.tick(0.033); }
+            for (let i = 0; i < 20; i++) s.tick(0.033);
+            return { hand: h.key, carried: true, short: +h.tip.distanceTo(P).toFixed(2) };
+          }
+          if (!fixed && !o.grab && dA < -0.65 && dO > dA + 0.3) { const tool = h.inst; s.setActive(o.key); if (o.inst !== tool) s.setInst(o.key, tool); h = o; for (let i = 0; i < 45; i++) s.tick(0.033); }
           const d = P.clone().sub(h.port), L = d.length(); h.dir.copy(d.normalize()); h.ins = Math.min(h.ins, L - 1.5);
           for (let i = 0; i < 10; i++) s.tick(0.033);
           let n = 0; while (n++ < 260 && !h.touch && h.ins < L - 0.03) { h.cmd.dz += 0.1; s.tick(0.033); }
@@ -65,7 +71,7 @@ export default async function (page) {
     });
     D = {
       T: dt => ev(n => { for (let i = 0; i < n; i++) window.__sim.tick(0.033); }, Math.max(1, Math.ceil(dt / 0.033))),
-      moveTo: async n => { const r = await ev(p => window.__free.go(p), n.p); if (VERBOSE) say('   go ' + JSON.stringify(r)); },
+      moveTo: async n => { const r = await ev(([p, fixed]) => window.__free.go(p, fixed), [n.p, !!n.hand]); if (VERBOSE) say('   go ' + JSON.stringify(r)); },
       down: () => ev(() => { const s = window.__sim; s.primaryDown(s.HAND[s.active]); }), up: () => ev(() => { const s = window.__sim; s.primaryUp(s.HAND[s.active]); }),
       cut: () => ev(() => window.__sim.cutAction())
     };
@@ -84,9 +90,12 @@ export default async function (page) {
   const next = () => ev(() => window.__sim.next());
   const info = () => ev(() => { const s = window.__sim, st = s.STEPS[s.S.step], h = s.HAND[s.active], P = h.pick; return { i: s.S.step, id: st.id, tool: st.tool, rec: st.rec, ended: s.S.ended, t: s.S.t, ebl: s.S.ebl, nb: s.S.bleeders.length, inj: Object.keys(s.S.injuries).join(','), nev: s.S.events.length, xm: s.S.stats.expoMiss, pick: { ent: P.ent, side: P.side, u: +P.u.toFixed(3), v: +P.v.toFixed(3) }, near: h.near, inst: h.inst, on: h.ptr.on, prog: st.progress ? st.progress() : '' }; });
   const setPose = async p => { await ev(p => window.__sim.setPoseGoal(p), p); await T(1.4); };
+  const setHand = async k => { if ((await ev(() => window.__sim.active)) === k) return; await ev(k => window.__sim.setActive(k), k); await T(0.3); };
+  const freeHand = async () => { const k = await ev(() => { const s = window.__sim, h = s.HAND[s.active]; return h.grab && h.grab.pull ? (h.key === 'R' ? 'L' : 'R') : null; }); if (k) await setHand(k); }; // never change the instrument in a hand that is holding
   const setInst = async t => { const cur = await ev(() => window.__sim.HAND[window.__sim.active].inst); if (cur === t) return; await ev(t => window.__sim.setInst(window.__sim.active, t), t); await T(0.9); };
   const shot = async name => { await T(1.5); await ev(() => window.__sim.render()); await page.waitForTimeout(300); await page.screenshot({ path: OUT + name + '.png' }); };
   if (FROM) { await ev(id => { const s = window.__sim; let g = 0; while (s.STEPS[s.S.step].id !== id && g++ < 40) { s.forceStep(); for (let i = 0; i < 90; i++) s.tick(0.033); } }, FROM); say('skipped to ' + FROM); }
+  if (process.env.EVAL) await ev(src => { (0, eval)(src); }, process.env.EVAL); // set something up first, e.g. EVAL="__sim.S.pool=20"
   const colpPoses = [{ yaw: 0, pitch: -0.1, push: 1 }, { yaw: 0, pitch: 0.95, push: 1 }, { yaw: -0.5, pitch: 0.2, push: 1 }, { yaw: 0.5, pitch: 0.2, push: 1 }, { yaw: -0.45, pitch: 0.95, push: 1 }, { yaw: 0.45, pitch: 0.95, push: 1 }];
   let lastStep = -1, stuck = 0, colpI = 0, guard = 0, lastInj = '', lastEv = 0, prevId = '', xm = 0;
   while (guard++ < 1200) {
@@ -106,7 +115,7 @@ export default async function (page) {
     }
     const n = await next();
     if (!n) { await T(0.3); if (++stuck > 30) { say('STUCK (no next) at ' + I.id + ' ' + JSON.stringify(I)); break; } continue; }
-    if (n.act === 'bleed') { await setInst('bipolar'); n.tryNo = stuck; if ((await D.moveTo(n)) === false) { if (++stuck > 8) { say('NO PROGRESS at ' + I.id + ': the tip never came to rest on the bleeder'); break; } continue; } stuck = 0; await D.down(); await T(1.7); await D.up(); if (I.tool !== 'any') await setInst(I.tool); continue; }
+    if (n.act === 'bleed') { await freeHand(); await setInst('bipolar'); n.tryNo = stuck; if ((await D.moveTo(n)) === false) { if (++stuck > 8) { say('NO PROGRESS at ' + I.id + ': the tip never came to rest on the bleeder'); break; } continue; } stuck = 0; await D.down(); await T(1.7); await D.up(); if (I.tool !== 'any') await setInst(I.tool); continue; }
     if (n.act === 'button') { await ev(() => window.__sim.render()); const b2 = await page.locator('#stepBtn2').isVisible(); await page.click(b2 ? '#stepBtn2' : '#stepBtn1'); await T(0.6); continue; }
     if (I.id === 'colp' && (n.hidden || !n.vis)) { await setPose(colpPoses[colpI++ % colpPoses.length]); if (colpI > 40) { say('STUCK colp ' + I.prog); break; } continue; }
     // by hand a bite goes wherever on the edge is in line and in view, not only on the marker
@@ -116,21 +125,22 @@ export default async function (page) {
       say('   reach ' + I.id + ' ' + n.act + ': L[' + r.L + '] R[' + r.R + ']');
     }
     const before = JSON.stringify([I.prog, n.act, n.label]);
-    if (n.act === 'suction') await setInst('suction');
+    if (n.hand) await setHand(n.hand); else await freeHand();
+    if (n.act === 'suction') await setInst('suction'); else if (n.tool) await setInst(n.tool); else if (I.tool !== 'any') await setInst(I.tool);
     n.tryNo = stuck;
     if ((await D.moveTo(n)) === false && n.want && !n.want.cuff) { if (++stuck > 8) { say('NO PROGRESS at ' + I.id + ' act=' + n.act + ' label=' + n.label + ': the tip never came to rest on the target'); await shot('stuck-' + I.id); break; } continue; }
     if (VERBOSE) { const J = await info(); say('   ' + I.id + ' ' + n.act + ' "' + n.label + '" pick=' + JSON.stringify(J.pick) + ' near=' + J.near + ' on=' + J.on); }
     if (n.act === 'hover') await T(1.3); // hold near: no press
-    else if (n.act === 'click' || n.act === 'bite') { await D.down(); await T(0.1); await D.up(); await T(n.act === 'bite' ? 1.2 : 0.3); }
+    else if (n.act === 'click' || n.act === 'bite' || n.act === 'grasp' || n.act === 'place') { await D.down(); await T(0.1); await D.up(); await T(n.act === 'bite' ? 1.2 : 0.3); }
     else if (n.act === 'cut') { await D.cut(n); await T(0.5); }
-    else if (n.act === 'seal') { await D.down(); for (let k = 0; k < 40; k++) { await T(0.2); const m = await next(); if (!m || m.act !== 'seal') break; } await D.up(); await T(0.2); }
+    else if (n.act === 'seal' || n.act === 'inject') { await D.down(); for (let k = 0; k < 40; k++) { await T(0.2); const m = await next(); if (!m || m.act !== n.act || m.label !== n.label) break; } await D.up(); await T(0.2); }
     else if (n.act === 'trace' || n.act === 'push') { await D.down(); await T(n.act === 'push' ? 0.75 : 0.25); await D.up(); await T(0.15); }
     else if (n.act === 'suction') { await D.down(); await T(2.5); await D.up(); }
     const J = await info(), m = await next();
     const after = JSON.stringify([J.prog, m && m.act, m && m.label]);
     if (J.i === I.i && after === before) { if (++stuck > 5) { say('NO PROGRESS at ' + I.id + ' act=' + n.act + ' label=' + n.label + ' pick=' + JSON.stringify(J.pick) + ' near=' + J.near + ' on=' + J.on + ' inst=' + J.inst + ' prog=' + J.prog); await shot('stuck-' + I.id); break; } } else stuck = 0;
   }
-  const fin = await ev(() => { const s = window.__sim.S; return { step: s.step, ended: s.ended, t: +s.t.toFixed(1), ebl: +s.ebl.toFixed(1), injuries: Object.keys(s.injuries), stats: s.stats, stitches: s.cuff.stitches.length, bites: s.cuff.stitches.map(b => [b.x, b.da, b.dp].map(v => +v.toFixed(2)).join('/')) }; });
+  const fin = await ev(() => { const s = window.__sim.S; return { step: s.step, ended: s.ended, t: +s.t.toFixed(1), ebl: +s.ebl.toFixed(1), injuries: Object.keys(s.injuries), stats: s.stats, stitches: s.cuff.stitches.length, bites: s.cuff.stitches.map(b => [b.x, b.da, b.dp].map(v => +v.toFixed(2)).join('/')), score: window.__sim.CASE.score(), myo: s.myo && { fib: s.myo.fib, cavity: s.myo.cavity, coag: +s.myo.coag.toFixed(1), untold: s.myo.untold, dropped: s.myo.dropped, deep: s.myo.deep.st.map(b => [b.x, b.a, b.b].map(v => +v.toFixed(2)).join('/')), sero: s.myo.sero.st.map(b => [b.x, b.a, b.b].map(v => +v.toFixed(2)).join('/')) } }; });
   say(JSON.stringify(fin));
   fs.writeFileSync(OUT + 'flow-' + MODE + '.log', log.join('\n'));
   await ev(() => window.__sim.render());

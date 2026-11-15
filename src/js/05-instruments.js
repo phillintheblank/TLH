@@ -1,10 +1,13 @@
 // ---------- instruments, input, tissue interaction, effects ----------
+// Every instrument there is. A case lists the ones on its tray, in number-key order (CASE.insts).
 const INST = {
-  grasper: { name: 'Atraumatic grasper', short: 'Grasper', key: '1', use: 'Mouse: click to grasp or release. Hands: pinch to hold, relax to let go.' },
-  bipolar: { name: 'Advanced bipolar', short: 'Bipolar', key: '2', use: 'Hold to seal. Right-click, C, or a second pinch on the sealed zone fires the cut blade.' },
-  hook: { name: 'Monopolar hook', short: 'Hook', key: '3', use: 'Hold to activate and trace the incision.' },
-  suction: { name: 'Suction-irrigator', short: 'Suction', key: '4', use: 'Hold to aspirate blood and smoke. Doubles as a blunt dissector.' },
-  needle: { name: 'Needle driver, barbed suture', short: 'Needle driver', key: '5', use: 'Click or pinch on the vaginal edge to place a bite.' }
+  grasper: { name: 'Atraumatic grasper', short: 'Grasper', hud: 'GRASPER', use: 'Mouse: click to grasp or release. Hands: pinch to hold, relax to let go.' },
+  bipolar: { name: 'Advanced bipolar', short: 'Bipolar', hud: 'BIPOLAR', use: 'Hold to seal. Right-click, C, or a second pinch on the sealed zone fires the cut blade.' },
+  hook: { name: 'Monopolar hook', short: 'Hook', hud: 'MONOPOLAR CUT', use: 'Hold to activate and trace the incision.' },
+  suction: { name: 'Suction-irrigator', short: 'Suction', hud: 'SUCTION', use: 'Hold to aspirate blood and smoke. Doubles as a blunt dissector.' },
+  needle: { name: 'Needle driver, barbed suture', short: 'Needle driver', hud: 'NEEDLE DRIVER', use: 'Click or pinch on the tissue edge to place a bite.' },
+  tenaculum: { name: 'Laparoscopic tenaculum', short: 'Tenaculum', hud: 'TENACULUM', use: 'Click or pinch on the fibroid to lock on. It stays locked: click or pinch again to let go.' },
+  inject: { name: 'Injection needle, dilute vasopressin', short: 'Injection needle', hud: 'INJECTION NEEDLE', use: 'Hold with the tip in the myometrium to inject.' }
 };
 // Instruments carry the environment map themselves so each can mirror the lit tissue around it at its own strength
 // (the scene-wide setting is kept low, because for tissue it is only fill light).
@@ -76,6 +79,12 @@ function buildInst(type) {
     const ng = new THREE.Group(), arc = Math.PI * 0.9;
     const nd = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.035, 8, 30, arc), IM.steel);
     nd.rotation.z = Math.PI - 0.3 * arc; nd.position.set(0.6, 0, 0); ng.add(nd); ng.position.z = 0.2; g.add(ng); o.needle = ng;
+  } else if (type === 'tenaculum') { // two slim curved arms, each ending in a tooth that points at the other
+    addJaws(0.2, 0.1, 1.9, 0.55, IM.steel, 0);
+    for (const piv of o.jaws) { const sg = piv.userData.sg, t = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.42, 10), IM.steel); t.rotation.x = sg > 0 ? Math.PI : 0; t.position.set(0, -sg * 0.1, -1.8); piv.add(t); }
+    yoke(1.9, 0.3); g.add(zCyl(0.2, 0.25, 0.3, 2.5, IM.steel, 24)); shaft(ribs(2.8, 3, IM.steel));
+  } else if (type === 'inject') { // a fine needle from a 5 mm sheath
+    g.add(zCyl(0.012, 0.03, 1.7, 0, IM.steel, 8)); g.add(zCyl(0.07, 0.2, 0.5, 1.7, IM.blue, 20)); shaft(2.2);
   }
   return o;
 }
@@ -307,11 +316,11 @@ function updateHands(dt) {
       if (act) {
         if (free) { // the held tissue follows the tip, up to its stretch; past that the instrument is held back
           _g.copy(h.port).addScaledVector(h.dir, h.ins).sub(pl.nat);
-          if (_g.length() > 1.6) { _g.setLength(1.6); poseFromPoint(h, _ft.copy(pl.nat).add(_g)); }
+          if (_g.length() > pl.max) { _g.setLength(pl.max); poseFromPoint(h, _ft.copy(pl.nat).add(_g)); }
         } else {
           camera.getWorldDirection(_cv);
           const den = h.ray.direction.dot(_cv), tt = _g.copy(pl.nat).sub(h.ray.origin).dot(_cv) / (den || 1);
-          _g.copy(h.ray.origin).addScaledVector(h.ray.direction, tt).sub(pl.nat).clampLength(0, 1.6);
+          _g.copy(h.ray.origin).addScaledVector(h.ray.direction, tt).sub(pl.nat).clampLength(0, pl.max);
         }
         pl.off.lerp(_g, 1 - Math.exp(-14 * dt));
       }
@@ -343,7 +352,7 @@ function updateHands(dt) {
     h.grp.position.copy(h.tip).addScaledVector(_g, retract);
     h.grp.lookAt(h.port);
     h.open = damp(h.open, h.firing && h.inst === 'bipolar' ? 0.06 : h.openGoal, 16, dt);
-    const sub = h.sub[h.inst], ang = h.open * (h.inst === 'bipolar' ? 0.5 : 0.42);
+    const sub = h.sub[h.inst], ang = h.open * (h.inst === 'bipolar' ? 0.5 : h.inst === 'tenaculum' ? 0.6 : 0.42);
     for (const piv of sub.jaws) piv.rotation.x = -piv.userData.sg * ang * (h.inst === 'bipolar' && piv.userData.sg < 0 ? 0.25 : 1);
     if (sub.needle) { h.roll = Math.max(0, h.roll - dt / 0.45); sub.needle.rotation.z = -Math.sin(Math.PI * h.roll) * 2.2; }
   }
@@ -547,7 +556,8 @@ const HAZ = {
   rectum: { th: 0.35, text: () => 'Thermal injury to the rectosigmoid' },
   iliac: { th: 0.3, text: k => 'Major vascular injury: ' + sideName(k) + ' external iliac vessels' },
   ovary: { th: 0.9, text: k => 'Thermal injury to the ' + sideName(k) + ' ovary' },
-  ip: { th: 1.3, text: k => sideName(k, true) + ' infundibulopelvic ligament coagulated: ovarian blood supply compromised' }
+  ip: { th: 1.3, text: k => sideName(k, true) + ' infundibulopelvic ligament coagulated: ovarian blood supply compromised' },
+  tube: { th: 0.6, text: k => 'Thermal injury to the ' + sideName(k) + ' fallopian tube' } // only in a case that keeps the tubes (CASE.spare)
 };
 const sideName = (k, cap) => (k === 'R' ? (cap ? 'Right' : 'right') : cap ? 'Left' : 'left');
 function heatUp(h, type, k, dt, info) {
@@ -577,6 +587,7 @@ function thermal(h, dt, radius) {
     else if (e === 'ovary') heatUp(h, 'ovary', P.side, dt);
     else if (e === 'ip') heatUp(h, 'ip', P.side, dt);
     else if (e === 'ureter') heatUp(h, 'ureter', P.side, dt * 2, { u: P.u });
+    else if (CASE.spare && CASE.spare[e]) heatUp(h, e, P.side, dt);
   }
 }
 // Is this tip at working point p? Auto depth also accepts a pointer aimed at it from just short of it, since the tip
@@ -630,6 +641,8 @@ function bipolarTick(h, dt) {
   if (h.near && Math.random() < dt * 16) emitPuff(h.tip, true);
   thermal(h, dt, 0.5);
   if (controlBleeders(h, dt)) { sustain('bip', 520, 'sine', 0.06); return; }
+  const st = STEPS[S.step];
+  if (st.bipolar && st.bipolar(h, dt)) return;
   const tg = sealTarget(h);
   if (!tg) { sustain('bip', 430, 'sine', 0.05); if (P.hit && h.near) { addDecal(h); if (PRESERVE[P.ent]) S.stats.nonTarget += dt; } return; }
   if (tg.wrong) { sustain('bip', 430, 'sine', 0.05); hint('wrong', 'That ' + SEALSPEC[tg.ent].label + ' is not this step\'s target'); return; }
@@ -650,6 +663,7 @@ function bipolarTick(h, dt) {
 // hand: fire that hand's blade. No argument: the cut key or button, which looks for a bipolar with tissue in its jaws.
 function cutAction(hand) {
   if (!S.running || S.ended) return;
+  if (STEPS[S.step].cut && STEPS[S.step].cut(hand)) return;
   const order = hand ? [hand] : CTRL.mode === 'mouse' ? [activeHand()] : [activeHand(), otherHand(activeHand())];
   const cands = order.filter(c => c.inst === 'bipolar' && c.exch <= 0);
   if (!cands.length) { if (order.some(c => c.inst === 'bipolar')) return; hint('cutinst', 'The cut blade is on the advanced bipolar'); return; }
@@ -721,32 +735,37 @@ function suctionTick(h, dt) {
   if (st.blunt) st.blunt(h, dt);
 }
 function releaseGrab(h) {
-  if (h.grab && h.grab.pull) { const i = S.pulls.indexOf(h.grab.pull); if (i >= 0) S.pulls.splice(i, 1); }
+  const g = h.grab;
+  if (g && g.pull) { const i = S.pulls.indexOf(g.pull); if (i >= 0) S.pulls.splice(i, 1); }
   h.grab = null; h.openGoal = 0.7;
+  if (g && g.onRelease) g.onRelease(h);
 }
 function graspOn(h) {
   const P = h.pick;
   sfx.click();
   const map = { round: 'round', tube: 'tube', uo: 'ridge', ip: 'ridge', ovary: 'ridge' };
   if (P.hit && h.near && P.ent === 'uterus' && S.colpDone && S.specimen === 'in') { deliverSpecimen(); return; }
+  if (P.hit && h.near && P.ent === 'fibroid') hint('slip', 'An atraumatic grasper slips off a fibroid. Use the tenaculum.');
   h.openGoal = 0.02;
   if (P.hit && h.near && map[P.ent] && P.side && !S.side[P.side].rel.upper && !(P.ent === 'tube' && S.side[P.side].tubeGoal > 0)) {
-    const side = P.side, pull = { curve: map[P.ent], s: AN.side[side].s, u: P.ent === 'ovary' ? 0.4 : clamp(P.u, 0.08, 0.92), off: new V3(), nat: P.point.clone() };
+    const side = P.side, pull = { curve: map[P.ent], s: AN.side[side].s, u: P.ent === 'ovary' ? 0.4 : clamp(P.u, 0.08, 0.92), off: new V3(), nat: P.point.clone(), max: 1.6 }; // max: how far it stretches
     S.pulls.push(pull); h.grab = { pull, ent: P.ent, side }; S.stats.traction++;
   } else h.grab = { pull: null };
 }
 function dropGrabsOnSide(side) { for (const h of HANDS) if (h.grab && h.grab.side === side) releaseGrab(h); }
 
 // A press is a mouse click or a pinch. With the mouse the grasper toggles; with hand control it holds while pinched.
+// The tenaculum has a ratchet, so it toggles either way.
 function primaryDown(h) {
   if (!S.running || S.ended || h.exch > 0) return;
   if (AU.ctx && AU.ctx.state === 'suspended') AU.ctx.resume();
   const st = STEPS[S.step]; stepPressed = true;
   if (st.click && st.click(h)) return;
   if (h.inst === 'grasper') { if (h.grab) { if (CTRL.mode === 'mouse') { releaseGrab(h); sfx.click(); } } else graspOn(h); }
-  else if (h.inst === 'needle') { hint('needle', 'The needle driver is for closing the vaginal cuff'); }
-  else if (h.inst === 'bipolar' && CTRL.mode === 'hands' && S.t - h.lastUp > 0.25 && canCleanCut(h)) cutAction(h);
-  else { h.firing = true; h.nearFlag = false; if (h.inst !== 'suction') S.stats.activations++; }
+  else if (h.inst === 'tenaculum') { if (h.grab) { releaseGrab(h); sfx.click(); } else if (!(CASE.clamp && CASE.clamp(h))) hint('tenac', 'The tenaculum is for holding a fibroid'); }
+  else if (h.inst === 'needle') hint('needle', CASE.needleHint);
+  else if (h.inst === 'bipolar' && CTRL.mode === 'hands' && S.t - h.lastUp > 0.25 && (st.canCut ? st.canCut(h) : canCleanCut(h))) cutAction(h);
+  else { h.firing = true; h.nearFlag = false; if (h.inst === 'bipolar' || h.inst === 'hook') S.stats.activations++; }
 }
 function primaryUp(h) {
   h.lastUp = S.t;
@@ -758,6 +777,7 @@ function actionTick(dt) {
     if (h.inst === 'bipolar') bipolarTick(h, dt);
     else if (h.inst === 'hook') hookTick(h, dt);
     else if (h.inst === 'suction') suctionTick(h, dt);
+    else if (h.inst === 'inject' && !(STEPS[S.step].inject && STEPS[S.step].inject(h, dt))) hint('inj', 'Nothing to inject here');
   }
   for (const k in S.heat) S.heat[k] = Math.max(0, S.heat[k] - dt * 0.5);
   if (toastT > 0) { toastT -= dt; if (toastT <= 0) $('toast').className = 'toast'; }

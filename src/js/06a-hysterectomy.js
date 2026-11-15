@@ -1,4 +1,4 @@
-// ---------- case flow ----------
+// ---------- case: total laparoscopic hysterectomy ----------
 const _w = new V3(), _w2 = new V3();
 const curG = k => AN.side[k].cur;
 const WORD = { R: 'right', L: 'left' }, OPP = { R: 'left', L: 'right' }, CAP = { R: 'Right', L: 'Left' };
@@ -8,6 +8,7 @@ const exPush = { label: 'Cup pushed cephalad', ok: () => S.pose.push > 0.7 };
 const exAnt = { label: 'Uterus anteverted', ok: () => S.pose.pitch > 0.5 };
 const exMid = { label: 'Uterus in the midline', ok: () => Math.abs(S.pose.yaw) < 0.2 };
 const TRACK_URETER = () => ['ua', 'card', 'colp'].includes(STEPS[S.step].kind);
+let STEPS = null, CASE = null; // the steps of the case in hand, and the case (see CASES)
 const KI = 6;
 const cutLabel = () => (CTRL.mode === 'hands' ? 'Cut: relax, then pinch again' : 'Cut');
 
@@ -170,7 +171,7 @@ const VESSEL_STEPS = k => [
   })
 ];
 
-const STEPS = [
+const TLH_STEPS = [
   {
     id: 'survey', kind: 'survey', tool: 'any', phase: 'Survey', short: 'Identify both ureters', title: 'Survey the pelvis and identify both ureters', dist: 17,
     rec: { yaw: 0, pitch: 0.6, push: 0.3 }, expo: [],
@@ -178,6 +179,7 @@ const STEPS = [
     pearl: 'Deviating and anteverting the uterus opens each sidewall. At the cervix the ureter passes under the uterine artery about 1.5 to 2 cm lateral.',
     // no energy during the survey: a press that misses the ureter must not fire a bipolar or hook beside it
     click(h) { if (clickUreter(h)) return true; if (h.inst !== 'bipolar' && h.inst !== 'hook') return false; hint('surveyE', 'No energy yet. Hold the tip beside a ureter for a moment to mark it.'); return true; },
+    tick: ureterDwell,
     next() { for (const k of ['R', 'L']) if (!S.ureterID[k]) return { p: ureterMarker(k), act: 'hover', side: k, label: 'Hold near the ' + WORD[k] + ' ureter', prog: UDW[k] / UDW.T }; return null; },
     done() { return S.ureterID.R && S.ureterID.L; }, progress() { return (S.ureterID.R ? 1 : 0) + (S.ureterID.L ? 1 : 0) + ' of 2 identified'; },
     frac() { return ((S.ureterID.R ? 1 : 0) + (S.ureterID.L ? 1 : 0)) / 2; }, focus(o) { return o.set(0, -1.6, 0); }
@@ -200,7 +202,7 @@ const STEPS = [
     done() { return this.n() >= 5; }, progress() { return 'Incision ' + this.n() + ' / 5'; }, frac() { return this.n() / 5; }, focus(o) { return vufPt(0.5, o); }
   },
   {
-    id: 'flap', kind: 'flap', tool: 'hook', phase: 'Bladder', short: 'Develop bladder flap', title: 'Develop the bladder flap', dist: 9, acc: 0, cnt: 0,
+    id: 'flap', kind: 'flap', tool: 'hook', alt: 'suction', phase: 'Bladder', short: 'Develop bladder flap', title: 'Develop the bladder flap', dist: 9, acc: 0, cnt: 0,
     rec: { yaw: 0, pitch: -0.18, push: 1 }, expo: [exPush],
     text: ['Push the cup cephalad: its rim marks the anterior fornix.', 'Sweep the bladder caudally off the cervix, midline first, then each side. Use short hook bursts on the cervical side or blunt pushes with the suction tip.', 'Carry on until the bladder sits 1.5 to 2 cm below the cup rim.'],
     pearl: 'The right plane is white, filmy and avascular. Yellow fat belongs to the bladder. The bladder pillars laterally carry vessels, and a prior caesarean scar hides the midline plane: start lateral in those cases.',
@@ -251,7 +253,7 @@ const STEPS = [
     id: 'deliver', kind: 'deliver', tool: 'any', phase: 'Colpotomy and closure', short: 'Deliver specimen', title: 'Deliver the specimen', dist: 11, rec: null, expo: [],
     text: ['Deliver the uterus with both tubes through the vagina.', 'The manipulator comes out with it and an occluder keeps the pneumoperitoneum.'],
     pearl: 'A uterus too large for the colpotomy is removed by contained extraction, never by uncontained morcellation.',
-    button: { label: 'Deliver specimen through the vagina', fn: deliverSpecimen },
+    button: { label: 'Deliver specimen through the vagina', fn: deliverSpecimen, hide: () => S.specimen !== 'in' },
     next() { return S.specimen === 'in' ? { p: _w.set(0, 5, 0).applyMatrix4(UT.M).clone(), act: 'button', label: 'Deliver the specimen' } : null; },
     done() { return S.specimen === 'out'; }, progress() { return S.specimen === 'delivering' ? 'Delivering' : ''; }, frac() { return S.deliv; }, focus(o) { return o.set(0, 2, 0).applyMatrix4(VG.M); }
   },
@@ -297,7 +299,7 @@ const STEPS = [
     id: 'final', kind: 'final', tool: 'any', phase: 'Colpotomy and closure', short: 'Low-pressure inspection', title: 'Inspect at low pressure and confirm the ureters', dist: 12, rec: null, expo: [],
     text: ['Drop the pneumoperitoneum to 8 mmHg and inspect the pedicles and cuff.', 'Control any ooze with short bipolar bursts, away from the ureter at the cuff angle.', 'Aspirate pooled blood, then hold a tip beside each ureter for a moment to confirm peristalsis.'],
     pearl: 'Venous bleeding that 15 mmHg tamponades shows itself at 8. Cystoscopy follows according to your institution\'s practice.',
-    click: clickUreter,
+    click: clickUreter, tick: ureterDwell,
     button: { label: 'Lower pressure to 8 mmHg', fn() { if (S.lowP) return; S.lowP = true; S.pressureGoal = 8; addBleeder(o => cuffPt(1.7, 'ant', 0.5, o), 14, false, 'cuff angle'); S.oozeDone = true; toast('Pressure down: venous ooze at the right cuff angle', 'bleed'); uiDirty(); }, hide: () => S.lowP },
     button2: { label: 'End case', fn() { endCase(); }, show: () => S.lowP && !S.bleeders.length && S.pool < 8 && S.ureterOK.R && S.ureterOK.L },
     next() {
@@ -319,39 +321,7 @@ function cuffPtIn(x, depth, out) {
   return cuffLocal(Math.asin(sn), f, out).applyMatrix4(VG.M);
 }
 
-// ---------- step engine ----------
-let stepExpoChecked = false, stepPressed = false;
-function enterStep(i) {
-  S.step = i; stepExpoChecked = false; stepPressed = false;
-  const st = STEPS[i];
-  if (st.acc != null) st.acc = 0;
-  CAM.pan.set(0, 0, 0); CAM.userIns = 0;
-  uiDirty(true);
-}
-function checkExposure() {
-  if (stepExpoChecked) return; stepExpoChecked = true;
-  const st = STEPS[S.step];
-  if (st.expo && st.expo.some(e => !e.ok())) { S.stats.expoMiss++; if (S.guided) hint('expo', 'Exposure is not set for this step. See the checklist on the right.'); }
-}
-function updateSteps(dt) {
-  if (!S.running || S.ended) return;
-  S.t += dt;
-  S.pressure = damp(S.pressure, S.pressureGoal, 1.2, dt);
-  ureterDwell(dt);
-  const st = STEPS[S.step];
-  if (stepPressed && HANDS.some(h => h.firing && h.inst !== 'suction')) checkExposure();
-  if (!S.bleeders.length && st.done()) {
-    if (S.step < STEPS.length - 1) { sfx.ok(); toast('Done: ' + st.short, 'ok'); enterStep(S.step + 1); }
-  }
-  const f = st.focus(_w); CAM.goal.copy(f); CAM.goal.y -= 0.2;
-  CAM.insGoal = CAM.goal.distanceTo(CAM.pivot) - (st.dist || 12);
-}
-function endCase() {
-  if (S.ended) return;
-  S.ended = true; S.running = false; stopSustain();
-  showDebrief();
-}
-function score() {
+function tlhScore() {
   const s = S.stats, inj = Object.keys(S.injuries).length, c = S.cuff.stitches;
   let pts = 100; const notes = [];
   if (inj) { pts -= 25 * inj; notes.push(inj + ' organ or vessel injur' + (inj > 1 ? 'ies' : 'y')); }
@@ -367,3 +337,48 @@ function score() {
   const grade = pts >= 90 ? 'Proficient' : pts >= 75 ? 'Competent' : pts >= 60 ? 'Developing' : 'Needs review';
   return { pts, grade, notes };
 }
+// what the debrief shows for this case beyond the figures every case has: [safety rows, technique rows]
+function tlhDebrief(row) {
+  const s = S.stats, c = S.cuff.stitches, inj = Object.keys(S.injuries).length;
+  const depths = c.flatMap(b => [b.da, b.dp]), mean = depths.length ? depths.reduce((a, b) => a + b, 0) / depths.length : 0;
+  const gaps = c.slice(1).map((b, i) => c[i].x - b.x), gmean = gaps.length ? gaps.reduce((a, b) => a + b, 0) / gaps.length : 0;
+  const uad = k => (s['uaDist' + k] != null ? s['uaDist' + k].toFixed(1) + ' cm' : 'n/a'), minU = Math.min(s.minUreter.R, s.minUreter.L);
+  return [
+    row('Organ or vessel injuries', inj, inj ? 'crit' : 'ok') + row('Near misses at the ureter', s.nearMiss, s.nearMiss ? 'warn' : 'ok') + row('Pedicles cut without a full seal', s.unsealedCuts, s.unsealedCuts ? 'warn' : 'ok') + row('Seal to ureter, right uterine pedicle', uad('R')) + row('Seal to ureter, left uterine pedicle', uad('L')) + row('Closest energy to a ureter', minU < 90 ? minU.toFixed(1) + ' cm' : 'n/a'),
+    row('Cuff stitches', c.length) + row('Mean bite depth', depths.length ? Math.round(mean * 10) + ' mm' : 'n/a') + row('Mean stitch spacing', gaps.length ? Math.round(gmean * 10) + ' mm' : 'n/a') + row('Steps started without exposure set', s.expoMiss, s.expoMiss ? 'warn' : 'ok') + row('Left-hand traction used', s.traction + ' time' + (s.traction === 1 ? '' : 's'))
+  ];
+}
+// the threads to draw: each stitch as [from, over, to], where the running suture leaves the tissue, and whether it is in use
+function tlhSutures() {
+  const c = S.cuff, at = (x, edge, d) => cuffPt(x, edge, Math.min(d, 0.82), new V3());
+  const st = c.stitches.map(s => [at(s.x, 'ant', s.da), new V3(s.x - 0.06, 0.24, 0).applyMatrix4(VG.M), at(s.x - 0.12, 'post', s.dp)]);
+  return { st, from: c.pending ? at(c.pending.x, 'ant', c.pending.da) : st.length ? st[st.length - 1][2] : null, on: STEPS[S.step].id === 'cuff' && !c.done };
+}
+// ---------- hooks for automated checks ----------
+function tlhForce(st) { // complete the step in hand
+  const k = st.side, sd = k && S.side[k];
+  if (st.id === 'survey') S.ureterID.R = S.ureterID.L = true;
+  else if (st.seal && st.kind !== 'meso') { const e = sd[st.ent]; e.seals.push({ u: st.uT, w: SEALSPEC[st.ent].w }); e.cut = true; e.uc = st.uT; if (st.ent === 'uo') sd.roofCut = true; if (st.ent === 'ua' || st.ent === 'card') startRelease(AN.side[k], st.ent); }
+  else if (st.kind === 'meso') { S.mesoBite[k] = 2; sd.meso.pGoal = 1; sd.tubeGoal = 1; }
+  else if (st.which === 'ant') sd.antGoal = 1;
+  else if (st.which === 'post') { sd.postGoal = 1; startRelease(AN.side[k], 'upper'); }
+  else if (st.id === 'vuf') S.vufGoal = 1;
+  else if (st.id === 'flap') { st.cnt = 6; S.flapGoal = 1; }
+  else if (st.id === 'colp') { S.colp.fill(1); S.colpDone = true; VG.dirty = true; }
+  else if (st.id === 'deliver') deliverSpecimen();
+  else if (st.id === 'cuff') { for (const x of [1.5, 0.9, 0.3, -0.3, -0.9, -1.5]) S.cuff.stitches.push({ x, da: 0.8, dp: 0.8 }); S.cuff.frontGoal = -2.8; S.cuff.done = true; }
+  else if (st.id === 'final') { S.lowP = true; S.ureterOK.R = S.ureterOK.L = true; endCase(); }
+}
+function tlhWant(st, n) { // what a scripted hand should find under its tip at this target
+  const um = /(right|left) ureter/.exec(n.label || '');
+  return st.seal ? { ents: st.seal.ent === 'meso' ? ['meso', 'tube'] : [st.seal.ent], side: st.seal.side } : um ? { ents: ['ureter'], side: um[1] === 'right' ? 'R' : 'L' } : n.act === 'bite' ? { cuff: { edge: S.cuff.pending ? 'post' : 'ant', x: S.cuff.pending ? S.cuff.pending.x : st.nextX() } } : null;
+}
+const TLH = {
+  id: 'tlh', name: 'Total laparoscopic hysterectomy', tag: ', bilateral salpingectomy', blurb: 'With both tubes; ovaries conserved. 21 steps.',
+  sub: 'With bilateral salpingectomy. Ovaries conserved.',
+  brief: ['46-year-old with heavy menstrual bleeding and fibroids after failed medical management. Mobile 10-week uterus, no previous abdominal surgery.',
+    'She is in lithotomy and Trendelenburg with a uterine manipulator and colpotomy cup in place. 10 mm umbilical scope, two 5 mm lateral ports, pneumoperitoneum at 15 mmHg. You are looking toward the pelvis: her right is on the right of the screen.'],
+  steps: TLH_STEPS, insts: ['grasper', 'bipolar', 'hook', 'suction', 'needle'], warp: [0, 0], tipZ: 4.6, ureters: true, eblWarn: 100,
+  needleHint: 'The needle driver is for closing the vaginal cuff',
+  score: tlhScore, debrief: tlhDebrief, sutures: tlhSutures, force: tlhForce, want: tlhWant
+};

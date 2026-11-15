@@ -80,7 +80,7 @@ function wire() {
     const k = e.key.toLowerCase();
     if (['w', 'a', 's', 'd', 'q', 'e', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', '=', '+', '-', '_'].includes(k)) { held[k] = true; if (k.startsWith('arrow') && S.running) e.preventDefault(); return; }
     if (!S.running) return;
-    if (k >= '1' && k <= '5') { const t = Object.keys(INST)[+k - 1]; setInst(ACTIVE, t); }
+    if (k >= '1' && k <= '9') { const t = CASE.insts[+k - 1]; if (t) setInst(ACTIVE, t); }
     else if (k === ' ' || k === 'x') { if (e.target && /^(BUTTON|INPUT)$/.test(e.target.tagName) && k === ' ') return; e.preventDefault(); setActive(ACTIVE === 'L' ? 'R' : 'L'); }
     else if (k === 'c') cutAction();
     else if (k === 'l') { S.labels = !S.labels; syncL(); }
@@ -132,8 +132,8 @@ function frame(now) {
   renderFrame(dt, simTime, S.haze); qualityTick(raw);
   drawOverlay(simTime); renderUI(dt); htRenderUI(dt, simTime);
 }
-S = freshState();
-buildStatic(); wire(); htWire();
+CASE = CASES.tlh; STEPS = CASE.steps; S = freshState();
+wire(); htWire();
 // everything lit throws and takes shadows from the scope light, except flat marks painted on a surface and the blood pool
 scene.traverse(o => { if (o.isMesh && !o.material.isMeshBasicMaterial) { o.castShadow = o !== POOL; o.receiveShadow = true; if (o.material.userData.depth) o.customDepthMaterial = o.material.userData.depth; } });
 (function () {
@@ -142,25 +142,16 @@ scene.traverse(o => { if (o.isMesh && !o.material.isMeshBasicMaterial) { o.castS
   setQuality(q || 'auto', false);
   $('selQ').addEventListener('change', e => { setQuality(e.target.value, true); e.target.blur(); });
 })();
-resetWorld(false);
+(function () { // the case: named in the address (?case=myo), else the one used last, else the hysterectomy
+  let c = null;
+  try { c = new URLSearchParams(location.search).get('case') || localStorage.getItem(KEYS); } catch (e) {}
+  setCase(c);
+})();
 window.__simBooted = performance.now(); $('nogl').hidden = true;
 requestAnimationFrame(frame);
 
 // ---------- hooks for automated checks ----------
-function forceStep() {
-  const st = STEPS[S.step], k = st.side, sd = k && S.side[k];
-  if (st.id === 'survey') S.ureterID.R = S.ureterID.L = true;
-  else if (st.seal && st.kind !== 'meso') { const e = sd[st.ent]; e.seals.push({ u: st.uT, w: SEALSPEC[st.ent].w }); e.cut = true; e.uc = st.uT; if (st.ent === 'uo') sd.roofCut = true; if (st.ent === 'ua' || st.ent === 'card') startRelease(AN.side[k], st.ent); }
-  else if (st.kind === 'meso') { S.mesoBite[k] = 2; sd.meso.pGoal = 1; sd.tubeGoal = 1; }
-  else if (st.which === 'ant') sd.antGoal = 1;
-  else if (st.which === 'post') { sd.postGoal = 1; startRelease(AN.side[k], 'upper'); }
-  else if (st.id === 'vuf') S.vufGoal = 1;
-  else if (st.id === 'flap') { st.cnt = 6; S.flapGoal = 1; }
-  else if (st.id === 'colp') { S.colp.fill(1); S.colpDone = true; VG.dirty = true; }
-  else if (st.id === 'deliver') deliverSpecimen();
-  else if (st.id === 'cuff') { for (const x of [1.5, 0.9, 0.3, -0.3, -0.9, -1.5]) S.cuff.stitches.push({ x, da: 0.8, dp: 0.8 }); S.cuff.frontGoal = -2.8; S.cuff.done = true; }
-  else if (st.id === 'final') { S.lowP = true; S.ureterOK.R = S.ureterOK.L = true; endCase(); }
-}
+function forceStep() { const st = STEPS[S.step]; if (st.force) st.force(); else CASE.force(st); } // complete the step in hand
 // A synthetic hand for tests: a fixed 3-D hand shape (wl, metres) drawn into camera o.cam's picture at (x, y) with
 // its palm `size` picture-heights long. opn spreads the fingers, ap parts the thumb from the fingertips, and gz is the
 // share of that gap lying along the camera's line of sight (0: the camera sees the grip side-on, clearly).
@@ -177,9 +168,15 @@ function fakeHand(o) {
 }
 window.__sim = {
   forceStep, visibleAt, colpPt, SEALSPEC, URETER, VG, UT, BL, HT, HANDS, CTRL, fakeHand, htIngest, htEnable, htDisable, calibFinish, calBuild, camFillPickers,
-  get S() { return S; }, STEPS, HAND, CAM, AN, INP, tick, setPoseGoal, setInst, setActive, cutAction, startCase,
+  get S() { return S; }, get STEPS() { return STEPS; }, get CASE() { return CASE; }, CASES, setCase, FB, fbSero, HAND, CAM, AN, INP, tick, setPoseGoal, setInst, setActive, cutAction, startCase,
   get active() { return ACTIVE; }, get PICK() { return activeHand().pick; },
-  next() { const st = STEPS[S.step]; if (S.bleeders.length) { const p = S.bleeders[0].pt(new V3()); project(p, _ps); return { act: 'bleed', x: _ps.x, y: _ps.y, p: p.toArray(), want: { spot: 0.35, avoid: ['ureter', 'iliac', 'rectum', 'bladder'] } }; } const n = st.next && st.next(); if (!n) return null; project(n.p, _ps); const um = /(right|left) ureter/.exec(n.label || ''), want = st.seal ? { ents: st.seal.ent === 'meso' ? ['meso', 'tube'] : [st.seal.ent], side: st.seal.side } : um ? { ents: ['ureter'], side: um[1] === 'right' ? 'R' : 'L' } : n.act === 'bite' ? { cuff: { edge: S.cuff.pending ? 'post' : 'ant', x: S.cuff.pending ? S.cuff.pending.x : st.nextX() } } : null; return { act: n.act, label: n.label, x: _ps.x, y: _ps.y, z: _ps.z, hidden: !!n.hidden, vis: visibleAt(n.p, 0.8), p: n.p.toArray(), want }; },
+  next() { // the target the guidance is showing, as a scripted player needs it
+    const st = STEPS[S.step];
+    if (S.bleeders.length) { const p = S.bleeders[0].pt(new V3()); project(p, _ps); return { act: 'bleed', x: _ps.x, y: _ps.y, p: p.toArray(), want: { spot: 0.35, avoid: ['ureter', 'iliac', 'rectum', 'bladder'] } }; }
+    const n = st.next && st.next(); if (!n) return null;
+    project(n.p, _ps);
+    return { act: n.act, label: n.label, tool: n.tool || null, hand: n.hand || null, x: _ps.x, y: _ps.y, z: _ps.z, hidden: !!n.hidden, vis: visibleAt(n.p, 0.8), p: n.p.toArray(), want: CASE.want ? CASE.want(st, n) : null };
+  },
   proj(p) { project(new V3(p[0], p[1], p[2]), _ps); return { x: _ps.x, y: _ps.y }; },
   cuffAt(p) { const lp = new V3(p[0], p[1], p[2]).applyMatrix4(new THREE.Matrix4().copy(VG.M).invert()); return { x: lp.x, edge: lp.z < 0 ? 'ant' : 'post', depth: Math.max(0, -lp.y) }; }, // where on the vaginal cuff a point lies, as the bite check sees it
   render(dt) { renderFrame(dt == null ? 0.5 : dt, simTime, S.haze); drawOverlay(simTime); renderUI(1); htRenderUI(1, simTime); },

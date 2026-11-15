@@ -31,6 +31,10 @@ function utSurf(phiDeg, y, lift, out) {
   const ph = phiDeg * DEG, r = utR(y) + (lift || 0), horn = 1 + 0.1 * Math.exp(-Math.pow((y - 7.3) / 0.8, 2)) * Math.pow(Math.abs(Math.sin(ph)), 3);
   return (out || new V3()).set(r * Math.sin(ph) * horn, y, r * Math.cos(ph) * utAP(y));
 }
+// A case may have a larger uterus than the model's: a wider (a) and taller (b) body above the isthmus. The surface and
+// everything attached to it (cornua, ligaments, tubes) go through the same warp.
+const UTW = { a: 0, b: 0 };
+function utWarp(p, a = UTW.a, b = UTW.b) { if (a || b) { const k = 1 + a * sstep(3.2, 6.2, p.y); p.x *= k; p.z *= k; p.y += b * sstep(3.5, 8.6, p.y); } return p; }
 const _X = new V3(), _Y = new V3(), _Z = new V3(), _O = new V3();
 function poseMat(p, M, lift, deliv) {
   const cy = Math.cos(p.yaw), sy = Math.sin(p.yaw), cp = Math.cos(p.pitch), sp = Math.sin(p.pitch);
@@ -73,7 +77,7 @@ class SideGeom {
     this.tubeCur = this.tubeAtt; this.ovC = new V3(); this.ovA = new V3();
     this.c = {}; for (const k of ['cR', 'cT', 'cU', 'r1', 'r2', 'ax', 'ovR', 'ovMed', 'ovLat', 'ovTop', 'ipMid', 'fim', 't1', 't2', 'f1', 'f2', 'f3', 'a0', 'a1', 'a2', 'a3', 'm1']) this.c[k] = new V3();
   }
-  L(v, x, y, z) { return v.set(x, y, z).applyMatrix4(this.M); }
+  L(v, x, y, z) { return utWarp(v.set(x, y, z)).applyMatrix4(this.M); }
   compute(M, st, pulls) {
     this.M.copy(M);
     const s = this.s, K = SIDEK[s], c = this.c;
@@ -130,7 +134,7 @@ function newSide(s, name) {
     rel: { upper: null, ua: null, card: null }
   };
 }
-function freshState() {
+function freshState() { // what every case has; a case adds its own (CASE.state)
   return {
     t: 0, running: false, ended: false, guided: true, labels: false,
     pose: { yaw: 0, pitch: PITCH0, push: 0 }, poseGoal: { yaw: 0, pitch: PITCH0, push: 0 }, manipOut: false,
@@ -211,16 +215,16 @@ function bladderPt(psi, out) { // fold line on the cephalad-posterior dome
 // uterus (specimen) group
 const UT = { g: new THREE.Group(), M: new THREE.Matrix4(), Minv: new THREE.Matrix4() };
 UT.g.matrixAutoUpdate = false; scene.add(UT.g);
+function utVertex(u, v, p, c) { // the uterus's surface, paler over the cervix
+  const y = 8.6 * Math.sin(v * Math.PI / 2);
+  utSurf(u * 360, y, 0, p);
+  const k = 1 + 0.035 * (fbm3(p.x * 0.55 + 3, p.y * 0.55, p.z * 0.55 + 7, 3) - 0.5);
+  p.x *= k; p.z *= k;
+  const cx = sstep(3.6, 2.0, y), rim = sstep(0.75, 0.2, y);
+  c[0] = 1 + 0.1 * cx + 0.12 * rim; c[1] = 1 + 0.22 * cx + 0.3 * rim; c[2] = 1 + 0.2 * cx + 0.3 * rim;
+}
 (function () {
-  const g = paramSurface(72, 60, (u, v, p, c) => {
-    const y = 8.6 * Math.sin(v * Math.PI / 2);
-    utSurf(u * 360, y, 0, p);
-    const k = 1 + 0.035 * (fbm3(p.x * 0.55 + 3, p.y * 0.55, p.z * 0.55 + 7, 3) - 0.5);
-    p.x *= k; p.z *= k;
-    const cx = sstep(3.6, 2.0, y), rim = sstep(0.75, 0.2, y);
-    c[0] = 1 + 0.1 * cx + 0.12 * rim; c[1] = 1 + 0.22 * cx + 0.3 * rim; c[2] = 1 + 0.2 * cx + 0.3 * rim;
-  }, { closedU: true, su: 3, sv: 3 });
-  UT.mesh = reg(new THREE.Mesh(g, MAT.uterus), 'uterus'); UT.g.add(UT.mesh);
+  UT.mesh = reg(new THREE.Mesh(paramSurface(72, 60, utVertex, { closedU: true, su: 3, sv: 3 }), MAT.uterus), 'uterus'); UT.g.add(UT.mesh);
   // ascending uterine vessels along the lateral margin
   for (const s of [1, -1]) {
     const A = spline([V(1.34 * s, 2.7, 0.05), V(1.62 * s, 3.8, 0.14), V(2.12 * s, 5.0, 0.02), V(2.5 * s, 6.2, 0.12), V(2.5 * s, 7.0, 0.1)], vecArr(25));
@@ -283,13 +287,7 @@ function updateCuff() {
     if (f > 2.6 && f <= 4.4) { const q = S.colpDone ? 1 : 0; col[k] = lerp(1, 0.86, q); col[k + 1] = lerp(1, 0.6, q); col[k + 2] = lerp(1, 0.5, q); }
   }
   VG.geo.attributes.position.needsUpdate = true; VG.geo.attributes.color.needsUpdate = true;
-  VG.geo.computeVertexNormals();
-  const nr = VG.geo.attributes.normal.array;
-  for (let j = 0; j < VG.rows; j++) {
-    const a = j * VG.cols * 3, b = (j * VG.cols + VG.nu) * 3;
-    const x = nr[a] + nr[b], y = nr[a + 1] + nr[b + 1], z = nr[a + 2] + nr[b + 2], l = Math.hypot(x, y, z) || 1;
-    nr[a] = nr[b] = x / l; nr[a + 1] = nr[b + 1] = y / l; nr[a + 2] = nr[b + 2] = z / l;
-  }
+  VG.geo.computeVertexNormals(); weldSeam(VG.geo, VG.nu, VG.nv);
 }
 // world point on the outer cuff wall: x in cuff-local cm, edge 'ant'|'post', depth below the rim
 function cuffPt(x, edge, depth, out) {
@@ -552,6 +550,7 @@ function updateAnatomy(dt, time) {
   updateCuff();
   POOL.visible = S.pool > 2;
   if (POOL.visible) POOL.position.y = -6.95 + 2.3 * Math.pow(Math.min(S.pool, 600) / 300, 0.45);
+  if (CASE.update) CASE.update(dt, time);
 }
 function vufPt(u, out) { sampleArr(VUF.e0, u, _a); sampleArr(VUF.e1, u, _b); return out.lerpVectors(_a, _b, 0.35); }
 function flapEdgePt(u, out) { // hanging edge of the bladder peritoneum = where to sweep

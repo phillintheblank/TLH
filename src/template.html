@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>TLH Simulator</title>
+<title>MIGS Simulator</title>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -55,6 +55,11 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 352px;min-height:0}
 .sheet{width:min(680px,100%);max-height:100%;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:22px 24px}
 .sheet h2{margin:0 0 4px;font:600 28px/1.05 var(--display);letter-spacing:.03em;text-transform:uppercase;text-wrap:balance}
 .sheet .sub{margin:0 0 14px;color:var(--muted)}
+.cases{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px;margin-bottom:18px}
+.case{display:grid;gap:3px;text-align:left;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.case b{font-weight:600}
+.case span{color:var(--muted);font-size:12.5px}
+.case.on{border-color:var(--accent);background:var(--panel-2);box-shadow:inset 3px 0 0 var(--accent)}
 .sheet h3{margin:16px 0 6px;font:600 13px var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
 .sheet p{margin:0 0 8px;max-width:64ch}
 .keys{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:5px 18px;margin:0;padding:0;list-style:none;font-size:13.5px}
@@ -176,7 +181,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 <body>
 <div id="app">
   <header class="bar">
-    <div class="brand"><h1>TLH Simulator</h1><p>Build 0.4 &middot; total laparoscopic hysterectomy, bilateral salpingectomy</p></div>
+    <div class="brand"><h1>MIGS Simulator</h1><p id="brandSub"></p></div>
     <div class="bar-ctl">
       <select id="selQ" class="sel" title="Picture quality. Auto starts at High and steps down if the frame rate drops." aria-label="Picture quality"><option value="auto">Quality: auto</option><option value="high">Quality: high</option><option value="medium">Quality: medium</option><option value="low">Quality: low</option></select>
       <button type="button" id="btnHands" class="tog" title="Drive both instruments with your hands through this device's camera">Hand control</button>
@@ -203,10 +208,10 @@ input[type=range]{width:100%;accent-color:var(--accent)}
         <div id="nogl" hidden>This simulator needs WebGL, which is not available in this browser.</div>
         <div id="startCard" class="modal">
           <div class="sheet">
-            <h2>Total laparoscopic hysterectomy</h2>
-            <p class="sub">With bilateral salpingectomy. Ovaries conserved.</p>
-            <p>46-year-old with heavy menstrual bleeding and fibroids after failed medical management. Mobile 10-week uterus, no previous abdominal surgery.</p>
-            <p>She is in lithotomy and Trendelenburg with a uterine manipulator and colpotomy cup in place. 10 mm umbilical scope, two 5 mm lateral ports, pneumoperitoneum at 15 mmHg. You are looking toward the pelvis: her right is on the right of the screen.</p>
+            <div class="cases" id="caseList" role="radiogroup" aria-label="Choose a case"></div>
+            <h2 id="caseTitle"></h2>
+            <p class="sub" id="caseSub"></p>
+            <div id="caseBrief"></div>
             <div class="cta"><button type="button" class="primary" id="btnBeginHands">Begin with hand control</button><button type="button" class="ghost" id="btnBegin">Begin with the mouse</button></div>
             <p class="fine">Hand control uses this device's camera. The video is analysed in your browser and is never recorded or sent anywhere. A short calibration learns directions and your pinch from your own movements, for whichever cameras you use.</p>
             <h3>With your hands</h3>
@@ -229,8 +234,8 @@ input[type=range]{width:100%;accent-color:var(--accent)}
             </ul>
             <h3>Keyboard, either way</h3>
             <ul class="keys">
-              <li><b>1 to 5</b><span>Change the selected hand's instrument</span></li>
-              <li><b>W A S D, Q E</b><span>Uterine manipulator: tilt, deviate, push the cup</span></li>
+              <li><b id="keyNums">1 to 5</b><span>Change the selected hand's instrument</span></li>
+              <li><b>W A S D, Q E</b><span>Uterine manipulator: tilt, deviate, push cephalad</span></li>
               <li><b>C</b><span>Cut blade</span></li>
               <li><b>+ and &minus;, arrows</b><span>Advance and aim the scope</span></li>
             </ul>
@@ -353,7 +358,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
         </div>
         <ul class="log" id="log"></ul>
       </section>
-      <section class="block checklist" id="checklist"><h3>Procedure</h3></section>
+      <section class="block checklist" id="checklist"></section>
     </aside>
   </main>
 </div>

@@ -188,14 +188,16 @@ function paramSurface(nu, nv, fn, o) {
   g.setAttribute('color', new THREE.BufferAttribute(col, 3));
   g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   g.setIndex(idx); g.computeVertexNormals();
-  if (o.closedU) {
-    const nr = g.attributes.normal.array;
-    for (let j = 0; j < rows; j++) {
-      const a = (j * cols) * 3, b = (j * cols + nu) * 3;
-      const x = nr[a] + nr[b], y = nr[a + 1] + nr[b + 1], z = nr[a + 2] + nr[b + 2], l = Math.hypot(x, y, z) || 1;
-      nr[a] = nr[b] = x / l; nr[a + 1] = nr[b + 1] = y / l; nr[a + 2] = nr[b + 2] = z / l;
-    }
-  }
+  if (o.closedU) weldSeam(g, nu, nv);
   g.computeBoundingSphere();
   return g;
+}
+// a surface that closes on itself in u has two columns of vertices in the same place: give each pair one normal
+function weldSeam(g, nu, nv) {
+  const nr = g.attributes.normal.array, cols = nu + 1;
+  for (let j = 0; j <= nv; j++) {
+    const a = j * cols * 3, b = (j * cols + nu) * 3;
+    const x = nr[a] + nr[b], y = nr[a + 1] + nr[b + 1], z = nr[a + 2] + nr[b + 2], l = Math.hypot(x, y, z) || 1;
+    nr[a] = nr[b] = x / l; nr[a + 1] = nr[b + 1] = y / l; nr[a + 2] = nr[b + 2] = z / l;
+  }
 }

@@ -165,7 +165,8 @@ const TEX = {
   fat: tissueTex({ seed: 41, base: [244, 206, 118], dark: [224, 170, 86], cells: 14, vessels: 14, vw: 1.0, vcol: [164, 36, 36], va: 0.5, caps: 16, mottle: 0.9 }),
   card: tissueTex({ seed: 47, base: [234, 188, 160], dark: [206, 144, 128], fat: [240, 208, 138], fatAmt: 0.4, cells: 18, vessels: 24, vw: 1.3, vcol: [144, 26, 36], va: 0.55, veins: 6, caps: 24, trans: 0.55 }),
   cord: tissueTex({ seed: 61, base: [255, 250, 246], dark: [232, 214, 210], mottle: 0.7, streak: 0.07, vessels: 8, vw: 0.9, vcol: [150, 40, 50], va: 0.3, caps: 8 }),
-  vag: tissueTex({ seed: 53, base: [228, 152, 148], dark: [198, 114, 118], vessels: 16, vw: 1.0, vcol: [142, 30, 44], va: 0.4, caps: 24 })
+  vag: tissueTex({ seed: 53, base: [228, 152, 148], dark: [198, 114, 118], vessels: 16, vw: 1.0, vcol: [142, 30, 44], va: 0.4, caps: 24 }),
+  fibroid: tissueTex({ seed: 73, size: 512, base: [240, 224, 208], dark: [224, 196, 180], pale: [252, 246, 238], paleAmt: 0.5, mottle: 0.7, vessels: 7, vw: 0.9, vcol: [176, 84, 90], va: 0.3, caps: 10 })
 };
 
 // ---------- materials ----------
@@ -188,6 +189,9 @@ vec3 triNormal( sampler2D t, float k, vec2 sc, float k2, vec2 sc2, vec3 on, vec3
 }`;
 const TRI_MAP = `
 	vec3 triON = normalize( vON );
+	#ifdef DOUBLE_SIDED
+		if ( ! gl_FrontFacing ) triON = - triON;
+	#endif
 	vec3 triW = pow( abs( triON ), vec3( 4.0 ) ); triW /= triW.x + triW.y + triW.z;
 	diffuseColor *= texture2D( map, vOP.zy * triK.x ) * triW.x + texture2D( map, vOP.xz * triK.x + 0.37 ) * triW.y + texture2D( map, vOP.xy * triK.x + 0.71 ) * triW.z;`;
 // 3. Tissue dents under a pressing instrument tip: vertices near the contact are pushed along the shaft and their
@@ -260,6 +264,8 @@ const MAT = {
   fat: wet({ map: TEX.fat, side: THREE.DoubleSide, mr: [4, 3], relief: NRM.fat, br: [2.5, 2], bs: 1.2, roughness: 0.55 }),
   card: wet({ map: TEX.card, side: THREE.DoubleSide, mr: [4, 3], relief: NRM.fiber, br: [1, 1], bs: 0.8, transmission: 0.35, transmissionMap: TEX.card.userData.trans, thickness: 0, ior: 1.4 }),
   vag: wet({ map: TEX.vag, side: THREE.DoubleSide, mr: [4, 6], bs: 0.6 }),
+  wall: wet({ map: TEX.uterus, tri: { k: 0.2, n: 0.3, m: 1 }, bs: 0.6, side: THREE.DoubleSide }), // uterine wall seen from both faces, where it has been opened
+  fibroid: wet({ map: TEX.fibroid, tri: { k: 0.3, n: 0.45, m: 1 }, bs: 0.7, clearcoatRoughness: 0.2 }),
   areolar: wet({ map: TEX.card, side: THREE.DoubleSide, mr: [4, 3], relief: NRM.fiber, bs: 0.8, alphaMap: rep(WEB, 2, 1.6), alphaTest: 0.45, alphaToCoverage: true, color: 0xfff2d8 }),
   cord: wet({ map: TEX.cord, mr: [1.2, 1.8], relief: NRM.fiber, br: [1, 0.6], bs: 0.7 }),
   blood: new THREE.MeshPhysicalMaterial({ color: 0x5e080c, roughness: 0.14, clearcoat: 1, clearcoatRoughness: 0.1, transparent: true, opacity: 0.95, clearcoatNormalMap: rep(NRM.micro, 5, 5), clearcoatNormalScale: new V2(0.9, 0.9), normalMap: rep(NRM.micro, 2, 2), normalScale: new V2(0.5, 0.5) }),

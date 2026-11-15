@@ -16,10 +16,11 @@ const ENT_NAME = {
   ip: k => CAP[k] + ' infundibulopelvic ligament', ovary: k => CAP[k] + ' ovary', ua: k => CAP[k] + ' uterine vessels', card: k => CAP[k] + ' cardinal ligament',
   usl: k => CAP[k] + ' uterosacral ligament', ureter: k => CAP[k] + ' ureter', iliac: k => CAP[k] + ' external iliac vessels', bladder: () => 'Bladder',
   rectum: () => 'Rectosigmoid', ant: k => 'Broad ligament, anterior leaf', roof: k => 'Broad ligament', post: k => 'Broad ligament, posterior leaf',
-  meso: k => CAP[k] + ' mesosalpinx', areolar: () => 'Areolar tissue', vuf: () => 'Vesicouterine peritoneum', vagina: () => (S.specimen === 'out' ? 'Vaginal cuff' : 'Vagina over the cup')
+  meso: k => CAP[k] + ' mesosalpinx', areolar: () => 'Areolar tissue', vuf: () => 'Vesicouterine peritoneum', vagina: () => (S.specimen === 'out' ? 'Vaginal cuff' : 'Vagina over the cup'),
+  fibroid: () => 'Fibroid'
 };
 const LABELS = [
-  ['Uterus', () => _w.set(0, 7.6, 0).applyMatrix4(UT.M), () => S.specimen !== 'out'],
+  ['Uterus', () => _w.set(0, 7.6, 0).applyMatrix4(UT.M), () => S.specimen !== 'out' && !CASE.labels],
   ['Bladder', () => _w.set(BL.c.x, BL.c.y + BL.r.y * 0.9, BL.c.z + 1.0)],
   ['Rectosigmoid', () => { sampleArr(AN.rectumArr, 0.42, _w); _w.y += 1.5; return _w; }],
   ['Vaginal cuff', () => _w.set(0, 0.1, 0).applyMatrix4(VG.M), () => S.specimen === 'out']
@@ -42,7 +43,7 @@ function pill(c, x, y, text, col, bg) {
   c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.fill();
   c.fillStyle = col || '#dfe8ec'; c.textBaseline = 'middle'; c.fillText(text, x + 7, y + h / 2 + 0.5);
 }
-const ACT_COL = { seal: '#f0b24a', cut: '#ffffff', trace: '#43c6c0', push: '#43c6c0', click: '#43c6c0', bite: '#b79cf0', suction: '#43c6c0' };
+const ACT_COL = { seal: '#f0b24a', cut: '#ffffff', bite: '#b79cf0', inject: '#8fd3ff', grasp: '#ffffff', place: '#ffffff' }; // anything else is teal
 function drawOverlay(time) {
   const c = OV.getContext('2d'), pr = OV.width / VW;
   c.setTransform(pr, 0, 0, pr, 0, 0); c.clearRect(0, 0, VW, VH);
@@ -60,14 +61,14 @@ function drawOverlay(time) {
         if (b.seal > 0) { c.beginPath(); c.arc(_ps.x, _ps.y, 22, -Math.PI / 2, -Math.PI / 2 + TAU * b.seal); c.stroke(); }
         pill(c, _ps.x + 22, _ps.y - 28, 'Bleeding: hold bipolar here', '#ffd9d7', 'rgba(90,10,10,0.85)');
       }
-      if (free) depthGuide(c, S.bleeders[0].pt(_w));
+      if (free) depthGuide(c, S.bleeders[0].pt(_w), 'bipolar');
     } else {
       if (st.path) {
         const pts = st.path();
         if (pts.length > 1) { c.setLineDash([5, 6]); c.strokeStyle = 'rgba(67,198,192,0.85)'; c.lineWidth = 2; c.beginPath(); pts.forEach((p, i) => { project(p, _ps); i ? c.lineTo(_ps.x, _ps.y) : c.moveTo(_ps.x, _ps.y); }); c.stroke(); c.setLineDash([]); }
       }
       const n = st.next && st.next();
-      if (free && n && n.act !== 'button' && !n.hidden) depthGuide(c, n.p);
+      if (free && n && n.act !== 'button' && !n.hidden) depthGuide(c, n.p, n.tool || st.tool);
       if (st.dots) for (const d of st.dots()) {
         project(d.p, _ps); c.beginPath(); c.arc(_ps.x, _ps.y, d.done ? 3 : 4.5, 0, TAU);
         if (d.done) { c.fillStyle = 'rgba(95,207,142,0.9)'; c.fill(); } else if (d.vis) { c.strokeStyle = 'rgba(67,198,192,0.95)'; c.lineWidth = 2; c.stroke(); } else { c.strokeStyle = 'rgba(160,175,185,0.35)'; c.lineWidth = 1.5; c.stroke(); }
@@ -86,8 +87,9 @@ function drawOverlay(time) {
     }
   }
   if (S.labels) {
-    if (time > labelT) { labelT = time + 0.3; labelVis = LABELS.map(l => (!l[2] || l[2]()) && visibleAt(l[1](), 0.7)); }
-    LABELS.forEach((l, i) => {
+    const all = CASE.labels ? LABELS.concat(CASE.labels) : LABELS;
+    if (time > labelT) { labelT = time + 0.3; labelVis = all.map(l => (!l[2] || l[2]()) && visibleAt(l[1](), 0.7)); }
+    all.forEach((l, i) => {
       if (!labelVis[i]) return; project(l[1](), _ps);
       const dx = _ps.x < VW / 2 ? -1 : 1, lx = _ps.x + dx * 34, ly = _ps.y - 22;
       c.strokeStyle = 'rgba(223,232,236,0.6)'; c.lineWidth = 1; c.beginPath(); c.moveTo(_ps.x, _ps.y); c.lineTo(lx, ly); c.stroke();
@@ -107,15 +109,15 @@ function reachFrom(h, p) {
   const f = firstShown(RAYG.intersectObjects(PICKS, false));
   return !f || f.distance > L - 0.8;
 }
-function depthGuide(c, p) {
-  // which tip is this about? the mouse's hand, or with hand control the one holding this step's instrument (else the nearer)
+function depthGuide(c, p, tool) {
+  // which tip is this about? the mouse's hand, or with hand control the one holding the instrument wanted (else the nearer)
   let h = activeHand();
-  if (CTRL.mode === 'hands') { const tool = S.bleeders.length ? 'bipolar' : STEPS[S.step].tool, c2 = HANDS.filter(x => x.inst === tool); h = c2.length === 1 ? c2[0] : HAND.L.tip.distanceTo(p) < HAND.R.tip.distanceTo(p) ? HAND.L : HAND.R; }
+  if (CTRL.mode === 'hands') { const c2 = HANDS.filter(x => x.inst === tool); h = c2.length === 1 ? c2[0] : HAND.L.tip.distanceTo(p) < HAND.R.tip.distanceTo(p) ? HAND.L : HAND.R; }
   const d = h.tip.distanceTo(p), at = d < 0.6;
   project(p, _tm);
   c.strokeStyle = at ? 'rgba(95,207,142,0.95)' : 'rgba(255,255,255,0.5)'; c.lineWidth = at ? 2.2 : 1.2;
   c.beginPath(); c.arc(_tm.x, _tm.y, 10 + 8 * Math.min(6, d), 0, TAU); c.stroke();
-  if (Math.abs(S.t - GD.t) > 0.4) { GD.t = S.t; GD.blocked = !reachFrom(h, p) && reachFrom(otherHand(h), p); }
+  if (Math.abs(S.t - GD.t) > 0.4) { GD.t = S.t; GD.blocked = !otherHand(h).grab && !reachFrom(h, p) && reachFrom(otherHand(h), p); } // a hand that is holding something is not free to take over
   if (GD.blocked) pill(c, _tm.x + 24, _tm.y + 16, CTRL.mode === 'hands' ? 'Tissue is in the way from the ' + (h.key === 'L' ? 'left' : 'right') + ' port: use the other hand' : 'Tissue is in the way from this port: switch hands (Space)', '#ffe7c2', 'rgba(70,45,5,0.85)');
 }
 // free depth: a mark at each tip that is touching tissue (amber when pressing in), a faint ring on the driven tip,
@@ -179,39 +181,43 @@ const SUT = { st: [], tail: new Tube(14, 5, IM.thread), arr: vecArr(9), tarr: ve
 for (let i = 0; i < 9; i++) { const t = new Tube(9, 5, IM.thread); t.mesh.visible = false; scene.add(t.mesh); SUT.st.push(t); }
 SUT.tail.mesh.visible = false; scene.add(SUT.tail.mesh);
 function updateSuture() {
-  const c = S.cuff, a = new V3(), b = new V3(), m = new V3();
+  const L = CASE.sutures();
   for (let i = 0; i < SUT.st.length; i++) {
-    const t = SUT.st[i], s = c.stitches[i];
-    if (!s) { t.mesh.visible = false; continue; }
-    cuffPt(s.x, 'ant', Math.min(s.da, 0.82), a); cuffPt(s.x - 0.12, 'post', Math.min(s.dp, 0.82), b);
-    m.set(s.x - 0.06, 0.24, 0).applyMatrix4(VG.M);
-    spline([a, m, b], SUT.arr); t.set(SUT.arr, 0, 1, () => 0.035, null);
+    const t = SUT.st[i];
+    if (L.st[i]) { spline(L.st[i], SUT.arr); t.set(SUT.arr, 0, 1, () => 0.035, null); } else t.mesh.visible = false;
   }
   let nh = null; for (const x of HANDS) if (x.inst === 'needle' && x.exch <= 0 && (!nh || x.ptr.on)) nh = x;
-  const active = STEPS[S.step].id === 'cuff' && !c.done && nh;
-  SUT.tail.mesh.visible = !!active;
-  if (active) {
-    if (c.pending) cuffPt(c.pending.x, 'ant', Math.min(c.pending.da, 0.82), a);
-    else if (c.stitches.length) { const s = c.stitches[c.stitches.length - 1]; cuffPt(s.x - 0.12, 'post', Math.min(s.dp, 0.82), a); }
-    else a.copy(nh.tip).add(_w.set(1.6, 1.2, 1.8));
-    b.copy(nh.tip); m.lerpVectors(a, b, 0.5); m.y -= 0.5; m.z += 0.5;
-    spline([a, m, b], SUT.tarr); SUT.tail.set(SUT.tarr, 0, 1, () => 0.03, null);
+  SUT.tail.mesh.visible = !!(L.on && nh);
+  if (L.on && nh) { // the running suture, from where it last left the tissue to the needle
+    const a = L.from || _w.copy(nh.tip).add(_w2.set(1.6, 1.2, 1.8)), m = _w2.lerpVectors(a, nh.tip, 0.5); m.y -= 0.5; m.z += 0.5;
+    spline([a, m, nh.tip], SUT.tarr); SUT.tail.set(SUT.tarr, 0, 1, () => 0.03, null);
   }
 }
 
 // ---------- DOM ----------
 function el(tag, cls, html) { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
-function buildStatic() {
-  const tray = $('insts');
-  for (const t in INST) {
-    const b = el('button', 'inst', '<kbd>' + INST[t].key + '</kbd><span>' + INST[t].short + '</span>');
+const KEYS = 'tlh.case.v1';
+// the parts of the page that belong to the case in hand: its tray, its list of steps, and its card on the start screen
+function buildCaseUI() {
+  const tray = $('insts'); tray.innerHTML = '';
+  CASE.insts.forEach((t, i) => {
+    const b = el('button', 'inst', '<kbd>' + (i + 1) + '</kbd><span>' + INST[t].short + '</span>');
     b.type = 'button'; b.id = 'inst-' + t; b.title = INST[t].name + '. ' + INST[t].use; b.addEventListener('click', () => setInst(ACTIVE, t)); tray.appendChild(b);
-  }
-  const list = $('checklist'); let phase = null, ol = null;
+  });
+  const list = $('checklist'); list.innerHTML = '<h3>Procedure</h3>'; let phase = null, ol = null;
   STEPS.forEach((s, i) => {
     if (s.phase !== phase) { phase = s.phase; list.appendChild(el('h4', null, phase)); ol = el('ol'); list.appendChild(ol); }
     const li = el('li', null, '<i></i><span>' + s.short + '</span>'); li.id = 'cl-' + i; ol.appendChild(li);
   });
+  const pick = $('caseList'); pick.innerHTML = '';
+  for (const id in CASES) {
+    const b = el('button', 'case' + (CASES[id] === CASE ? ' on' : ''), '<b>' + CASES[id].name + '</b><span>' + CASES[id].blurb + '</span>');
+    b.type = 'button'; b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', CASES[id] === CASE ? 'true' : 'false'); b.addEventListener('click', () => setCase(id)); pick.appendChild(b);
+  }
+  $('caseTitle').textContent = CASE.name; $('caseSub').textContent = CASE.sub;
+  $('caseBrief').innerHTML = CASE.brief.map(t => '<p>' + t + '</p>').join('');
+  $('brandSub').textContent = BUILD + ' \u00b7 ' + CASE.name.toLowerCase() + CASE.tag;
+  $('keyNums').textContent = '1 to ' + CASE.insts.length;
 }
 function renderStepCard() {
   const st = STEPS[S.step];
@@ -222,7 +228,7 @@ function renderStepCard() {
   STEPS.forEach((s, i) => { const li = $('cl-' + i); li.className = i < S.step || S.ended ? 'done' : i === S.step ? 'cur' : ''; });
   $('side').scrollTop = 0;
 }
-const TOOL_NAME = { bipolar: 'Advanced bipolar', hook: 'Monopolar hook', needle: 'Needle driver' };
+const toolName = t => INST[t].name.split(',')[0];
 function renderUI(dt) {
   uiClock -= dt;
   if (UI_FULL) { renderStepCard(); UI_FULL = false; UI_DIRTY = true; }
@@ -232,8 +238,9 @@ function renderUI(dt) {
   // chips
   let chips = '';
   if (st.tool !== 'any') {
-    const has = x => x.inst === st.tool || (st.id === 'flap' && x.inst === 'suction'), ok = hm ? HANDS.some(has) : has(h);
-    chips += '<span class="chip ' + (ok ? 'ok' : 'no') + '">' + TOOL_NAME[st.tool] + (hm ? ' in either hand' : ' in the active hand') + '</span>';
+    const has = x => x.inst === st.tool || x.inst === st.alt, ok = hm ? HANDS.some(has) : has(h); // alt: another instrument that does this step's work
+    chips += '<span class="chip ' + (ok ? 'ok' : 'no') + '">' + toolName(st.tool) + (hm ? ' in either hand' : ' in the active hand') + '</span>';
+    if (st.assist) chips += '<span class="chip ' + (HANDS.some(x => x.inst === st.assist) ? 'ok' : 'no') + '">' + toolName(st.assist) + ' in the other hand</span>';
   }
   let allOk = true;
   for (const e of st.expo || []) { const ok = e.ok(); allOk = allOk && ok; chips += '<span class="chip ' + (ok ? 'ok' : 'no') + '">' + e.label + '</span>'; }
@@ -243,35 +250,35 @@ function renderUI(dt) {
   $('stepBar').style.width = Math.round(clamp(st.frac ? st.frac() : 0, 0, 1) * 100) + '%';
   $('stepProg').textContent = st.progress ? st.progress() : '';
   const b1 = $('stepBtn1'), b2 = $('stepBtn2');
-  const show1 = S.running && st.button && !(st.button.hide && st.button.hide()) && !(st.id === 'deliver' && S.specimen !== 'in');
+  const show1 = S.running && st.button && !(st.button.hide && st.button.hide());
   b1.hidden = !show1; if (show1) b1.textContent = st.button.label;
   const show2 = S.running && st.button2 && st.button2.show(); b2.hidden = !show2; if (show2) b2.textContent = st.button2.label;
   $('stepPearl').parentElement.hidden = false;
   // tray
   for (const k of ['L', 'R']) { const e = $('hand' + k); e.classList.toggle('on', ACTIVE === k); e.querySelector('b').textContent = INST[HAND[k].exchTo || HAND[k].inst].short + (HAND[k].grab && HAND[k].grab.pull ? ' (holding)' : ''); }
-  for (const t in INST) $('inst-' + t).classList.toggle('on', (h.exchTo || h.inst) === t);
+  for (const t of CASE.insts) $('inst-' + t).classList.toggle('on', (h.exchTo || h.inst) === t);
   $('btnCut').disabled = hm ? !HANDS.some(x => x.inst === 'bipolar') : h.inst !== 'bipolar';
   $('trayNote').textContent = hm ? 'Number keys and these buttons change the selected hand\'s instrument' : 'The mouse drives the selected hand; the other holds its position';
   // HUD
   $('hudT').textContent = fmtT(S.t); $('hudEBL').textContent = Math.round(S.ebl) + ' mL'; $('hudP').textContent = S.pressure.toFixed(0) + ' mmHg';
-  const devName = { bipolar: 'BIPOLAR', hook: 'MONOPOLAR CUT', suction: 'SUCTION', grasper: 'GRASPER', needle: 'NEEDLE DRIVER' };
   const tg = st.seal ? S.side[st.seal.side][st.seal.ent] : null;
   let prox = null;
   for (const x of HANDS) {
     let state = x.firing ? 'ON' : 'READY';
     if (x.inst === 'bipolar' && x.firing && tg && tg.act && tg.act.by === x.key) state = 'SEAL ' + Math.round(tg.act.p * 100) + '%';
-    if (x.inst === 'grasper') state = x.grab ? (x.grab.pull ? 'HOLDING' : 'CLOSED') : 'OPEN';
+    if (x.inst === 'grasper' || x.inst === 'tenaculum') state = x.grab ? (x.grab.pull ? 'HOLDING' : 'CLOSED') : 'OPEN';
     if (x.inst === 'needle') state = '';
+    if (x.inst === 'inject' && x.firing) state = 'INJECTING';
     let tail = '';
     if (hm && HT.status === 'ready' && S.running) { const sl = HT.slot[x.key]; tail = sl.engaged ? '' : HT.clock - sl.tSeen < 0.3 ? '  ON HOLD' : '  NO HAND'; }
     if (freeDepth() && S.running && x.touch && !(x.grab && x.grab.pull)) tail = x.press > DEPTH.HARD ? '  PRESSING' : '  CONTACT';
     if (freeDepth() && S.running && x.limT > 0) tail += '  AT LIMIT';
-    const e = $('hudDev' + x.key); e.textContent = x.key + '  ' + devName[x.inst] + (state ? '  ' + state : '') + tail;
-    e.className = 'hudline' + (x.firing && x.inst !== 'suction' ? ' hot' : '') + (!hm && x.key !== ACTIVE ? ' dim' : '');
+    const e = $('hudDev' + x.key); e.textContent = x.key + '  ' + INST[x.inst].hud + (state ? '  ' + state : '') + tail;
+    e.className = 'hudline' + (x.firing && (x.inst === 'bipolar' || x.inst === 'hook') ? ' hot' : '') + (!hm && x.key !== ACTIVE ? ' dim' : '');
     if ((hm || x === h) && (x.inst === 'bipolar' || x.inst === 'hook')) { const n = nearestUreter(x.tip); if (!prox || n.d < prox.d) prox = n; }
   }
   const px = $('hudProx');
-  if (S.guided && S.running && prox) { px.hidden = false; px.textContent = 'URETER ' + prox.d.toFixed(1) + ' cm ' + (prox.k === 'R' ? 'right' : 'left'); px.className = 'hudline ' + (prox.d < 1 ? 'crit' : prox.d < 1.5 ? 'warn' : 'safe'); } else px.hidden = true;
+  if (S.guided && S.running && prox && CASE.ureters) { px.hidden = false; px.textContent = 'URETER ' + prox.d.toFixed(1) + ' cm ' + (prox.k === 'R' ? 'right' : 'left'); px.className = 'hudline ' + (prox.d < 1 ? 'crit' : prox.d < 1.5 ? 'warn' : 'safe'); } else px.hidden = true;
   // metrics + log
   $('mAct').textContent = S.stats.activations; $('mEnergy').textContent = S.stats.energyTime.toFixed(0) + ' s'; $('mInj').textContent = Object.keys(S.injuries).length; $('mNear').textContent = S.stats.nearMiss;
   const ev = S.events.slice(-4).reverse().map(e => '<li class="' + e.type + '"><time>' + fmtT(e.t) + '</time>' + e.text + '</li>').join('');
@@ -285,27 +292,21 @@ function renderUI(dt) {
 }
 function setPoseGoal(p) { if (S.manipOut) return; if (p.yaw != null) S.poseGoal.yaw = clamp(p.yaw, -LIM.yaw, LIM.yaw); if (p.pitch != null) S.poseGoal.pitch = clamp(p.pitch, LIM.pMin, LIM.pMax); if (p.push != null) S.poseGoal.push = clamp(p.push, 0, 1); uiDirty(); }
 function showDebrief() {
-  const sc = score(), s = S.stats, c = S.cuff.stitches;
-  const depths = c.flatMap(b => [b.da, b.dp]), mean = depths.length ? depths.reduce((a, b) => a + b, 0) / depths.length : 0;
-  const gaps = c.slice(1).map((b, i) => c[i].x - b.x), gmean = gaps.length ? gaps.reduce((a, b) => a + b, 0) / gaps.length : 0;
-  const row = (k, v, cls) => '<div class="row ' + (cls || '') + '"><span>' + k + '</span><b>' + v + '</b></div>';
-  const uad = k => (s['uaDist' + k] != null ? s['uaDist' + k].toFixed(1) + ' cm' : 'n/a');
+  const sc = CASE.score(), s = S.stats, row = (k, v, cls) => '<div class="row ' + (cls || '') + '"><span>' + k + '</span><b>' + v + '</b></div>', rows = CASE.debrief(row);
   $('dbGrade').textContent = sc.grade; $('dbScore').textContent = sc.pts;
-  $('dbA').innerHTML = row('Operative time', fmtT(S.t)) + row('Estimated blood loss', Math.round(S.ebl) + ' mL', S.ebl > 100 ? 'warn' : '') + row('Energy activations', s.activations) + row('Energy time', s.energyTime.toFixed(0) + ' s') + row('Instrument exchanges', s.exchanges);
-  const inj = Object.keys(S.injuries).length;
-  $('dbB').innerHTML = row('Organ or vessel injuries', inj, inj ? 'crit' : 'ok') + row('Near misses at the ureter', s.nearMiss, s.nearMiss ? 'warn' : 'ok') + row('Pedicles cut without a full seal', s.unsealedCuts, s.unsealedCuts ? 'warn' : 'ok') + row('Seal to ureter, right uterine pedicle', uad('R')) + row('Seal to ureter, left uterine pedicle', uad('L')) + row('Closest energy to a ureter', Math.min(s.minUreter.R, s.minUreter.L) < 90 ? Math.min(s.minUreter.R, s.minUreter.L).toFixed(1) + ' cm' : 'n/a');
-  $('dbC').innerHTML = row('Cuff stitches', c.length) + row('Mean bite depth', depths.length ? Math.round(mean * 10) + ' mm' : 'n/a') + row('Mean stitch spacing', gaps.length ? Math.round(gmean * 10) + ' mm' : 'n/a') + row('Steps started without exposure set', s.expoMiss, s.expoMiss ? 'warn' : 'ok') + row('Left-hand traction used', s.traction + ' time' + (s.traction === 1 ? '' : 's'));
+  $('dbA').innerHTML = row('Operative time', fmtT(S.t)) + row('Estimated blood loss', Math.round(S.ebl) + ' mL', S.ebl > CASE.eblWarn ? 'warn' : '') + row('Energy activations', s.activations) + row('Energy time', s.energyTime.toFixed(0) + ' s') + row('Instrument exchanges', s.exchanges);
+  $('dbB').innerHTML = rows[0]; $('dbC').innerHTML = rows[1];
   $('dbNotes').innerHTML = sc.notes.length ? sc.notes.map(n => '<li>' + n + '</li>').join('') : '<li class="good">No deductions. Clean case.</li>';
   $('dbLog').innerHTML = S.events.length ? S.events.map(e => '<li class="' + e.type + '"><time>' + fmtT(e.t) + '</time>' + e.text + '</li>').join('') : '<li class="none">No events recorded</li>';
   $('debrief').hidden = false; uiDirty(true);
 }
 
 // ---------- lifecycle ----------
-function resetSteps() { for (const s of STEPS) { if (s.acc != null) s.acc = 0; if (s.cnt != null) s.cnt = 0; if (s.vis) { s.vis = []; s.visT = 0; } s.entered = false; } for (const k in _um) delete _um[k]; }
+function resetSteps() { for (const s of STEPS) { if (s.reset) s.reset(); if (s.acc != null) s.acc = 0; if (s.cnt != null) s.cnt = 0; if (s.vis) { s.vis = []; s.visT = 0; } s.entered = false; } for (const k in _um) delete _um[k]; }
 function resetHands() {
   for (const [k, sx, inst] of [['L', -1, 'grasper'], ['R', 1, 'bipolar']]) {
     const h = HAND[k]; h.sub[h.inst].g.visible = false; h.inst = inst; h.sub[inst].g.visible = true;
-    h.tip.set(3.4 * sx, -0.4, 4.6); h.goal.copy(h.tip); h.surf.copy(h.tip); h.grab = null; h.exch = 0; h.exchTo = null; h.firing = false; h.open = h.openGoal = 0.7; h.roll = 0;
+    h.tip.set(3.4 * sx, -0.4, CASE.tipZ); h.goal.copy(h.tip); h.surf.copy(h.tip); h.grab = null; h.exch = 0; h.exchTo = null; h.firing = false; h.open = h.openGoal = 0.7; h.roll = 0;
     h.ptr.on = false; h.pick.hit = false; h.pick.ent = null; h.nearFlag = false; h.lastUp = -9;
     poseFromPoint(h, h.tip); h.touch = false; h.press = h.pressT = 0; h.cmd.dx = h.cmd.dy = h.cmd.dz = 0;
   }
@@ -313,7 +314,8 @@ function resetHands() {
 }
 function resetWorld(running) {
   const keep = S ? { guided: S.guided, labels: S.labels } : { guided: true, labels: false };
-  S = freshState(); S.guided = keep.guided; S.labels = keep.labels; S.running = running;
+  S = freshState(); if (CASE.state) CASE.state(S);
+  S.guided = keep.guided; S.labels = keep.labels; S.running = running;
   resetSteps(); resetHands();
   for (const m of DECALS) m.parent && m.parent.remove(m); DECALS.length = 0;
   for (const f of FX.puff.concat(FX.blood, FX.spark)) { f.life = 0; f.s.visible = false; }
@@ -322,6 +324,13 @@ function resetWorld(running) {
   for (const k in hintT) delete hintT[k];
   stopSustain(); $('toast').className = 'toast'; $('debrief').hidden = true;
   enterStep(0);
+}
+// Take up a case: its steps, its uterus, its tray and its list.
+function setCase(id) {
+  CASE = CASES[id] || CASES.tlh; STEPS = CASE.steps; UTW.a = CASE.warp[0]; UTW.b = CASE.warp[1];
+  for (const k in CASES) if (CASES[k].show) CASES[k].show(CASES[k] === CASE);
+  try { localStorage.setItem(KEYS, CASE.id); } catch (_) {}
+  buildCaseUI(); resetWorld(false);
 }
 function startCase(withHands) { auInit(); resetWorld(true); $('startCard').hidden = true; sfx.ok(); if (withHands) { if (HT.status === 'off' || HT.status === 'error') htEnable(); } else if (CTRL.mode === 'hands') htDisable(); }
 

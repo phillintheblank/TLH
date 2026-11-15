@@ -33,6 +33,7 @@ export default async function (page) {
       await ev(() => { const s = window.__sim; s.forceStep(); }); await T(2.5); await aim(70, 50);
     } else await aim(60, 40);
     await ev(() => { for (let k = 0; k < 4; k++) window.__sim.render(0.5); }); await page.waitForTimeout(200);
+    await ev(() => window.__sim.render(0.5)); await page.waitForTimeout(60); // a change of layout clears the canvas: draw again once it has settled
     await page.locator('#view').screenshot({ path: OUT + tag + '-' + i + '-' + id + '.png' });
     if (process.env.CROP && n) { const cw = 520, ch = 360; await page.screenshot({ path: OUT + tag + '-' + i + '-' + id + '-c.png', clip: { x: Math.max(box.x, Math.min(box.x + box.width - cw, box.x + n.x - cw / 2)), y: Math.max(box.y, Math.min(box.y + box.height - ch, box.y + n.y - ch / 2)), width: cw, height: ch } }); }
     i++;
