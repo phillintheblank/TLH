@@ -166,7 +166,8 @@ const TEX = {
   card: tissueTex({ seed: 47, base: [234, 188, 160], dark: [206, 144, 128], fat: [240, 208, 138], fatAmt: 0.4, cells: 18, vessels: 24, vw: 1.3, vcol: [144, 26, 36], va: 0.55, veins: 6, caps: 24, trans: 0.55 }),
   cord: tissueTex({ seed: 61, base: [255, 250, 246], dark: [232, 214, 210], mottle: 0.7, streak: 0.07, vessels: 8, vw: 0.9, vcol: [150, 40, 50], va: 0.3, caps: 8 }),
   vag: tissueTex({ seed: 53, base: [228, 152, 148], dark: [198, 114, 118], vessels: 16, vw: 1.0, vcol: [142, 30, 44], va: 0.4, caps: 24 }),
-  fibroid: tissueTex({ seed: 73, size: 512, base: [240, 224, 208], dark: [224, 196, 180], pale: [252, 246, 238], paleAmt: 0.5, mottle: 0.7, vessels: 7, vw: 0.9, vcol: [176, 84, 90], va: 0.3, caps: 10 })
+  fibroid: tissueTex({ seed: 73, size: 512, base: [240, 224, 208], dark: [224, 196, 180], pale: [252, 246, 238], paleAmt: 0.5, mottle: 0.7, vessels: 7, vw: 0.9, vcol: [176, 84, 90], va: 0.3, caps: 10 }),
+  cyst: tissueTex({ seed: 87, size: 512, base: [232, 210, 152], dark: [208, 178, 112], pale: [246, 236, 200], paleAmt: 0.35, mottle: 0.8, vessels: 11, vw: 0.8, vcol: [178, 84, 76], va: 0.4, caps: 14 })
 };
 
 // ---------- materials ----------
@@ -268,6 +269,8 @@ const MAT = {
   fibroid: wet({ map: TEX.fibroid, tri: { k: 0.3, n: 0.45, m: 1 }, bs: 0.7, clearcoatRoughness: 0.2 }),
   areolar: wet({ map: TEX.card, side: THREE.DoubleSide, mr: [4, 3], relief: NRM.fiber, bs: 0.8, alphaMap: rep(WEB, 2, 1.6), alphaTest: 0.45, alphaToCoverage: true, color: 0xfff2d8 }),
   cord: wet({ map: TEX.cord, mr: [1.2, 1.8], relief: NRM.fiber, br: [1, 0.6], bs: 0.7 }),
+  cyst: wet({ map: TEX.cyst, tri: { k: 0.3, n: 0.25, m: 1 }, bs: 0.25, roughness: 0.42, clearcoatRoughness: 0.1 }), // the wall of an ovarian cyst: smooth, taut, pale yellow
+  spill: new THREE.MeshPhysicalMaterial({ color: 0xcfb45a, roughness: 0.38, clearcoat: 0.7, clearcoatRoughness: 0.25 }), // what a dermoid holds: thick, greasy, yellow
   clot: new THREE.MeshPhysicalMaterial({ color: 0x33050a, roughness: 0.2, clearcoat: 1, clearcoatRoughness: 0.12, clearcoatNormalMap: rep(NRM.micro, 3, 3), clearcoatNormalScale: new V2(0.6, 0.6) }), // blood clot: dark, wet, jelly-like
   blood: new THREE.MeshPhysicalMaterial({ color: 0x5e080c, roughness: 0.14, clearcoat: 1, clearcoatRoughness: 0.1, transparent: true, opacity: 0.95, clearcoatNormalMap: rep(NRM.micro, 5, 5), clearcoatNormalScale: new V2(0.9, 0.9), normalMap: rep(NRM.micro, 2, 2), normalScale: new V2(0.5, 0.5) }),
   bloodWet: new THREE.MeshPhysicalMaterial({ color: 0x6e0a10, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.14 })

@@ -17,7 +17,7 @@ const ENT_NAME = {
   usl: k => CAP[k] + ' uterosacral ligament', ureter: k => CAP[k] + ' ureter', iliac: k => CAP[k] + ' external iliac vessels', bladder: () => 'Bladder',
   rectum: () => 'Rectosigmoid', ant: k => 'Broad ligament, anterior leaf', roof: k => 'Broad ligament', post: k => 'Broad ligament, posterior leaf',
   meso: k => CAP[k] + ' mesosalpinx', areolar: () => 'Areolar tissue', vuf: () => 'Vesicouterine peritoneum', vagina: () => (S.specimen === 'out' ? 'Vaginal cuff' : 'Vagina over the cup'),
-  fibroid: () => 'Fibroid', clot: () => 'Blood clot'
+  fibroid: () => 'Fibroid', clot: () => 'Blood clot', cyst: () => 'Ovarian cyst', spill: () => 'Spilled cyst contents'
 };
 const LABELS = [
   ['Uterus', () => _w.set(0, 7.6, 0).applyMatrix4(UT.M), () => S.specimen !== 'out' && !CASE.labels],

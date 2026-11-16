@@ -1,12 +1,14 @@
 # MIGS Simulator
 
 A browser-based simulator of laparoscopic gynaecological surgery: a 3D scope view of the pelvis, a uterine
-manipulator, instruments driven by your hands or the mouse, complications and an end-of-case debrief. Three cases
+manipulator, instruments driven by your hands or the mouse, complications and an end-of-case debrief. Four cases
 share the one pelvis, and you choose between them on the start screen:
 
 - **Total laparoscopic hysterectomy** with bilateral salpingectomy: 21 steps, five instruments.
 - **Laparoscopic myomectomy** of a single anterior fundal fibroid: 9 steps, seven instruments.
 - **Laparoscopic salpingectomy** for a ruptured right tubal ectopic pregnancy with haemoperitoneum: 7 steps, three
+  instruments.
+- **Laparoscopic ovarian cystectomy** for a dermoid cyst of the right ovary, keeping the ovary: 7 steps, four
   instruments.
 
 Two things set it apart. **Hand control:** cameras track both hands, each hand drives its own instrument at the
@@ -32,13 +34,14 @@ does not replace supervised training. The score comes from the simulator's own r
 | Hold an instrument still | Open that hand flat (clutch); curl it again to carry on | `Space` or `X` switches hands; the other holds |
 
 Keyboard in either mode: the number keys change the selected hand's instrument (`1` to `5` in the hysterectomy,
-`1` to `7` in the myomectomy, `1` to `3` in the salpingectomy), `W A S D` tilt and deviate the uterus,
+`1` to `7` in the myomectomy, `1` to `3` in the salpingectomy, `1` to `4` in the cystectomy), `W A S D` tilt and
+deviate the uterus,
 `Q E` push the cup, `+` and `-` advance and withdraw the scope, arrow keys aim it, `G` guidance, `L` anatomy labels,
 `M` sound. With the mouse, `Esc` frees the cursor for the panels and a click on the picture takes the instruments again.
 
 ## Cases
 
-The start screen offers the cases; the choice is remembered, and `?case=tlh`, `?case=myo` or `?case=ect` in the
+The start screen offers the cases; the choice is remembered, and `?case=tlh`, `?case=myo`, `?case=ect` or `?case=cyst` in the
 address picks one.
 Everything outside the case is shared: the pelvis, the instruments, hand and mouse control, depth, the picture,
 bleeding, the step engine and the debrief.
@@ -104,9 +107,39 @@ tube and both ovaries are normal, and the uterine manipulator is in place.
   long stump; a step started without its exposure (uterus deviated to the patient's left, tube lifted); more than
   150 mL lost during the operation.
 
+**Laparoscopic ovarian cystectomy.** A 4 cm dermoid cyst in the right ovary of a woman who wants the ovary kept.
+The aim is to take the cyst out whole and leave as much working ovary as possible. The uterus, both tubes and the
+left ovary are normal.
+
+| Step | What you do | What it teaches |
+|---|---|---|
+| Survey | Hold a tip beside the uterus, the cyst and the left ovary | Look before you touch, and check that it looks benign |
+| Steady the ovary | Grasp the utero-ovarian ligament and keep hold | Hold the ligament, never the cyst |
+| Incise the cortex | Hook along the marked line on the free border, in short bursts; stop when the cortex parts | Depth: the cyst wall is directly under the cortex |
+| Enucleate | Let go of the ligament, hold the cut edge of the cortex, and push the cyst off it with the suction tip, place by place, round to its base | Traction and counter-traction; blunt dissection; no energy in the plane |
+| Remove the cyst | Bag it (a button) | Contained removal: the cyst is opened only inside the bag |
+| Haemostasis of the bed | Touch each of two bleeding vessels with the bipolar | The least energy that stops it, for the sake of the ovary |
+| Wash out and check | Lower the pressure, control the ooze, aspirate, and clear anything spilled | A second look at low pressure; washing out a spill |
+
+- **The ovary and its cyst.** The right ovary is drawn stretched over the cyst. The incision parts the cortex. As the
+  plane is worked the cortex draws back and the cyst comes through it, then rolls off its bed and, once free, comes
+  to rest in the pelvis. The ovary is left as an open cup with a raw bed, and is not sutured.
+- **Three ways to rupture the cyst:** energy held on cortex that is already cut (about a second), energy on the cyst
+  wall (under half a second), or a grasper closed on the cyst itself. A ruptured cyst lies slack, three lumps of its
+  contents land in the pelvis, and the case cannot be ended until suction has cleared them.
+- **Counter-traction.** The suction tip opens the plane only while the grasper holds the cut edge of the cortex. The
+  jaws go with the edge as it draws back.
+- **Energy on this ovary** is not an injury but is counted. The seconds of bipolar on it are in the debrief, and more
+  than 8 counts against you. Stopping the case's three bleeding points takes under 4.
+- **What counts against you:** the cyst ruptured; more than 8 s of bipolar on the ovary; energy on the other ovary,
+  either tube, an infundibulopelvic ligament, the bladder, the bowel, a ureter or the iliac vessels; hook energy on
+  the cortex off the marked line; a step started without its exposure (uterus deviated to the patient's left, ovary
+  steadied); more than 100 mL lost.
+
 A case is its list of steps (each with its own targets, checks and teaching text), the instruments on its tray, how
-its pelvis differs from the model's (a fibroid in the wall, blood and clot, a swollen tube), and how it is scored.
-In the source that is one file per case (`06a-hysterectomy.js`, `06b-myomectomy.js`, `06c-ectopic.js`).
+its pelvis differs from the model's (a fibroid in the wall, blood and clot, a swollen tube, an ovary with a cyst in
+it), and how it is scored. In the source that is one file per case (`06a-hysterectomy.js`, `06b-myomectomy.js`,
+`06c-ectopic.js`, `06d-cystectomy.js`).
 `06-steps.js` holds what the cases share, such as the steps that seal and divide a pedicle, and `06z-cases.js`
 lists the cases and runs their steps.
 
@@ -172,7 +205,8 @@ the jaws and energy needs contact. There are three ways to drive it.
 
 | Build | Added | Removed | Play it |
 |---|---|---|---|
-| 0.6 | A third case: laparoscopic salpingectomy for a ruptured right tubal ectopic. Haemoperitoneum to aspirate, clots, a rupture that bleeds until the mesosalpinx is sealed, a swollen tube, a tube divided at the isthmus and carried out in the grasper | The myomectomy's own specimen bag and its own search for a place where the blood pool is in view (both now shared by the cases); the rule inside the cut blade that swung the tube free (now the hysterectomy step's own); a bagged specimen travelling into the lens (it now leaves by the top of the picture) | https://phillintheblank.github.io/TLH/ |
+| 0.7 | A fourth case: laparoscopic ovarian cystectomy for a dermoid. An ovary stretched over a cyst that opens along an incision, gives up its cyst and is left as an open cup; three ways to rupture the cyst, and spilled contents to wash out; counter-traction on the cut edge of the cortex; the seconds of bipolar on the ovary counted | The ectopic's own builder for clot shapes (now shared, and used for spilled contents too); the fibroid's line inside the grasper's code (now the myomectomy's own); an ovary snapping to its ligament when grasped (it is now held where the jaws close); the flow test waiting without end on a bleeding point its player cannot reach | https://phillintheblank.github.io/TLH/ |
+| 0.6 | A third case: laparoscopic salpingectomy for a ruptured right tubal ectopic. Haemoperitoneum to aspirate, clots, a rupture that bleeds until the mesosalpinx is sealed, a swollen tube, a tube divided at the isthmus and carried out in the grasper | The myomectomy's own specimen bag and its own search for a place where the blood pool is in view (both now shared by the cases); the rule inside the cut blade that swung the tube free (now the hysterectomy step's own); a bagged specimen travelling into the lens (it now leaves by the top of the picture) | https://phillintheblank.github.io/TLH/v0.6/ |
 | 0.5 | A second case, laparoscopic myomectomy, and a case chooser on the start screen. Laparoscopic tenaculum and injection needle. A fibroid uterus that opens, gives up its fibroid and is repaired in two layers. Each case in its own file | The single-case wiring: the fixed tray and number keys, the hysterectomy's own debrief and suture code inside the interface, and the name *TLH Simulator* on the page | https://phillintheblank.github.io/TLH/v0.5/ |
 | 0.4 | Second camera for hand control of depth; camera choosers; one calibration watched by both cameras, with a check of where the second camera sits; grip read from the camera with the clearer view; a hand lost by one camera keeps moving as the other sees it. Tissue contact with no hidden travel; structures across the shaft no longer pull the tip back | Depth from palm size, with its smoothing, dead band and the *Depth speed* and *Depth steadiness* sliders; depth assist; target lock; grip hold; the forward calibration step with one camera | https://phillintheblank.github.io/TLH/v0.4/ |
 | 0.3c | Depth assist, target lock, working-space limits, hold-near ureter identification, grip hold, pose pictures in calibration | Pinch to identify a ureter | https://phillintheblank.github.io/TLH/v0.3c/ |
@@ -183,12 +217,12 @@ the jaws and energy needs contact. There are three ways to drive it.
 
 Each build's source is kept on a `checkpoint/…` branch (`checkpoint/v0.1-hands`, `checkpoint/v0.2-realism`,
 `checkpoint/v0.3a-depth`, `checkpoint/v0.3b-handdepth`, `checkpoint/v0.3c-assist`, `checkpoint/v0.4-twocam`,
-`checkpoint/v0.5-myomectomy`, `checkpoint/v0.6-ectopic`), and
-the built page of each earlier build stays in `docs/` under its version number.
+`checkpoint/v0.5-myomectomy`, `checkpoint/v0.6-ectopic`, `checkpoint/v0.7-cystectomy`), and the built page of each
+earlier build stays in `docs/` under its version number.
 
-Each build removes what it replaces. Size is tracked, with no target. Builds 0.5 and 0.6 each grew by a whole case
-and its tests (the salpingectomy is 250 lines, against 492 for the myomectomy, because it reuses the steps that seal
-and divide a pedicle):
+Each build removes what it replaces. Size is tracked, with no target. Builds 0.5 to 0.7 each grew by a whole case
+and its tests (the salpingectomy is 251 lines and the cystectomy 321, against 492 for the myomectomy: the first
+reuses the steps that seal and divide a pedicle, and the second draws its ovary from two simple shapes):
 
 | Build | Source (`src/`) | Tests (`test/`) | Built page |
 |---|---|---|---|
@@ -196,6 +230,7 @@ and divide a pedicle):
 | 0.4 | 3,901 lines | 1,047 lines | 274 KB |
 | 0.5 | 4,493 lines | 1,157 lines | 327 KB |
 | 0.6 | 4,773 lines | 1,276 lines | 354 KB |
+| 0.7 | 5,102 lines | 1,399 lines | 388 KB |
 
 ## Hand control
 
@@ -231,9 +266,16 @@ and divide a pedicle):
 
 ### Limits of this build
 
-- The salpingectomy is new and has been played by script only: start to finish with the mouse in both depth modes
+- The cystectomy is new and has been played by script only: start to finish with the mouse in both depth modes
   and with simulated hands. No person has played it yet, and its clinical content (the case, the order of steps, the
-  teaching text, the bleeding rates, what is scored) has not been reviewed by a surgeon.
+  teaching text, how the cyst ruptures, the energy allowance, what is scored) has not been reviewed by a surgeon.
+- The cystectomy is simplified. The cyst is a ball and the cortex an even shell over it: there is no thick and thin
+  side, and no island of normal ovary to find and keep. The plane is eight places worked in a fixed order, all on
+  the working hand's side of the cyst; it never bleeds and cannot be lost into the ovary. Irrigation is not an
+  action, so there is no hydrodissection. The ovary is drawn already facing the scope: the grasper steadies it but
+  does not turn it. A rupture is all or nothing, and always spills the same three lumps. Bagging is a button, and
+  the cyst is not decompressed. The cyst is large for this pelvis, so the tube and ligaments run into the ovary's
+  surface where they meet it. Only a dermoid is modelled.
 - The salpingectomy is simplified. Blood is a level pool that the suction lowers, with no irrigation, and clot is
   four separate lumps. The rupture bleeds at a fixed rate that the two bites of mesosalpinx turn down and off. The
   tube does not tear when pulled, only when the pregnancy itself is grasped. The mesosalpinx is always two bites.
@@ -242,9 +284,10 @@ and divide a pedicle):
 - A tube that is lifted is a thin target for the other hand in free depth, about 3 mm across at the isthmus and
   standing clear of everything else: the bipolar has to meet it in depth as well as on the screen.
 - With two cameras and tracker jitter the scripted hands do not finish every run. On this build they finished the
-  salpingectomy in 5 of 6 runs (the sixth could not bring the bipolar to rest on the isthmus), the myomectomy in 1
-  of 2 (the other could not place a bite on the serosal edge) and the hysterectomy in 1 of 1. With the mouse, and
-  with hands and one camera, every case plays through every time.
+  cystectomy in 4 of 4 runs and the hysterectomy in 1 of 2 (in the other the hook strayed onto the bladder while
+  raising the flap, and the cuff closure then stalled after four stitches). The salpingectomy and the myomectomy
+  were run once each and finished; on build 0.6 they finished 5 of 6 and 1 of 2, stopping at the isthmus and at a
+  bite on the serosal edge. With the mouse, and with hands and one camera, every case plays through every time.
 - The myomectomy is simplified. One fibroid, modelled as a ball. Its attachments are eight separate strands, the
   last a single pedicle. A stitch is two bites and ties itself. Aspiration before injecting, bagging and tissue
   extraction are a line of text or a button. The cavity is entered only by energy on the floor of the bed. The
@@ -280,15 +323,16 @@ and divide a pedicle):
 5. Assists for one-camera depth: depth assist, target lock, grip hold (tried in 0.3c; removed in 0.4)
 6. A second camera for hand control of depth (done)
 7. A second case on the same pelvis, laparoscopic myomectomy, and a case chooser (done)
-8. A third case, salpingectomy for a ruptured tubal ectopic with haemoperitoneum (this build)
-9. Scope control with both hands: two open palms moved together pan, tilt and advance the view
-10. Contact along the instrument shaft, lifting tissue with the side of an instrument, and instruments that cannot
+8. A third case, salpingectomy for a ruptured tubal ectopic with haemoperitoneum (done)
+9. A fourth case, ovarian cystectomy for a dermoid (this build)
+10. Scope control with both hands: two open palms moved together pan, tilt and advance the view
+11. Contact along the instrument shaft, lifting tissue with the side of an instrument, and instruments that cannot
     pass through each other
-11. Side-by-side stereo for XR glasses and 3D displays
-12. Wrist orientation driving a wristed instrument tip
-13. Robotic instrument set and multiport robotic case flow
-14. Voice commands for the uterine manipulator and instrument exchanges
-15. Wristed suturing
+12. Side-by-side stereo for XR glasses and 3D displays
+13. Wrist orientation driving a wristed instrument tip
+14. Robotic instrument set and multiport robotic case flow
+15. Voice commands for the uterine manipulator and instrument exchanges
+16. Wristed suturing
 
 If two webcams do not give steady enough depth with real hands, the fallback is a sensor made for hand tracking.
 
@@ -309,7 +353,7 @@ Tests drive a headless Chrome through Playwright (`test/shot.mjs <screenshot> <s
 - `test/steps/free.mjs` checks free depth through real mouse events: swing, fulcrum inversion, wheel travel, contact
   and the stop, working only in contact, traction, complications.
 - `test/steps/flow.mjs` plays a whole case (`QUERY=case=myo` for the myomectomy, `QUERY=case=ect` for the
-  salpingectomy): in free depth (`MODE=free`), with real mouse events in auto depth
+  salpingectomy, `QUERY=case=cyst` for the cystectomy): in free depth (`MODE=free`), with real mouse events in auto depth
   (`MODE=mouse`), or with scripted hands pushed through the full hand-control pipeline, seen by two simulated cameras
   (`MODE=hands`, free depth) or by one (`MODE=handsauto`, auto depth). `RIG` picks the cameras (`one`, `tilted`,
   `two`, `shallow`) and `NOISE=0.004` adds tracker jitter. Jitter is random, so a jittered run differs each time;
@@ -343,6 +387,11 @@ Tests drive a headless Chrome through Playwright (`test/shot.mjs <screenshot> <s
   pregnancy grasped, the exposure checks, the isthmus (where it may be divided; bleeding from the stump when it is
   divided unsealed, and its control), the tube carried, let go and bagged, the ooze at low pressure, energy on the
   other tube, the score, and each case played to its debrief after another.
+- `test/steps/cyst.mjs` checks the cystectomy's rules: the ovary that stands in for the model's, energy held off
+  while surveying, the ligament and then the cut edge held, the incision, the three ways the cyst ruptures and what
+  a rupture leaves to clear, the plane that opens only against counter-traction, the cyst coming out whole and
+  being bagged, the bed's bleeding points, bipolar on the operated ovary counted and on the other ovary an injury,
+  the score, the debrief, and each case played to its debrief after another.
 - `test/steps/realcam.mjs` loads the real camera and model pipeline against Chrome's fake camera (`LIVE=1 QUERY=q=low`).
 - `test/steps/handviews.mjs` takes screenshots of the setup screen and of hand control at work (`RIG=two|one`);
   `look.mjs` and `views.mjs` take screenshots of chosen steps for judging the picture.

@@ -475,6 +475,7 @@ const MYO = {
     'She is in lithotomy and Trendelenburg with a uterine manipulator in place. 10 mm umbilical scope, two 5 mm lateral ports, pneumoperitoneum at 15 mmHg. You are looking toward the pelvis: her right is on the right of the screen.'],
   steps: MYO_STEPS, insts: ['grasper', 'bipolar', 'hook', 'suction', 'needle', 'tenaculum', 'inject'], warp: FB.WARP, tipZ: 10.5, ureters: false, eblWarn: 200,
   spare: { tube: 1 }, // structures this operation is done to keep: energy on them is an injury
+  bite(h) { if (h.pick.ent === 'fibroid') hint('slip', 'An atraumatic grasper slips off a fibroid. Use the tenaculum.'); },
   needleHint: 'The needle driver is for closing the uterine wall',
   labels: [['Fibroid', () => fbApex(_w), () => S.myo.fib !== 'out'], ['Uterus', () => utWarp(_w.set(-2.2, 6.6, -0.92)).applyMatrix4(UT.M)]], // these replace the model's one label for the uterus
   state(s) {

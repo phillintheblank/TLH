@@ -201,7 +201,7 @@ export async function installHandDriver(page, rig) {
           else { nrm.copy(hand.pick.normal).addScaledVector(d, -hand.pick.normal.dot(d)); if (nrm.lengthSq() < 0.01) nrm.copy(cu); nrm.normalize(); off.addScaledVector(nrm, 0.15); if (off.length() > 0.75) break; }
           aim(); lift(1.2);
           this.tipTo(k, line(Math.min((meet || L) - 0.6, Math.max(4, hand.ins))), 0.07, false, 220, 0.008);
-          r = land();
+          r = land(); if (want && !want.cuff) rest(); // a bite on the cuff is placed as it lands: pressing on would change its depth
         }
         // centre the tip on the aim point, as a person does before pinching; come back down if that lifted it off; then
         if (good()) { this.tipTo(k, line(hand.ins), 0.06, false, 60, 0.004); if (!hand.touch) r = this.lineTo(k, d, L + 0.2, 150); }

@@ -1,13 +1,18 @@
 // ---------- steps: what every case shares ----------
 // The steps of the case in hand and the case itself (see CASES), words for the two sides, and the builders for steps
 // that seal and divide a pedicle, which more than one operation uses.
-const _w = new V3(), _w2 = new V3();
+const _w = new V3(), _w2 = new V3(), DOWN = V(0, -1, 0);
 const curG = k => AN.side[k].cur;
 const WORD = { R: 'right', L: 'left' }, OPP = { R: 'left', L: 'right' }, CAP = { R: 'Right', L: 'Left' };
 const yawFor = k => (k === 'R' ? -0.5 : 0.5);
 const exSide = k => ({ label: 'Uterus deviated to the patient\'s ' + OPP[k], ok: () => (k === 'R' ? S.pose.yaw < -0.25 : S.pose.yaw > 0.25) });
 let STEPS = null, CASE = null; // the steps of the case in hand, and the case (see CASES)
 const cutLabel = () => (CTRL.mode === 'hands' ? 'Cut: relax, then pinch again' : 'Cut');
+// A soft irregular lump, r its half-size along each axis: a clot, or something else lying loose in the pelvis.
+const lumpGeo = (seed, r) => paramSurface(22, 14, (u, v, p) => {
+  const th = u * TAU, sv = Math.sin(Math.PI * v), cv = Math.cos(Math.PI * v), k = 1 + 0.34 * (fbm3(sv * Math.sin(th) * 1.8 + seed, cv * 1.8 + 1, sv * Math.cos(th) * 1.8, 2) - 0.5);
+  p.set(-cv * r[0] * k, sv * Math.sin(th) * r[1] * k, sv * Math.cos(th) * r[2] * k);
+}, { closedU: true, su: 2, sv: 1, flip: true });
 // A place where the blood pool lies in view, for a prompt to aspirate it: the surface, where nothing stands in front of it.
 const POOLSPOT = { p: new V3(), t: -9 };
 const poolTop = z => POOL.position.y - 0.06 * (z + 1.5); // the pool's surface tips a little toward the scope

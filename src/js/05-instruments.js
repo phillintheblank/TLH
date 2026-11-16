@@ -320,7 +320,7 @@ function updateHands(dt) {
         } else {
           camera.getWorldDirection(_cv);
           const den = h.ray.direction.dot(_cv), tt = _g.copy(pl.nat).sub(h.ray.origin).dot(_cv) / (den || 1);
-          _g.copy(h.ray.origin).addScaledVector(h.ray.direction, tt).sub(pl.nat).clampLength(0, pl.max);
+          _g.copy(h.ray.origin).addScaledVector(h.ray.direction, tt).sub(pl.nat); if (pl.slip) _g.add(pl.slip); _g.clampLength(0, pl.max); // slip: how far the held tissue has moved in the jaws' frame on its own account
         }
         pl.off.lerp(_g, 1 - Math.exp(-14 * dt));
       }
@@ -580,6 +580,7 @@ function thermal(h, dt, radius) {
     else if (d < 1.0 && !h.nearFlag) { h.nearFlag = true; S.stats.nearMiss++; logEvent('near', 'Energy within 1 cm of the ' + sideName(k) + ' ureter'); sfx.warn(); }
   }
   const e = P.ent;
+  if (h.near && P.hit && CASE.heat && CASE.heat(h, dt, e, P.side)) return true; // tissue this case operates on: the case keeps its own account of it
   if (h.near && P.hit) {
     if (e === 'bladder') heatUp(h, 'bladder', '', dt * (h.inst === 'hook' ? 1 : 0.5));
     else if (e === 'rectum') heatUp(h, 'rectum', '', dt);
@@ -589,6 +590,7 @@ function thermal(h, dt, radius) {
     else if (e === 'ureter') heatUp(h, 'ureter', P.side, dt * 2, { u: P.u });
     else if (CASE.spare && (CASE.spare[e] === 1 || CASE.spare[e] === P.side)) heatUp(h, e, P.side, dt);
   }
+  return false;
 }
 // Is this tip at working point p? Auto depth also accepts a pointer aimed at it from just short of it, since the tip
 // is still travelling there. Free depth wants the tip itself there: touching tissue beside it, or within 6 mm of the
@@ -641,12 +643,12 @@ function bipolarTick(h, dt) {
   const P = h.pick;
   S.stats.energyTime += dt; S.haze = Math.min(0.6, S.haze + dt * 0.05);
   if (h.near && Math.random() < dt * 16) emitPuff(h.tip, true);
-  thermal(h, dt, 0.5);
+  const own = thermal(h, dt, 0.5);
   if (controlBleeders(h, dt)) { sustain('bip', 520, 'sine', 0.06); return; }
   const st = STEPS[S.step];
   if (st.bipolar && st.bipolar(h, dt)) return;
   const tg = sealTarget(h);
-  if (!tg) { sustain('bip', 430, 'sine', 0.05); if (P.hit && h.near) { addDecal(h); if (PRESERVE[P.ent]) S.stats.nonTarget += dt; } return; }
+  if (!tg) { sustain('bip', 430, 'sine', 0.05); if (P.hit && h.near) { addDecal(h); if (PRESERVE[P.ent] && !own) S.stats.nonTarget += dt; } return; }
   if (tg.wrong) { sustain('bip', 430, 'sine', 0.05); hint('wrong', 'That ' + SEALSPEC[tg.ent].label + ' is not this step\'s target'); return; }
   const e = tg.e;
   if (e.cut && tg.ent !== 'meso') { sustain('bip', 430, 'sine', 0.05); return; }
@@ -751,10 +753,11 @@ function graspOn(h) {
   sfx.click();
   const map = { round: 'round', tube: 'tube', uo: 'ridge', ip: 'ridge', ovary: 'ridge' };
   if (P.hit && h.near && P.ent === 'uterus' && S.colpDone && S.specimen === 'in') { deliverSpecimen(); return; }
-  if (P.hit && h.near && P.ent === 'fibroid') hint('slip', 'An atraumatic grasper slips off a fibroid. Use the tenaculum.');
+  if (P.hit && h.near && CASE.bite) CASE.bite(h); // the jaws have closed on something the case has a view about
   h.openGoal = 0.02;
   if (P.hit && h.near && map[P.ent] && P.side && !S.side[P.side].rel.upper && !(P.ent === 'tube' && S.side[P.side].tubeGoal > 0)) {
     const side = P.side, pull = { curve: map[P.ent], s: AN.side[side].s, u: P.ent === 'ovary' ? 0.4 : clamp(P.u, 0.08, 0.92), off: new V3(), nat: P.point.clone(), max: P.ent === 'tube' && S.side[side].spec ? 99 : 1.6 }; // max: how far it stretches
+    if (P.ent === 'ovary') pull.gp = P.point.clone().sub(sampleArr(AN.side[side].cur.ridge, 0.4, _g)); // held where the jaws closed, not at its ligament
     S.pulls.push(pull); h.grab = { pull, ent: P.ent, side }; S.stats.traction++;
     if (CASE.grasped) CASE.grasped(h);
   } else h.grab = { pull: null };

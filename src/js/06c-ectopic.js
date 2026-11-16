@@ -17,18 +17,14 @@ EC.look = {
   rad: u => EC.R * Math.exp(-Math.pow((u - EC.U) / EC.W, 2)),
   col(u, c) { const q = Math.exp(-Math.pow((u - EC.U) / (EC.W * 1.4), 2)); c[0] = lerp(c[0], EC.col[0], q); c[1] = lerp(c[1], EC.col[1], q); c[2] = lerp(c[2], EC.col[2], q); }
 };
-const _e1 = new V3(), _e2 = new V3(), DOWN = V(0, -1, 0);
+const _e1 = new V3(), _e2 = new V3();
 function ectPt(u, lift, out) { sampleArr(curG(EC.K).tubeCur, u, out); out.y += lift; return out; } // a point on that tube, or above it
 const ectHolder = () => HANDS.find(h => h.grab && h.grab.pull && h.grab.ent === 'tube' && h.grab.side === EC.K); // the hand that has the tube
 const ectLen = () => { const a = curG(EC.K).tubeAtt; let L = 0; for (let i = 1; i < a.length; i++) L += a[i].distanceTo(a[i - 1]); return L; };
 const ectStump = out => sampleArr(curG(EC.K).tubeAtt, Math.max(0.02, S.side[EC.K].isth.uc - 0.04), out);
 (function () {
-  const lump = (seed, r) => paramSurface(22, 14, (u, v, p) => {
-    const th = u * TAU, sv = Math.sin(Math.PI * v), cv = Math.cos(Math.PI * v), k = 1 + 0.34 * (fbm3(sv * Math.sin(th) * 1.8 + seed, cv * 1.8 + 1, sv * Math.cos(th) * 1.8, 2) - 0.5);
-    p.set(-cv * r[0] * k, sv * Math.sin(th) * r[1] * k, sv * Math.cos(th) * r[2] * k);
-  }, { closedU: true, su: 2, sv: 1, flip: true });
-  EC.DEF.forEach((def, i) => { const m = reg(new THREE.Mesh(lump(3 + i * 7, def.r), MAT.clot), 'clot'); m.rotation.y = i * 1.3; scene.add(m); EC.clots.push({ def, m, at: new V3() }); });
-  EC.knob = new THREE.Mesh(lump(41, [0.3, 0.16, 0.24]), MAT.clot); scene.add(EC.knob); // clot in the rupture itself
+  EC.DEF.forEach((def, i) => { const m = reg(new THREE.Mesh(lumpGeo(3 + i * 7, def.r), MAT.clot), 'clot'); m.rotation.y = i * 1.3; scene.add(m); EC.clots.push({ def, m, at: new V3() }); });
+  EC.knob = new THREE.Mesh(lumpGeo(41, [0.3, 0.16, 0.24]), MAT.clot); scene.add(EC.knob); // clot in the rupture itself
 })();
 function ectShow(on) { if (!on) { for (const c of EC.clots) c.m.visible = false; EC.knob.visible = false; } }
 

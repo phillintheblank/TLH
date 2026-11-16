@@ -168,7 +168,7 @@ function fakeHand(o) {
 }
 window.__sim = {
   forceStep, visibleAt, colpPt, SEALSPEC, URETER, VG, UT, BL, HT, HANDS, CTRL, fakeHand, htIngest, htEnable, htDisable, calibFinish, calBuild, camFillPickers,
-  get S() { return S; }, get STEPS() { return STEPS; }, get CASE() { return CASE; }, CASES, setCase, FB, fbSero, EC, POOL, BAG, HAND, CAM, AN, INP, tick, setPoseGoal, setInst, setActive, cutAction, cutReady, startCase,
+  get S() { return S; }, get STEPS() { return STEPS; }, get CASE() { return CASE; }, CASES, setCase, FB, fbSero, EC, CY, cySurf, cyBed, POOL, BAG, HAND, CAM, AN, INP, tick, setPoseGoal, setInst, setActive, cutAction, cutReady, startCase,
   get active() { return ACTIVE; }, get PICK() { return activeHand().pick; },
   next() { // the target the guidance is showing, as a scripted player needs it
     const st = STEPS[S.step];

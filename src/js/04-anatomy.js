@@ -113,7 +113,7 @@ class SideGeom {
     if (pulls) for (const p of pulls) {
       if (p.s !== s) continue;
       const arr = p.curve === 'tube' ? this.tubeCur : this[p.curve], rigid = p.curve === 'tube' && st && st.spec; // a tube cut free comes along whole
-      sampleArr(arr, p.u, p.nat);
+      sampleArr(arr, p.u, p.nat); if (p.gp) p.nat.add(p.gp); // gp: where the jaws are, when that is off the curve (an ovary is held by its surface)
       for (let i = 0; i < NS; i++) {
         const ui = i / (NS - 1), w = rigid ? 1 : Math.exp(-Math.pow((ui - p.u) / 0.2, 2)) * sstep(0, 0.1, ui) * (p.curve === 'tube' ? 1 : sstep(1, 0.9, ui));
         arr[i].addScaledVector(p.off, w);
