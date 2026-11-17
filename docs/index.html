@@ -292,7 +292,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
           </div>
           <div class="manip-r">
             <h3 id="manipNote">Uterine manipulator</h3>
-            <label for="push">Push cup cephalad <kbd>Q</kbd> <kbd>E</kbd><input type="range" id="push" min="0" max="100" value="0"></label>
+            <label for="push"><span id="pushNote">Push cup cephalad</span> <kbd>Q</kbd> <kbd>E</kbd><input type="range" id="push" min="0" max="100" value="0"></label>
             <div class="presets">
               <button type="button" class="mini" data-pose='{"yaw":0,"pitch":0.17,"push":0}'>Neutral</button>
               <button type="button" class="mini" data-pose='{"yaw":-0.5}'>Expose right</button>
@@ -1259,7 +1259,7 @@ function freshState() { // what every case has; a case adds its own (CASE.state)
     pose: { yaw: 0, pitch: PITCH0, push: 0 }, poseGoal: { yaw: 0, pitch: PITCH0, push: 0 }, manipOut: false,
     flap: 0, flapGoal: 0, vufP: 0, vufGoal: 0, vufGk: 0,
     side: { R: newSide(1, 'R'), L: newSide(-1, 'L') },
-    colp: new Array(16).fill(0), colpDone: false, lift: 0, deliv: 0, specimen: 'in',
+    colp: new Array(16).fill(0), colpDone: false, lift: 0, deliv: 0, carry: null, specimen: 'in', // carry: how far a freed specimen has been taken off in its bag
     cuff: { stitches: [], pending: null, front: 2.4, frontGoal: 2.4, done: false },
     ebl: 0, pool: 0, bleeders: [], events: [], heat: {}, injuries: {}, pulls: [],
     stats: { activations: 0, energyTime: 0, nonTarget: 0, exchanges: 0, unsealedCuts: 0, nearMiss: 0, minUreter: { R: 99, L: 99 }, expoMiss: 0, traction: 0, blunt: 0 },
@@ -1285,14 +1285,14 @@ const AN = { side: {} };
   scene.add(AN.bowl);
 })();
 
-// rectosigmoid
-(function () {
-  const ctrl = [V(0, -4.6, -8.6), V(-0.4, -5.7, -5.5), V(-1.4, -6.1, -2), V(-3.3, -5.8, 2), V(-5.1, -5.0, 6), V(-6.5, -3.8, 10), V(-7.4, -2.0, 16)];
-  const A = spline(ctrl, vecArr(64));
-  const t = new Tube(64, 20, MAT.bowel, 1, 6);
-  t.set(A, 0, 1, u => 1.3 * (1 + 0.13 * Math.pow(Math.abs(Math.sin(u * 27 + Math.sin(u * 9))), 0.55) + 0.05 * Math.sin(u * 13 + 1)), null);
-  AN.rectum = reg(t.mesh, 'rectum'); AN.rectumArr = A; scene.add(t.mesh);
-})();
+// rectosigmoid. A case may lay it somewhere else (setRectum): fn(i, p) moves the i-th point of its course.
+const RECT = { ctrl: [V(0, -4.6, -8.6), V(-0.4, -5.7, -5.5), V(-1.4, -6.1, -2), V(-3.3, -5.8, 2), V(-5.1, -5.0, 6), V(-6.5, -3.8, 10), V(-7.4, -2.0, 16)], c: vecArr(7), t: new Tube(64, 20, MAT.bowel, 1, 6) };
+function setRectum(fn) {
+  for (let i = 0; i < 7; i++) { RECT.c[i].copy(RECT.ctrl[i]); if (fn) fn(i, RECT.c[i]); }
+  spline(RECT.c, AN.rectumArr);
+  RECT.t.set(AN.rectumArr, 0, 1, u => 1.3 * (1 + 0.13 * Math.pow(Math.abs(Math.sin(u * 27 + Math.sin(u * 9))), 0.55) + 0.05 * Math.sin(u * 13 + 1)), null);
+}
+AN.rectum = reg(RECT.t.mesh, 'rectum'); AN.rectumArr = vecArr(64); scene.add(RECT.t.mesh); setRectum();
 
 // iliac vessels, medial umbilical folds, ureters
 const URETER = {};
@@ -1356,7 +1356,7 @@ function utVertex(u, v, p, c) { // the uterus's surface, paler over the cervix
   const cup = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 1.6, 1.0, 40, 1, true), new THREE.MeshStandardMaterial({ color: 0x4f97d8, roughness: 0.32, metalness: 0.05, side: THREE.DoubleSide, envMapIntensity: 0.9 }));
   cup.position.y = -0.22; UT.g.add(cup);
   const cap = new THREE.Mesh(new THREE.CircleGeometry(1.7, 32), new THREE.MeshStandardMaterial({ color: 0xc66a74, roughness: 0.6 }));
-  cap.rotation.x = Math.PI / 2; cap.position.y = 0.26; UT.g.add(cap);
+  cap.rotation.x = Math.PI / 2; cap.position.y = 0.26; UT.g.add(cap); UT.cup = [cup, cap];
   // where the colpotomy has been cut, the scorched vaginal edge parts and the cup's rim shows through
   UT.segs = [];
   const charM = new THREE.MeshStandardMaterial({ color: 0x1e0d08, roughness: 0.95 }), rimM = new THREE.MeshStandardMaterial({ color: 0x4f97d8, roughness: 0.32, envMapIntensity: 0.9 });
@@ -1525,6 +1525,7 @@ function updateSide(sd, time) {
   cur.compute(UT.M, st, S.pulls);
   for (const g of ['upper', 'ua', 'card']) {
     const r = st.rel[g]; if (!r) continue;
+    if (r.stay) { r.ref.compute(VG.M, st, null); continue; } // held by what is left behind when the body of the uterus is taken off its cervix: it does not go with the specimen
     if (!r.settled) {
       const e = easeIO(r.t);
       r.ref.compute(poseMat(lerpPose(r.from, NEUTRAL, e, _tp), _m4), st, null);
@@ -1614,10 +1615,11 @@ function updateAnatomy(dt, time) {
   // manipulator pose
   const P = S.pose, G = S.poseGoal, rate = 4.5;
   P.yaw = damp(P.yaw, G.yaw, rate, dt); P.pitch = damp(P.pitch, G.pitch, rate, dt); P.push = damp(P.push, G.push, rate, dt);
-  if (S.specimen !== 'out') { VG.pose.yaw = P.yaw; VG.pose.pitch = P.pitch; VG.pose.push = P.push; }
-  else { VG.pose.yaw = damp(VG.pose.yaw, 0, 2.5, dt); VG.pose.pitch = damp(VG.pose.pitch, -0.38, 2.5, dt); VG.pose.push = damp(VG.pose.push, 0.3, 2.5, dt); }
+  if (S.specimen !== 'out' || CASE.probe) { VG.pose.yaw = P.yaw; VG.pose.pitch = P.pitch; VG.pose.push = P.push; } // probe: an instrument in the vagina goes on moving the vault once the uterus is out
+  else { const cx = CASE.cervix; VG.pose.yaw = damp(VG.pose.yaw, 0, 2.5, dt); VG.pose.pitch = damp(VG.pose.pitch, cx ? PITCH0 : -0.38, 2.5, dt); VG.pose.push = damp(VG.pose.push, cx ? 0 : 0.3, 2.5, dt); } // a cuff falls back; a cervix on its ligaments stays where it was
   poseMat(VG.pose, VG.M); setM(VG.g, VG.M);
-  poseMat(P, UT.M, S.lift, S.deliv); UT.Minv.copy(UT.M).invert(); setM(UT.g, UT.M);
+  poseMat(P, UT.M, S.lift, S.deliv); if (S.carry) { const e = UT.M.elements; e[12] += S.carry.x; e[13] += S.carry.y; e[14] += S.carry.z; }
+  UT.Minv.copy(UT.M).invert(); setM(UT.g, UT.M);
   UT.g.visible = S.specimen !== 'out';
   // eased state
   S.flap = damp(S.flap, S.flapGoal, 3.5, dt);
@@ -1642,7 +1644,7 @@ function updateAnatomy(dt, time) {
     const sd = AN.side[k], vis = S.specimen !== 'out';
     updateSide(sd, time);
     if (!vis) for (const m of [sd.t.roundA, sd.t.uoA, sd.t.tube, sd.t.tubeS, sd.t.uaA, sd.t.uvA]) m.mesh.visible = false;
-    for (const m of ['antM', 'roofM', 'postM', 'mesoM', 'cardM']) sd.st[m].mesh.visible = vis;
+    for (const m of ['antM', 'roofM', 'postM', 'mesoM', 'cardM']) sd.st[m].mesh.visible = vis || (m === 'cardM' && !S.side[k].card.cut); // an undivided cardinal ligament stays on the cervix
     // ureters with peristalsis, iliac pulse
     const U = URETER[k], ph = ((time + U.phase) % 5.2) / 1.7;
     U.tube.set(U.arr, 0, 1, u => 0.165 * (1 + 0.42 * Math.exp(-Math.pow((u - ph + 0.1) / 0.07, 2)) - 0.2 * Math.exp(-Math.pow((u - ph + 0.24) / 0.06, 2))),
@@ -2677,6 +2679,27 @@ const VESSEL_STEPS = k => [
   })
 ];
 
+// Sweep the bladder off the cervix and vagina: N sweeps take it from `from` to `full` of the way down (1: clear of a colpotomy).
+const flapStep = o => Object.assign({
+  id: 'flap', kind: 'flap', tool: 'hook', alt: 'suction', phase: 'Bladder', short: 'Develop bladder flap', title: 'Develop the bladder flap', dist: 9, acc: 0, cnt: 0, N: 6, from: 0, full: 1,
+  rec: { yaw: 0, pitch: -0.18, push: 1 }, expo: [exPush],
+  text: ['Push the cup cephalad: its rim marks the anterior fornix.', 'Sweep the bladder caudally off the cervix, midline first, then each side. Use short hook bursts on the cervical side or blunt pushes with the suction tip.', 'Carry on until the bladder sits 1.5 to 2 cm below the cup rim.'],
+  pearl: 'The right plane is white, filmy and avascular. Yellow fat belongs to the bladder. The bladder pillars laterally carry vessels, and a prior caesarean scar hides the midline plane: start lateral in those cases.',
+  at() { return [0.5, 0.22, 0.78][this.cnt % 3]; },
+  targets() { return this.cnt >= this.N ? [] : [flapEdgePt(this.at(), new V3())]; },
+  next() { return this.cnt >= this.N ? null : { p: flapEdgePt(this.at(), new V3()), act: 'push', label: 'Sweep the bladder down', prog: this.acc / 0.4 }; },
+  sweep(h, dt, T) {
+    if (this.cnt >= this.N) return true;
+    if (h.pick.ent === 'bladder') return false;
+    if (nearTarget(h, flapEdgePt(this.at(), _w2), 0.9)) { this.acc += dt; if (this.acc > T) { this.acc = 0; this.cnt++; S.flapGoal = lerp(this.from, this.full, this.cnt / this.N); S.ebl += 0.6; sfx.click(); uiDirty(); } return true; }
+    return false;
+  },
+  hook(h, dt) { return this.sweep(h, dt, 0.4); }, blunt(h, dt) { if (this.sweep(h, dt, 0.6)) S.stats.blunt += dt; },
+  done() { return this.cnt >= this.N && S.flap > lerp(this.from, this.full, 0.93); }, progress() { return 'Bladder mobilized ' + Math.round(S.flap * 100) + '%'; }, frac() { return this.cnt / this.N; },
+  focus(o) { return flapEdgePt(0.5, o); },
+  force() { this.cnt = this.N; S.flapGoal = this.full; }
+}, o);
+
 const TLH_STEPS = [
   {
     id: 'survey', kind: 'survey', tool: 'any', phase: 'Survey', short: 'Identify both ureters', title: 'Survey the pelvis and identify both ureters', dist: 17,
@@ -2707,24 +2730,7 @@ const TLH_STEPS = [
     },
     done() { return this.n() >= 5; }, progress() { return 'Incision ' + this.n() + ' / 5'; }, frac() { return this.n() / 5; }, focus(o) { return vufPt(0.5, o); }
   },
-  {
-    id: 'flap', kind: 'flap', tool: 'hook', alt: 'suction', phase: 'Bladder', short: 'Develop bladder flap', title: 'Develop the bladder flap', dist: 9, acc: 0, cnt: 0,
-    rec: { yaw: 0, pitch: -0.18, push: 1 }, expo: [exPush],
-    text: ['Push the cup cephalad: its rim marks the anterior fornix.', 'Sweep the bladder caudally off the cervix, midline first, then each side. Use short hook bursts on the cervical side or blunt pushes with the suction tip.', 'Carry on until the bladder sits 1.5 to 2 cm below the cup rim.'],
-    pearl: 'The right plane is white, filmy and avascular. Yellow fat belongs to the bladder. The bladder pillars laterally carry vessels, and a prior caesarean scar hides the midline plane: start lateral in those cases.',
-    order: [0.5, 0.22, 0.78, 0.5, 0.22, 0.78],
-    targets() { return this.cnt >= 6 ? [] : [flapEdgePt(this.order[this.cnt], new V3())]; },
-    next() { return this.cnt >= 6 ? null : { p: flapEdgePt(this.order[this.cnt], new V3()), act: 'push', label: 'Sweep the bladder down', prog: this.acc / 0.4 }; },
-    sweep(h, dt, T) {
-      if (this.cnt >= 6) return true;
-      if (h.pick.ent === 'bladder') return false;
-      if (nearTarget(h, flapEdgePt(this.order[this.cnt], _w2), 0.9)) { this.acc += dt; if (this.acc > T) { this.acc = 0; this.cnt++; S.flapGoal = this.cnt / 6; S.ebl += 0.6; sfx.click(); uiDirty(); } return true; }
-      return false;
-    },
-    hook(h, dt) { return this.sweep(h, dt, 0.4); }, blunt(h, dt) { if (this.sweep(h, dt, 0.6)) S.stats.blunt += dt; },
-    done() { return this.cnt >= 6 && S.flap > 0.93; }, progress() { return 'Bladder mobilized ' + Math.round(S.flap * 100) + '%'; }, frac() { return this.cnt / 6; },
-    focus(o) { return flapEdgePt(0.5, o); }
-  },
+  flapStep({}),
   ...VESSEL_STEPS('R'), ...VESSEL_STEPS('L'),
   {
     id: 'colp', kind: 'colp', tool: 'hook', phase: 'Colpotomy and closure', short: 'Colpotomy', title: 'Circumferential colpotomy on the cup', dist: 9.5,
@@ -2869,7 +2875,6 @@ function tlhForce(st) { // complete the step in hand
   else if (st.which === 'ant') sd.antGoal = 1;
   else if (st.which === 'post') { sd.postGoal = 1; startRelease(AN.side[k], 'upper'); }
   else if (st.id === 'vuf') S.vufGoal = 1;
-  else if (st.id === 'flap') { st.cnt = 6; S.flapGoal = 1; }
   else if (st.id === 'colp') { S.colp.fill(1); S.colpDone = true; VG.dirty = true; }
   else if (st.id === 'deliver') deliverSpecimen();
   else if (st.id === 'cuff') { for (const x of [1.5, 0.9, 0.3, -0.3, -0.9, -1.5]) S.cuff.stitches.push({ x, da: 0.8, dp: 0.8 }); S.cuff.frontGoal = -2.8; S.cuff.done = true; }
@@ -3953,11 +3958,567 @@ const CYS = {
   want: (st, n) => (n.act === 'grasp' ? { ents: [st.id === 'steady' ? 'uo' : 'ovary'], side: CY.K } : n.act === 'trace' ? { ents: ['ovary'], side: CY.K } : null) // what a scripted hand should find under its tip
 };
 
+// ---------- case: laparoscopic supracervical hysterectomy ----------
+// The hysterectomy as far as the uterine vessels, then the body of the uterus is cut off its cervix. The cervix, with its
+// cardinal and uterosacral ligaments, stays. The sacrocolpopexy (next file) starts from where this ends.
+const LS = { YA: 2.6, N: 12, CONE: 0.45 }; // YA: the level of the cut, at the internal os; N: segments round it; CONE: how far the cut dips toward the canal
+
+// The uterus in two pieces, divided at LS.YA. top: the body, closed below by its cut face. Otherwise the cervix, closed above by its.
+function lsPiece(top) {
+  const tA = Math.asin(LS.YA / 8.6) / (Math.PI / 2), F = top ? 0.16 : 0.42; // F: the share of the rows that make the cut face
+  return paramSurface(72, top ? 56 : 24, (u, v, p, c) => {
+    const face = top ? v < F : v > 1 - F;
+    if (!face) { utVertex(u, top ? lerp(tA, 1, (v - F) / (1 - F)) : lerp(0, tA, v / (1 - F)), p, c); return; }
+    const q = top ? v / F : (1 - v) / F; // 0 at the canal, 1 at the rim
+    utVertex(u, tA, p, c); p.x *= q; p.z *= q; p.y = LS.YA - LS.CONE * (1 - q * q);
+    // cauterised muscle: blanched, scorched at the rim, the canal a dark spot at its centre
+    const rim = sstep(0.8, 0.97, q), can = 1 - sstep(0.08, 0.2, q);
+    c[0] = lerp(lerp(1.12, 0.5, rim), 0.55, can); c[1] = lerp(lerp(1.14, 0.34, rim), 0.2, can); c[2] = lerp(lerp(1.02, 0.26, rim), 0.2, can);
+  }, { closedU: true, su: 3, sv: 3 });
+}
+(function () {
+  LS.corpus = reg(new THREE.Mesh(lsPiece(true), MAT.uterus), 'uterus'); LS.corpus.visible = false; UT.g.add(LS.corpus);
+  LS.stump = reg(new THREE.Mesh(lsPiece(false), MAT.uterus), 'stump'); LS.stump.visible = false; VG.g.add(LS.stump);
+  // where the hook has been round the cervix: a scorched groove
+  LS.segs = []; const charM = new THREE.MeshStandardMaterial({ color: 0x1e0d08, roughness: 0.95 }), r = utR(LS.YA) + 0.02;
+  for (let k = 0; k < LS.N; k++) {
+    const sg = new THREE.TorusGeometry(r, 0.11, 8, 6, TAU / LS.N); sg.rotateZ((k / LS.N) * TAU - TAU / (2 * LS.N)); sg.rotateX(Math.PI / 2);
+    const m = new THREE.Mesh(sg, charM); m.scale.z = utAP(LS.YA); m.position.y = LS.YA; m.visible = false; UT.g.add(m); LS.segs.push(m);
+  }
+  // the canal, once coagulated
+  LS.char = new THREE.Mesh(new THREE.CircleGeometry(0.34, 20), new THREE.MeshStandardMaterial({ color: 0x24100a, roughness: 0.95, transparent: true, opacity: 0 }));
+  LS.char.rotation.x = -Math.PI / 2; LS.char.position.y = LS.YA - LS.CONE + 0.04; LS.char.visible = false; VG.g.add(LS.char);
+})();
+const lsAmpPt = (k, out) => { const a = (k / LS.N) * TAU, r = utR(LS.YA) + 0.03; return out.set(r * Math.cos(a), LS.YA, r * Math.sin(a) * utAP(LS.YA)).applyMatrix4(UT.M); };
+const lsCanal = out => out.set(0, LS.YA - LS.CONE + 0.05, 0).applyMatrix4(VG.M);
+const lsEdge = (phiDeg, out) => utSurf(phiDeg, LS.YA, -0.25, out).applyMatrix4(VG.M); // a point on the stump's cut face, just inside its rim
+// off: the body is off the cervix. done: this is the pelvis as the supracervical hysterectomy leaves it.
+function lsState(s, done) { s.lsh = { amp: new Array(LS.N).fill(done ? 1 : 0), off: done, bag: -1, canal: done ? 1 : 0, bled: done }; }
+// The cardinal ligaments are not divided: when the body comes off they stay where the cervix is.
+function lsHold() { for (const k of ['R', 'L']) { const st = S.side[k], g = new SideGeom(st.s); st.rel.card = { t: 1, settled: true, stay: true, ref: g, lat: g, T: new THREE.Matrix4() }; } }
+function lsFree() {
+  const m = S.lsh; if (m.off) return;
+  m.off = true; lsHold(); for (const k of ['L', 'R']) if (HAND[k].grab) releaseGrab(HAND[k]);
+  S.manipOut = true; S.poseGoal.yaw = 0; S.poseGoal.pitch = PITCH0; S.poseGoal.push = 0;
+  toast('The body of the uterus is free. The manipulator is withdrawn.', 'ok'); uiDirty();
+}
+function lsShow() { // for either case that keeps the cervix; which one is in hand is CASE's business
+  const on = !!CASE.cervix; for (const m of UT.cup) m.visible = !on;
+  if (!on) { LS.corpus.visible = LS.stump.visible = LS.char.visible = false; for (const m of LS.segs) m.visible = false; }
+}
+function lsUpdate(dt) {
+  const m = S.lsh;
+  UT.mesh.visible = !m.off; LS.corpus.visible = LS.stump.visible = m.off;
+  for (let k = 0; k < LS.N; k++) LS.segs[k].visible = m.amp[k] >= 1 && !m.off;
+  LS.char.visible = m.canal > 0.02; LS.char.material.opacity = 0.9 * sstep(0, 1, m.canal); LS.char.scale.setScalar(0.5 + 0.5 * m.canal);
+  if (m.off && S.specimen === 'in') S.lift = damp(S.lift, 1, 3, dt);
+  BAG.visible = m.bag >= 0 && S.specimen === 'in';
+  if (BAG.visible) { // bagged, the body of the uterus and its tubes go out by the port
+    m.bag += dt; BAG.position.set(0, 5.4, 0).applyMatrix4(UT.M); BAG.quaternion.setFromRotationMatrix(UT.M); BAG.scale.set(3.9, 4.6, 3.3).multiplyScalar(sstep(0, 0.8, m.bag));
+    if (m.bag > 0.9) S.carry.addScaledVector(_w.subVectors(bagExit(), BAG.position), 1 - Math.exp(-2.2 * dt));
+    if (m.bag > 2.7) { S.specimen = 'out'; BAG.visible = false; toast('The uterus is out in its bag', 'ok'); uiDirty(); }
+  }
+}
+
+const exPushU = { label: 'Uterus pushed cephalad', ok: exPush.ok };
+const lsVessel = k => Object.assign(VESSEL_STEPS(k)[0], {
+  expo: [exPushU, exSide(k)],
+  text: ['Push the uterus cephalad and deviate it to the patient\'s ' + OPP[k] + '.', 'Seal the skeletonized uterine vessels at the level of the internal os, right against the uterus and at a right angle to them.', 'Confirm the seal, then cut. Go no lower: the cardinal and uterosacral ligaments stay with the cervix.'],
+  pearl: 'This is the ascending branch, taken where it meets the uterus. The ureter passes under the uterine artery 1.5 to 2 cm lateral to here, so stay on the uterus. Once both sides are sealed the body of the uterus blanches.'
+});
+const TLH_FINAL = TLH_STEPS.find(s => s.id === 'final');
+const LSH_STEPS = [
+  TLH_STEPS.find(s => s.id === 'survey'), ...SIDE_STEPS('R'), ...SIDE_STEPS('L'), TLH_STEPS.find(s => s.id === 'vuf'),
+  flapStep({
+    N: 3, full: 0.5, short: 'Mobilize the bladder', title: 'Mobilize the bladder off the lower segment', expo: [exPushU],
+    text: ['Push the uterus cephalad.', 'Sweep the bladder caudally off the lower uterine segment, midline first, then each side. Use short hook bursts on the uterine side or blunt pushes with the suction tip.', 'Stop when the bladder is clear of the internal os. There will be no colpotomy, so it need go no lower.'],
+    pearl: 'A supracervical hysterectomy needs the bladder only just below the level of the amputation. If mesh is to be laid on the anterior vaginal wall afterwards, that dissection is carried further at that stage, with the vagina on a probe.'
+  }),
+  lsVessel('R'), lsVessel('L'),
+  {
+    id: 'amp', kind: 'colp', tool: 'hook', phase: 'Amputation', short: 'Amputate the uterus', title: 'Amputate the body of the uterus from the cervix', dist: 9.5,
+    rec: { yaw: 0, pitch: -0.1, push: 1 }, expo: [exPushU],
+    text: ['Both uterine pedicles are sealed and the body of the uterus has blanched.', 'With the hook, cut across the cervix at the level of the internal os, just below the sealed pedicles. Start in front and work round each side.', 'Antevert the uterus to finish the back. Angle the cut down toward the canal so that the stump is left as a shallow cone.'],
+    pearl: 'Cut at or just below the internal os and take the upper canal with the specimen: endometrium left on the stump is what bleeds each month afterwards. The tip of the manipulator is metal, so bring it down out of the way before the cut reaches the canal. A monopolar loop makes this cut in one pass.',
+    vis: [], visT: 0,
+    refresh() { if (S.t < this.visT) return; this.visT = S.t + 0.18; for (let k = 0; k < LS.N; k++) this.vis[k] = S.lsh.amp[k] >= 1 ? false : visibleAt(lsAmpPt(k, _w2), 0.7); },
+    next() {
+      const a = S.lsh.amp; this.refresh(); let best = -1, bd = 1e9;
+      const h = HANDS.find(x => x.inst === 'hook') || activeHand();
+      for (let k = 0; k < LS.N; k++) if (a[k] < 1 && this.vis[k]) { const d = lsAmpPt(k, _w2).distanceTo(h.tip); if (d < bd) { bd = d; best = k; } }
+      if (best >= 0) return { p: lsAmpPt(best, new V3()), act: 'trace', label: 'Cut across the cervix' };
+      for (let k = 0; k < LS.N; k++) if (a[k] < 1) return { p: lsAmpPt(k, new V3()), act: 'trace', label: 'Reposition the uterus to expose the rest', hidden: true };
+      return null;
+    },
+    dots() { const a = []; for (let k = 0; k < LS.N; k++) a.push({ p: lsAmpPt(k, new V3()), done: S.lsh.amp[k] >= 1, vis: !!this.vis[k] }); return a; },
+    targets() { const a = []; for (let k = 0; k < LS.N; k++) if (S.lsh.amp[k] < 1) a.push(lsAmpPt(k, new V3())); return a; },
+    hook(h, dt) {
+      const a = S.lsh.amp; let any = false;
+      for (let k = 0; k < LS.N; k++) if (a[k] < 1 && nearTarget(h, lsAmpPt(k, _w2), 0.62)) { any = true; a[k] += dt / 0.16; if (a[k] >= 1) { S.ebl += 1.2; sfx.click(); uiDirty(); } }
+      if (a.every(c => c >= 1)) lsFree();
+      return any || h.pick.ent === 'uterus';
+    },
+    done() { return S.lsh.off && S.lift > 0.9; }, progress() { return S.lsh.amp.filter(c => c >= 1).length + ' / ' + LS.N + ' segments'; }, frac() { return S.lsh.amp.filter(c => c >= 1).length / LS.N; },
+    focus(o) { return o.set(0, LS.YA, 0).applyMatrix4(UT.M); },
+    force() { S.lsh.amp.fill(1); lsFree(); S.lift = 1; }
+  },
+  {
+    id: 'bag', kind: 'bag', tool: 'any', phase: 'Amputation', short: 'Remove the specimen', title: 'Remove the uterus in a bag', dist: 13, rec: null, expo: [],
+    text: ['The body of the uterus lies free in the pelvis with both tubes on it.', 'Place it in a containment bag.', 'Bring the mouth of the bag out through the umbilical incision, extended as needed, and take the specimen out in pieces with a scalpel inside the bag.'],
+    pearl: 'Never morcellate outside a bag. An unsuspected sarcoma is rare, but uncontained morcellation spreads it, and benign fragments left behind can implant as well. This is part of consent before the day. Check that the bag is intact when it is out.',
+    ready() { return S.lsh.off && S.lsh.bag < 0 && S.specimen === 'in'; },
+    button: { label: 'Bag the uterus and take it out', fn() { if (!STEPS[S.step].ready()) return; S.lsh.bag = 0; S.carry = new V3(); uiDirty(); }, hide: () => !STEPS[S.step].ready() },
+    next() { return this.ready() ? { p: _w.set(0, 5.4, 0).applyMatrix4(UT.M).clone(), act: 'button', label: 'Bag the uterus' } : null; },
+    done() { return S.specimen === 'out'; }, progress() { return S.lsh.bag >= 0 ? 'Coming out' : ''; }, frac() { return clamp(S.lsh.bag / 2.7, 0, 1); }, focus(o) { return o.set(0, 3, 0).applyMatrix4(VG.M); },
+    force() { S.lsh.amp.fill(1); lsFree(); S.specimen = 'out'; }
+  },
+  {
+    id: 'stump', kind: 'hemo', tool: 'bipolar', phase: 'Completion', short: 'Secure the stump', title: 'Secure the cervical stump', dist: 7.5, rec: null, expo: [],
+    text: ['With the specimen out, look at the stump. A vessel is bleeding at its edge.', 'Touch it with the bipolar until it stops.', 'Then coagulate the lining of the canal, at the centre of the stump.'],
+    pearl: 'Coagulating or coring out the top of the canal is meant to destroy any endometrium left on the stump. It lowers the chance of cyclical spotting but does not abolish it, and she should hear that beforehand. She keeps her cervix, so cervical screening goes on as before.',
+    enter() { const m = S.lsh; if (m.bled) return; m.bled = true; addBleeder(o => lsEdge(70, o), 18, true, 'cervical stump'); toast('A cervical branch is bleeding at the edge of the stump', 'bleed'); },
+    next() { return S.lsh.canal < 1 ? { p: lsCanal(new V3()), act: 'seal', label: 'Coagulate the canal', prog: S.lsh.canal } : null; },
+    targets() { return S.lsh.canal < 1 ? [lsCanal(new V3())] : []; },
+    bipolar(h, dt) { const m = S.lsh; if (m.canal >= 1 || !nearTarget(h, lsCanal(_w2), 0.6)) return h.pick.ent === 'stump'; m.canal = Math.min(1, m.canal + dt / 1.6); sustain('bip', 440 + 190 * m.canal, 'sine', 0.07); if (m.canal >= 1) { sfx.sealDone(); toast('Canal coagulated', 'ok'); uiDirty(); } return true; },
+    done() { return S.lsh.bled && S.lsh.canal >= 1; }, progress() { return S.bleeders.length ? 'Bleeding at the stump' : S.lsh.canal >= 1 ? 'Dry, canal coagulated' : 'Canal ' + Math.round(S.lsh.canal * 100) + '%'; },
+    frac() { return (S.lsh.bled && !S.bleeders.length ? 0.5 : 0) + 0.5 * S.lsh.canal; }, focus(o) { return o.set(0, LS.YA, 0).applyMatrix4(VG.M); },
+    force() { const m = S.lsh; m.bled = true; m.canal = 1; S.bleeders.length = 0; }
+  },
+  Object.assign({}, TLH_FINAL, {
+    phase: 'Completion',
+    text: ['Drop the pneumoperitoneum to 8 mmHg and inspect the pedicles and the stump.', 'Control any ooze with short bipolar bursts.', 'Aspirate pooled blood, then hold a tip beside each ureter for a moment to confirm peristalsis.'],
+    pearl: 'Venous bleeding that 15 mmHg tamponades shows itself at 8. Some surgeons close the peritoneum over the stump. If a sacrocolpopexy follows, the stump is left open for the mesh.',
+    button: { label: 'Lower pressure to 8 mmHg', fn() { if (S.lowP) return; S.lowP = true; S.pressureGoal = 8; addBleeder(o => lsEdge(-110, o), 12, false, 'cervical stump'); S.oozeDone = true; toast('Pressure down: venous ooze at the edge of the stump', 'bleed'); uiDirty(); }, hide: () => S.lowP }
+  })
+];
+function lsDebrief(row) {
+  const s = S.stats, m = S.lsh, inj = Object.keys(S.injuries).length;
+  const uad = k => (s['uaDist' + k] != null ? s['uaDist' + k].toFixed(1) + ' cm' : 'n/a'), minU = Math.min(s.minUreter.R, s.minUreter.L);
+  return [
+    row('Organ or vessel injuries', inj, inj ? 'crit' : 'ok') + row('Near misses at the ureter', s.nearMiss, s.nearMiss ? 'warn' : 'ok') + row('Pedicles cut without a full seal', s.unsealedCuts, s.unsealedCuts ? 'warn' : 'ok') + row('Seal to ureter, right uterine pedicle', uad('R')) + row('Seal to ureter, left uterine pedicle', uad('L')) + row('Closest energy to a ureter', minU < 90 ? minU.toFixed(1) + ' cm' : 'n/a'),
+    row('Cervix', m.off ? 'Kept, with its cardinal and uterosacral ligaments' : 'n/a') + row('Canal coagulated', m.canal >= 1 ? 'Yes' : 'No', m.canal >= 1 ? 'ok' : 'warn') + row('Specimen removed', S.specimen === 'out' ? 'In a bag' : 'n/a') + row('Steps started without exposure set', s.expoMiss, s.expoMiss ? 'warn' : 'ok') + row('Left-hand traction used', s.traction + ' time' + (s.traction === 1 ? '' : 's'))
+  ];
+}
+const LSH = {
+  id: 'lsh', name: 'Laparoscopic supracervical hysterectomy', tag: ', bilateral salpingectomy', blurb: 'Cervix kept, ahead of a sacrocolpopexy. 19 steps.',
+  sub: 'With bilateral salpingectomy. Cervix and ovaries conserved.',
+  brief: ['48-year-old, three vaginal births, with a bulge at the introitus and a feeling of incomplete emptying. Stage III uterovaginal prolapse, apical and anterior. A pessary would not stay in. Regular periods, normal cervical screening, normal ultrasound. She has chosen a sacrocolpopexy, with a supracervical hysterectomy first: mesh fixed to a cervix that has been kept is less likely to be exposed later than mesh fixed to a fresh vaginal cuff.',
+    'She is in lithotomy and steep Trendelenburg with a uterine manipulator in place. 10 mm umbilical scope, two 5 mm lateral ports, pneumoperitoneum at 15 mmHg. You are looking toward the pelvis: her right is on the right of the screen. This case ends with the uterus out and the stump dry. The sacrocolpopexy is the next case.'],
+  steps: LSH_STEPS, insts: ['grasper', 'bipolar', 'hook', 'suction'], warp: [0, 0], tipZ: 4.6, ureters: true, eblWarn: 100, needleHint: '',
+  cervix: true, // the cervix stays: there is no cup, no colpotomy and no cuff
+  labels: [['Uterus', () => _w.set(0, 7.6, 0).applyMatrix4(UT.M), () => S.specimen !== 'out'], ['Cervical stump', () => _w.set(0, LS.YA, 0).applyMatrix4(VG.M), () => S.lsh.off]],
+  state(s) { lsState(s, false); }, show: lsShow, update: lsUpdate,
+  score: tlhScore, debrief: lsDebrief, sutures: () => ({ st: [], from: null, on: false }), force: tlhForce, want: tlhWant
+};
+
+// ---------- case: laparoscopic sacrocolpopexy ----------
+// Starts where the supracervical hysterectomy ends: the cervix is kept and a probe in the vagina moves the vault.
+// Adds the sacral promontory with the vessels that make it dangerous, a sigmoid that has to be moved off it, the
+// peritoneal incision from the promontory to the cul-de-sac, and a Y-shaped mesh from the vagina and cervix to the sacrum.
+const SC = {
+  T1: 0.27, // how far along the incision the window over the promontory reaches
+  SIG: [0, 0, 0, 0.45, 1, 1, 0.5], // how far each point of the sigmoid's course lies over the midline before it is moved
+  MARK: { P: [[-15, -2.1], [15, -2.1], [0, 0.9]], A: [[210, -1.7], [150, -1.7], [180, 0.9]] }, // sutures on each leaf: degrees round the vagina (0: posterior), cm above the fornix
+  SAC: [0.15, 0.215], END: 0.055, DISC: 8.05, MSX: 0.3, // where on the incision the sacral sutures go and the arm ends; the disc lies cephalad of DISC; the middle sacral vessels run at x = MSX
+  PER: [0.1, 0.36, 0.62, 0.88], SHUT: [0.24, 0.5, 0.76, 1], // the peritoneal closure: where each bite goes, and how far it closes the incision
+  xz: vecArr(41), armA: vecArr(44), armN: vecArr(44), armT: new Float32Array(44), rkey: ''
+};
+HAZ.civ = { th: 0.25, text: () => 'Major vascular injury: left common iliac vein' };
+PRESERVE.civ = PRESERVE.msv = 1;
+const _s1 = new V3(), _s2 = new V3(), _s3 = new V3(), _s4 = new V3();
+// how far the promontory, and the spine above it, stand out of the posterior wall
+const scH = (x, z) => 1.3 * Math.exp(-Math.pow((x - 0.3) / 2.6, 2)) * sstep(5.0, 8.6, z) * (1 - 0.2 * sstep(8.6, 10, z)) * (1 - sstep(12.5, 16.5, z));
+function scFloor(x, z, lift, out) { // a point on the posterior wall, promontory included, raised by lift
+  const cs = clamp(x / bowlR(z, 0)[0], -0.98, 0.98);
+  return bowlPoint(cs, -Math.sqrt(1 - cs * cs), z, scH(x, z) + 0.06 + (lift || 0), out);
+}
+// On the peritoneal incision: t along it from the promontory (0) to the cul-de-sac (1), a across it in cm (+: the patient's right).
+function scPath(t, a, lift, out) {
+  sampleArr(SC.xz, t, _s1); sampleArr(SC.xz, Math.min(1, t + 0.02), _s2).sub(sampleArr(SC.xz, Math.max(0, t - 0.02), _s3)).normalize();
+  return scFloor(_s1.x - _s2.z * a, _s1.z + _s2.x * a, lift, out);
+}
+function scOnPath(p) { // where a point lies against the incision: { t, a }
+  let bi = 0, bd = 1e9; for (let i = 0; i < 41; i++) { const q = SC.xz[i], d = (q.x - p.x) * (q.x - p.x) + (q.z - p.z) * (q.z - p.z); if (d < bd) { bd = d; bi = i; } }
+  const t = bi / 40; sampleArr(SC.xz, t, _s1); sampleArr(SC.xz, Math.min(1, t + 0.02), _s2).sub(sampleArr(SC.xz, Math.max(0, t - 0.02), _s3)).normalize();
+  return { t, a: -(p.x - _s1.x) * _s2.z + (p.z - _s1.z) * _s2.x };
+}
+// the outside of the cervix (y > 0) and of the vagina below it, in the vagina's own frame and in the world
+function scWallL(phiDeg, y, lift, out) { if (y >= 0) return utSurf(phiDeg, Math.min(y, LS.YA), lift, out); const ph = phiDeg * DEG, r = 1.86 + lift; return out.set(r * Math.sin(ph), y, r * Math.cos(ph) * 0.94); }
+const scWall = (phiDeg, y, lift, out) => scWallL(phiDeg, y, lift, out).applyMatrix4(VG.M);
+// A leaf of the mesh: a across it, v from its far end on the vaginal wall up the cervix and over the edge of the stump onto its cut face. c0: 0 the posterior leaf, 180 the anterior.
+function scLeaf(c0, a, v, out) {
+  const ph = c0 ? 180 - lerp(-48, 48, a) : lerp(-28, 28, a), k = clamp(v / 0.82, 0, 1); // the posterior leaf lies between the uterosacral ligaments
+  scWallL(ph, lerp(c0 ? -2.3 : -2.7, LS.YA - 0.1, k), 0.07, out);
+  if (v > 0.82) { const t = (v - 0.82) / 0.18, q = lerp(1, 0.12, sstep(0.25, 1, t)); out.set(out.x * q, lerp(LS.YA - 0.1, LS.YA - LS.CONE * (1 - q * q) + 0.07, sstep(0, 0.3, t)), out.z * q); }
+  return out.applyMatrix4(VG.M);
+}
+(function () {
+  spline([[0.95, 9.3], [1.0, 7.6], [1.35, 5.6], [1.75, 3.2], [1.8, 0.8], [1.6, -1.6], [1.4, -3.3], [1.3, -4.5]].map(q => V(q[0], 0, q[1])), SC.xz);
+  // the promontory and the lumbar spine above it, under peritoneum
+  SC.prom = reg(new THREE.Mesh(paramSurface(44, 52, (u, v, p, c) => {
+    const x = lerp(-5.6, 5.6, u), z = lerp(3.4, 18.5, v), e = sstep(0, 0.1, Math.min(u, 1 - u, v, 1 - v)), h = scH(x, z) / 1.3;
+    scFloor(x, z, lerp(-0.26, 0, e), p); c[0] = 1 + 0.05 * h; c[1] = 1 + 0.1 * h; c[2] = 1 + 0.1 * h;
+  }, { su: 2, sv: 3, flip: true }), MAT.perit), 'prom');
+  // the left common iliac vein, crossing above the promontory, and the middle sacral vessels in the midline
+  const tube = (pts, lift, r, col, ent, flat) => { // r(u): it tapers out of sight under the peritoneum at its ends
+    const A = spline(pts.map(q => scFloor(q[0], q[1], lift, new V3())), vecArr(33)), t = new Tube(33, 10, MAT.cord, 1, 4);
+    t.set(A, 0, 1, r, (u, c) => { c[0] = col[0]; c[1] = col[1]; c[2] = col[2]; }, flat); reg(t.mesh, ent); return { A, mesh: t.mesh };
+  };
+  const civ = tube([[-7.6, 8.6], [-6.2, 9.4], [-3.8, 10.3], [-1.4, 11.2], [0.9, 12.3], [2.2, 14], [2.9, 17.5]], 0.1, () => 0.34, COL.iliacV, 'civ', 1.7); SC.civA = civ.A;
+  const ms = [[SC.MSX - 0.02, 13.5], [SC.MSX - 0.1, 11.2], [SC.MSX - 0.06, 9], [SC.MSX - 0.12, 7], [SC.MSX - 0.05, 4.8], [SC.MSX - 0.2, 2.6]], fade = u => sstep(0, 0.12, u) * (1 - sstep(0.8, 1, u));
+  const pale = (c, k) => [lerp(c[0], COL.lig[0], k), lerp(c[1], COL.lig[1], k), lerp(c[2], COL.lig[2], k)]; // seen through peritoneum
+  SC.fixed = [SC.prom, civ.mesh, tube(ms, 0.035, u => 0.055 * fade(u), pale(COL.art, 0.25), 'msv').mesh, tube(ms.map(q => [q[0] + 0.16, q[1]]), 0.035, u => 0.07 * fade(u), pale(COL.vein, 0.3), 'msv').mesh];
+  // the opened retroperitoneum, the bared posterior vaginal wall, and the mesh
+  const weave = (function () {
+    const cv = mkCanvas(64), g = cv.getContext('2d'); g.fillStyle = '#f3f5f9'; g.fillRect(0, 0, 64, 64); g.fillStyle = '#a3abbb';
+    for (let y = 0; y < 8; y++) for (let x = 0; x < 9; x++) { g.beginPath(); g.arc(x * 8 + (y % 2 ? 4 : 0), y * 8 + 4, 2.2, 0, TAU); g.fill(); }
+    const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = ANISO; return t;
+  })();
+  MAT.mesh = new THREE.MeshStandardMaterial({ map: weave, roughness: 0.85, side: THREE.DoubleSide });
+  const strip = (ns, nt, mat, ent, us, ut) => { const s = new Strip(ns, nt, mat, us, ut); reg(s.mesh, ent, null, { strip: s }); s.mesh.visible = false; return s; };
+  SC.rib = strip(48, 7, MAT.fat, 'retro', 6, 1); SC.lig = strip(14, 5, MAT.cord, 'retro', 1, 2); SC.rvs = strip(9, 8, MAT.cord, 'rvs', 1, 1);
+  SC.leafP = strip(9, 14, MAT.mesh, 'mesh', 2.5, 7); SC.leafA = strip(9, 14, MAT.mesh, 'mesh', 4, 7); SC.arm = strip(44, 5, MAT.mesh, 'mesh', 20, 2);
+  SC.moving = [SC.rib, SC.lig, SC.rvs, SC.leafP, SC.leafA, SC.arm].map(s => s.mesh);
+  for (const m of SC.fixed.concat(SC.moving)) { m.visible = false; scene.add(m); }
+})();
+function scShow(on) {
+  for (const m of SC.fixed) m.visible = on;
+  if (!on) { for (const m of SC.moving) m.visible = false; if (SC.rkey) { SC.rkey = ''; setRectum(); } }
+}
+// The sigmoid starts over the promontory and is swept to the patient's left; the rectum falls back as it is taken off the vagina.
+function scRect() {
+  const m = S.scp, key = m.sigP.toFixed(3) + '/' + m.rvP.toFixed(3); if (SC.rkey === key) return; SC.rkey = key;
+  const k = 1 - m.sigP;
+  setRectum((i, p) => {
+    const b = SC.SIG[i]; if (b && k > 0) { p.x += 6 * b * k; p.y = lerp(p.y, scFloor(p.x, p.z, 1.15, _s4).y, Math.min(1, b) * k); }
+    if (i < 2) { p.y -= 0.6 * m.rvP; p.z -= 0.3 * m.rvP; }
+  });
+}
+function scUpdate(dt) {
+  const m = S.scp;
+  m.sigP = damp(m.sigP, m.sig, 3, dt); m.rvP = damp(m.rvP, m.rv, 4, dt); m.cut = damp(m.cut, m.cutGoal, 9, dt); m.shut = damp(m.shut, m.shutGoal, 5, dt); m.clearP = damp(m.clearP, m.clear, 4, dt);
+  scRect();
+  // the incision: a window over the promontory, a narrower bed down the gutter. Fat until it is cleared off the ligament.
+  const a0 = m.shut, a1 = m.cut;
+  SC.rib.mesh.visible = a1 - a0 > 0.004;
+  if (SC.rib.mesh.visible) SC.rib.update((sx, v, o, c) => {
+    const t = lerp(a0, a1, sx), a = v * 2 - 1, w = (0.95 + 0.3 * (1 - sstep(0.12, SC.T1 + 0.05, t))) * sstep(0, 0.05, a1 - t + 0.004) * sstep(0, 0.04, t - a0 + 0.004);
+    scPath(t, a * w, 0.04, o); edgeCol(c, 1, Math.abs(a)); c[1] *= 0.9; c[2] *= 1.25; // loose fat and areolar tissue, redder at the cut edges
+  });
+  // the anterior longitudinal ligament, white, where the fat has been swept off the bone
+  SC.lig.mesh.visible = m.clearP > 0.03 && a0 < SC.T1 - 0.05;
+  if (SC.lig.mesh.visible) SC.lig.update((sx, v, o, c) => {
+    const t = lerp(Math.max(0.015, a0), SC.T1 - 0.035, sx), a = 1 - v * 2, w = 0.68 * m.clearP * Math.sin(Math.PI * clamp(sx, 0.04, 0.96));
+    scPath(t, a * w, 0.07, o); const k = 1 - 0.25 * sstep(0.5, 1, Math.abs(a)); c[0] = 1.02 * k; c[1] = 0.99 * k; c[2] = 0.95 * k;
+  });
+  SC.rvs.mesh.visible = m.rvP > 0.02;
+  if (SC.rvs.mesh.visible) SC.rvs.update((sx, v, o, c) => { scWall(lerp(-34, 34, sx), lerp(-0.3 - 2.6 * m.rvP, -0.3, v), 0.035, o); edgeCol(c, 1, Math.max(Math.abs(2 * sx - 1), 1 - 2.2 * v)); c[1] *= 0.92; c[2] *= 0.88; });
+  // the mesh: its posterior leaf from the step that brings it in, the anterior leaf from the next, and its arm, kept
+  // rolled up out of the way until both leaves are fixed, from the one after that
+  const inP = S.step >= SC.iP, inA = S.step > SC.iP, arm = S.step > SC.iP + 1;
+  SC.leafP.mesh.visible = inP; SC.leafA.mesh.visible = inA; SC.arm.mesh.visible = arm;
+  if (inP) SC.leafP.update((sx, v, o) => scLeaf(0, sx, v, o));
+  if (inA) SC.leafA.update((sx, v, o) => scLeaf(180, sx, v, o));
+  if (arm) { // the arm: off the top of the stump, down behind the cervix, and along the gutter to the promontory. Under the peritoneum once that is closed.
+    const C = [_s2.set(0, LS.YA - LS.CONE + 0.14, 0).applyMatrix4(VG.M).clone(), _s2.set(0, LS.YA + 0.12, 1.0).applyMatrix4(VG.M).clone(), scWall(0, LS.YA - 0.5, 0.17, new V3()), scWall(0, 0.9, 0.22, new V3()), scWall(0, -0.7, 0.3, new V3())];
+    for (const t of [1, 0.93, 0.86, 0.72, 0.58, 0.44, 0.34, 0.27, 0.21, 0.16, 0.11, SC.END]) C.push(scPath(t, 0, t < m.shut ? -0.3 : t < 0.3 ? 0.16 : 0.12, new V3()));
+    spline(C, SC.armA);
+    const n = SC.armA.length, X = _s3.setFromMatrixColumn(VG.M, 0);
+    for (let i = 0; i < n; i++) {
+      const tn = _s1.subVectors(SC.armA[Math.min(n - 1, i + 1)], SC.armA[Math.max(0, i - 1)]).normalize(), N = SC.armN[i];
+      N.set(-tn.z, 0, tn.x); if (N.lengthSq() < 0.05) N.copy(i ? SC.armN[i - 1] : X); N.normalize(); if (N.x < 0) N.negate();
+    }
+    SC.arm.update((sx, v, o) => { const i = Math.min(n - 1, Math.round(sx * (n - 1))); o.copy(SC.armA[i]).addScaledVector(SC.armN[i], (v - 0.5) * 1.3); });
+  }
+}
+// ---------- hazards ----------
+function scMsv(p) { // the middle sacral vessels, opened by a needle or by energy
+  const m = S.scp; if (m.msv) return; m.msv = true; const q = p.clone();
+  addBleeder(o => o.copy(q), 45, false, 'middle sacral vessels'); logEvent('bleed', 'Middle sacral vessels opened: presacral bleeding. Hold bipolar on the bleeding point.'); sfx.warn();
+}
+function scBig(p) { const q = p.clone(); addBleeder(o => o.copy(q), 420, true, 'iliac', { auto: 7, autoMsg: 'Pressure held on the vessel. In theatre: call for help, vascular surgery, prepare to convert.' }); }
+function scHeat(h, dt, e) { // energy on what this operation works among
+  const m = S.scp;
+  if (e === 'civ') { heatUp(h, 'civ', '', dt); if (S.injuries.civ && !m.civ) { m.civ = true; scBig(h.pick.point); } return true; }
+  if (e === 'msv') { m.msvT += dt; if (m.msvT > 0.25) scMsv(h.pick.point); return true; }
+  if (e === 'mesh') { hint('meshE', 'Keep energy off the mesh'); return true; }
+  return e === 'retro' || e === 'rvs' || e === 'stump' || e === 'prom';
+}
+function scStab(h) { // a needle through something it must not go through. true: that is what this bite did
+  const P = h.pick, e = P.ent, k = P.side;
+  if (e === 'msv') { scMsv(P.point); return true; }
+  const text = { bladder: 'Suture placed through the bladder wall', rectum: 'Suture placed through the bowel wall', ureter: sideName(k, true) + ' ureter caught in a suture', civ: 'Major vascular injury: needle into the left common iliac vein', iliac: 'Major vascular injury: needle into the ' + sideName(k) + ' external iliac vessels' }[e];
+  if (!text) return false;
+  const key = e + (e === 'ureter' || e === 'iliac' ? k : '');
+  if (!S.injuries[key]) { S.injuries[key] = { t: S.t, type: e, side: k, u: P.u }; logEvent('injury', text); sfx.alarm(); if (e === 'civ' || e === 'iliac') scBig(P.point); }
+  return true;
+}
+// ---------- steps ----------
+const exVault = { label: 'Vault pushed cephalad', ok: () => S.pose.push > 0.7 };
+const exFwd = { label: 'Vault tipped forward', ok: () => S.pose.pitch > 0.5 };
+const exBack = { label: 'Vault tipped back', ok: () => S.pose.pitch < 0.05 };
+const exTen = { label: 'Vault at its natural level: supported, not stretched', ok: () => S.pose.push > 0.35 && S.pose.push < 0.8 };
+// A stretch of the peritoneal incision cut with the hook, to the path values in o.at. o.sweeps: places then cleared of fat.
+function scIncise(o) {
+  const SW = o.sweeps || [], cutN = () => o.at.filter(t => S.scp.cutGoal >= t - 1e-3).length;
+  const cp = (i, out) => scPath(lerp(i ? o.at[i - 1] : o.from, o.at[i], 0.6), 0, 0.05, out);
+  return Object.assign({
+    kind: 'incise', tool: 'hook', acc: 0, cnt: 0,
+    next() {
+      const i = cutN(); if (i < o.at.length) return { p: cp(i, new V3()), act: 'trace', label: i === 0 && !o.from ? 'Start here: hold to cut' : 'Trace' };
+      return this.cnt >= SW.length ? null : { p: scPath(SW[this.cnt], 0, 0.06, new V3()), act: 'push', label: 'Clear the fat off the ligament', prog: this.acc / 0.4 };
+    },
+    path() { const a = []; for (let i = cutN(); i < o.at.length; i++) a.push(cp(i, new V3())); return a; },
+    targets() { const i = cutN(); return i < o.at.length ? [cp(i, new V3())] : this.cnt < SW.length ? [scPath(SW[this.cnt], 0, 0.06, new V3())] : []; },
+    sweep(h, dt, T) {
+      if (cutN() < o.at.length || this.cnt >= SW.length || !nearTarget(h, scPath(SW[this.cnt], 0, 0.06, _w2), 0.9)) return false;
+      this.acc += dt; if (this.acc > T) { this.acc = 0; this.cnt++; S.scp.clear = this.cnt / SW.length; S.ebl += 0.5; sfx.click(); uiDirty(); if (this.cnt >= SW.length) toast('The anterior longitudinal ligament is bare', 'ok'); }
+      return true;
+    },
+    hook(h, dt) {
+      const i = cutN();
+      if (i < o.at.length && nearTarget(h, cp(i, _w2), 0.8)) { this.acc += dt; if (this.acc > 0.11) { this.acc = 0; S.scp.cutGoal = o.at[i]; S.ebl += 0.5; sfx.click(); uiDirty(); } return true; }
+      if (this.sweep(h, dt, 0.4)) return true;
+      if (h.pick.hit && (h.pick.ent === 'prom' || h.pick.ent === 'retro')) { if (S.guided && i < o.at.length) hint('line', 'Follow the marked line'); return true; }
+      return false;
+    },
+    blunt(h, dt) { if (this.sweep(h, dt, 0.6)) S.stats.blunt += dt; },
+    done() { return cutN() >= o.at.length && this.cnt >= SW.length && S.scp.cutGoal - S.scp.cut < 0.01; },
+    progress() { const i = cutN(); return i < o.at.length ? 'Incision ' + i + ' / ' + o.at.length : SW.length ? 'Ligament cleared ' + this.cnt + ' / ' + SW.length : 'Open'; },
+    frac() { return (cutN() + this.cnt) / (o.at.length + SW.length); },
+    focus(out) { return scPath(lerp(o.from, o.at[o.at.length - 1], 0.5), 0, 0, out); },
+    force() { S.scp.cutGoal = o.at[o.at.length - 1]; this.cnt = SW.length; if (SW.length) S.scp.clear = 1; }
+  }, o);
+}
+// Fix a leaf of the mesh to the vagina and cervix: one bite at each of its marks, in any order.
+function scFix(o) {
+  const L = o.leaf, marks = SC.MARK[L], have = i => S.scp.fix.some(f => f.leaf === L && f.i === i), left = () => marks.findIndex((q, i) => !have(i));
+  const pt = (i, out) => scWall(marks[i][0], marks[i][1], 0.09, out);
+  return Object.assign({
+    kind: 'fix', tool: 'needle', phase: 'Mesh', dist: 7.5,
+    // a corner on the patient's left is square to the left hand's needle and edge-on to the right's, and the other way about
+    next() { const i = left(); if (i < 0) return null; const sx = Math.sin(marks[i][0] * DEG); return { p: pt(i, new V3()), act: 'bite', hand: sx < -0.2 ? 'L' : sx > 0.2 ? 'R' : null, label: i < 2 ? 'Suture the far corner of the leaf' : 'Suture the leaf to the cervix' }; },
+    targets() { const a = []; marks.forEach((q, i) => { if (!have(i)) a.push(pt(i, new V3())); }); return a; },
+    click(h) {
+      if (h.inst !== 'needle') return false;
+      const P = h.pick; if (left() < 0) return true;
+      if (!P.hit || !h.near) { hint('fixmiss', 'Place the bite through the mesh into the vaginal wall'); return true; }
+      if (scStab(h)) return true;
+      if (P.ent !== 'mesh') { hint('fixmesh', 'Take the mesh in the bite: place it on the leaf'); return true; }
+      let best = -1, bd = 0.8; for (let i = 0; i < marks.length; i++) if (!have(i)) { const d = pt(i, _w2).distanceTo(P.point); if (d < bd) { bd = d; best = i; } }
+      if (best < 0) { hint('fixspot', 'Spread the sutures: one at each far corner of this leaf and one on the cervix'); return true; }
+      S.scp.fix.push({ leaf: L, i: best }); S.ebl += 0.3; h.roll = 1; sfx.bite();
+      if (left() < 0) toast(L === 'P' ? 'Posterior leaf fixed' : 'Anterior leaf fixed', 'ok');
+      uiDirty(); return true;
+    },
+    done() { return left() < 0; }, progress() { return S.scp.fix.filter(f => f.leaf === L).length + ' of ' + marks.length + ' sutures'; }, frac() { return S.scp.fix.filter(f => f.leaf === L).length / marks.length; },
+    force() { marks.forEach((q, i) => { if (!have(i)) S.scp.fix.push({ leaf: L, i }); }); }
+  }, o);
+}
+const scNeedleOff = h => { if (h.inst !== 'needle') return true; const P = h.pick; if (!P.hit || !h.near) { hint('bitemiss', 'Bring the needle onto the tissue first'); return true; } return scStab(h); }; // nothing for the step to judge: not a needle, not on tissue, or through something it must not go through
+const SCP_STEPS = [
+  {
+    id: 'sig', kind: 'retract', tool: 'suction', phase: 'Promontory', short: 'Move the sigmoid', title: 'Sweep the sigmoid off the promontory', dist: 13, acc: 0, cnt: 0, rec: { yaw: 0, pitch: PITCH0, push: 0.3 }, expo: [],
+    text: ['The sigmoid lies over the promontory.', 'With the blunt suction tip, sweep it to the patient\'s left until the promontory and the right pararectal gutter are in view.', 'The assistant then holds it there by an appendix epiploica.'],
+    pearl: 'Steep Trendelenburg and a tilt to the left do much of this for you. Many surgeons hitch the sigmoid to the left abdominal wall with a stitch through an epiploic appendix, which frees the assistant\'s hand. Handle bowel by its fat, never by its wall.',
+    pt(out) { sampleArr(AN.rectumArr, 0.74, out); out.x += 1.15; out.y += 0.55; return out; },
+    next() { return this.cnt >= 3 ? null : { p: this.pt(new V3()), act: 'push', label: 'Push the sigmoid to the patient\'s left', prog: this.acc / 0.6 }; },
+    targets() { return this.cnt >= 3 ? [] : [this.pt(new V3())]; },
+    blunt(h, dt) {
+      if (this.cnt >= 3 || !nearTarget(h, this.pt(_w2), 1.0)) return;
+      this.acc += dt; S.stats.blunt += dt; if (this.acc < 0.6) return;
+      this.acc = 0; this.cnt++; S.scp.sig = this.cnt / 3; sfx.click(); uiDirty(); if (this.cnt >= 3) toast('The assistant holds the sigmoid to the left', 'ok');
+    },
+    done() { return this.cnt >= 3 && S.scp.sigP > 0.95; }, progress() { return 'Swept ' + this.cnt + ' / 3'; }, frac() { return this.cnt / 3; }, focus(o) { return scFloor(0.2, 8, 1, o); },
+    force() { this.cnt = 3; S.scp.sig = 1; }
+  },
+  {
+    id: 'look', kind: 'survey', tool: 'any', phase: 'Promontory', short: 'Identify the landmarks', title: 'Identify the promontory and what lies around it', dist: 11.5, rec: null, expo: [],
+    text: ['Before any incision, find the landmarks.', 'Hold an instrument tip beside each for a moment: the sacral promontory, the right ureter where it crosses the pelvic brim, and the left common iliac vein.', 'The safe ground lies between them: over the promontory, just to the right of the midline.'],
+    pearl: 'The left common iliac vein crosses just above the promontory and can lie within 2 to 3 cm of it. It is flat and easy to miss under the peritoneum. The middle sacral vessels run down the front of the sacrum in the midline. The right ureter and the right common iliac vessels are the lateral limit.',
+    tm: { P: 0, U: 0, V: 0 }, name: { P: 'sacral promontory', U: 'right ureter', V: 'left common iliac vein' }, said: { P: 'Sacral promontory', U: 'Right ureter, crossing the brim', V: 'Left common iliac vein, above the promontory' },
+    pt(k, out) { return k === 'P' ? scFloor(0.4, 8.5, 0.1, out) : k === 'U' ? sampleArr(URETER.R.arr, 0.1, out) : sampleArr(SC.civA, 0.55, out); },
+    click(h) { if (h.inst !== 'bipolar' && h.inst !== 'hook') return false; hint('lookE', 'No energy yet. Hold the tip beside each landmark to mark it.'); return true; },
+    tick(dt) {
+      const seen = S.scp.seen;
+      for (const k of ['P', 'U', 'V']) {
+        if (seen[k]) continue;
+        const p = this.pt(k, _w), near = HANDS.some(h => h.ptr.on && h.exch <= 0 && !h.firing && h.tip.distanceTo(p) < 1.3);
+        this.tm[k] = near ? this.tm[k] + dt : Math.max(0, this.tm[k] - 2 * dt);
+        if (this.tm[k] >= 1) { seen[k] = true; sfx.ok(); toast(this.said[k], 'ok'); uiDirty(); }
+      }
+    },
+    reset() { this.tm.P = this.tm.U = this.tm.V = 0; },
+    next() { for (const k of ['P', 'U', 'V']) if (!S.scp.seen[k]) return { p: this.pt(k, new V3()), act: 'hover', label: 'Hold near the ' + this.name[k], prog: this.tm[k] }; return null; },
+    done() { const s = S.scp.seen; return s.P && s.U && s.V; }, progress() { const s = S.scp.seen; return (s.P ? 1 : 0) + (s.U ? 1 : 0) + (s.V ? 1 : 0) + ' of 3 identified'; },
+    frac() { const s = S.scp.seen; return ((s.P ? 1 : 0) + (s.U ? 1 : 0) + (s.V ? 1 : 0)) / 3; }, focus(o) { return scFloor(0.6, 9.4, 0, o); },
+    force() { const s = S.scp.seen; s.P = s.U = s.V = true; }
+  },
+  scIncise({
+    id: 'prom', from: 0, at: [0.07, 0.14, 0.21, SC.T1], sweeps: [0.1, 0.2], alt: 'suction', phase: 'Promontory', short: 'Open the promontory', title: 'Open the peritoneum over the promontory', dist: 8.5, rec: null, expo: [],
+    text: ['With the hook, open the peritoneum over the promontory, just to the right of the midline. Lift it off the bone before you cut it.', 'Carry the incision a few centimetres down the front of the sacrum.', 'Then clear the fat until the white anterior longitudinal ligament is bare: sweep with the hook or the suction tip.'],
+    pearl: 'You need to see the ligament itself: a suture in fat holds nothing. Keep the dissection shallow and to the right of the midline. Presacral veins bleed from the bone and retract into it, so the best control is not to cut them.'
+  }),
+  scIncise({
+    id: 'gutter', from: SC.T1, at: [0.37, 0.47, 0.57, 0.67, 0.77, 0.88, 1], phase: 'Dissection', short: 'Incise down the gutter', title: 'Carry the peritoneal incision down to the cul-de-sac', dist: 12, rec: { yaw: 0, pitch: 0.5, push: 0.5 }, expo: [],
+    text: ['Continue the incision caudally along the right pararectal gutter to the cul-de-sac.', 'Stay medial to the right ureter and the uterosacral ligament, and lateral to the rectum.', 'This makes the bed the mesh will lie in, and the edges that will cover it.'],
+    pearl: 'The right ureter is the lateral hazard all the way down, the mesorectum the medial one. Some surgeons tunnel under the peritoneum instead of opening it. Either way no mesh may be left uncovered at the end.'
+  }),
+  {
+    id: 'post', kind: 'flap', tool: 'hook', alt: 'suction', phase: 'Dissection', short: 'Posterior dissection', title: 'Open the rectovaginal space', dist: 8, acc: 0, cnt: 0,
+    rec: { yaw: 0, pitch: 0.85, push: 1 }, expo: [exVault, exFwd],
+    text: ['Have the vault pushed cephalad and tipped forward on the probe, so that the posterior vaginal wall stands up.', 'Open the peritoneum of the cul-de-sac on the vaginal side and push the rectum off the posterior vaginal wall: midline first, then each side.', 'Stay on the vagina, which is firm and pale over the probe. Use short hook bursts on the vaginal side or blunt pushes with the suction tip.'],
+    pearl: 'The plane is avascular and opens easily when you are in it. Fat means you are on the rectum. How far down to go depends on the posterior defect: far enough for a few centimetres of mesh, further for a rectocele.',
+    at: [[0, -0.7], [-24, -1.5], [24, -1.5], [0, -2.3]],
+    pt(out) { const q = this.at[this.cnt]; return scWall(q[0], q[1], 0.06, out); },
+    targets() { return this.cnt >= 4 ? [] : [this.pt(new V3())]; },
+    next() { return this.cnt >= 4 ? null : { p: this.pt(new V3()), act: 'push', label: this.cnt ? 'Push the rectum off the vaginal wall' : 'Open the peritoneum on the vaginal wall', prog: this.acc / 0.4 }; },
+    sweep(h, dt, T) {
+      if (this.cnt >= 4) return true;
+      if (h.pick.ent === 'rectum') return false;
+      if (nearTarget(h, this.pt(_w2), 0.9)) { this.acc += dt; if (this.acc > T) { this.acc = 0; this.cnt++; S.scp.rv = this.cnt / 4; S.ebl += 0.6; sfx.click(); uiDirty(); } return true; }
+      return false;
+    },
+    hook(h, dt) { return this.sweep(h, dt, 0.4); }, blunt(h, dt) { if (this.sweep(h, dt, 0.6)) S.stats.blunt += dt; },
+    done() { return this.cnt >= 4 && S.scp.rvP > 0.93; }, progress() { return 'Rectum mobilized ' + Math.round(S.scp.rvP * 100) + '%'; }, frac() { return this.cnt / 4; },
+    focus(o) { return scWall(0, -1.2, 0, o); },
+    force() { this.cnt = 4; S.scp.rv = 1; }
+  },
+  flapStep({
+    id: 'ant', from: 0.5, N: 3, full: 1, phase: 'Dissection', short: 'Anterior dissection', title: 'Dissect the bladder off the anterior vaginal wall', rec: { yaw: 0, pitch: -0.2, push: 1 }, expo: [exVault, exBack],
+    text: ['Have the vault pushed cephalad and tipped back on the probe.', 'Carry the bladder flap from the hysterectomy further down the anterior vaginal wall: midline first, then each side.', 'Stop a few centimetres down the wall, short of the bladder neck.'],
+    pearl: 'The probe shows you the vaginal wall. The bladder is the thicker, fatty, mobile layer. Filling the bladder a little helps if the plane is unclear. Thin vaginal wall under mesh is where exposures happen, so leave the fascia on the vagina.'
+  }),
+  scFix({
+    id: 'meshP', leaf: 'P', short: 'Fix the posterior leaf', title: 'Fix the posterior leaf of the mesh', rec: { yaw: 0, pitch: 0.85, push: 1 }, expo: [exVault, exFwd],
+    text: ['The Y-shaped polypropylene mesh is in, its long arm still rolled up. The posterior leaf lies on the posterior vaginal wall and the back of the cervix.', 'Take the needle driver. Fix the leaf with a suture at each far corner, then one on the cervix.', 'Each bite takes the mesh and the vaginal fascia, not the full thickness of the wall.'],
+    pearl: 'A bite that enters the vaginal lumen invites suture and mesh exposure: use the probe to judge depth. Lay the mesh flat, since folds are where it erodes. In theatre each leaf takes six or more sutures. Three stand for them here.',
+    focus(o) { return scWall(0, -0.8, 0, o); }
+  }),
+  scFix({
+    id: 'meshA', leaf: 'A', short: 'Fix the anterior leaf', title: 'Fix the anterior leaf of the mesh', rec: { yaw: 0, pitch: -0.2, push: 1 }, expo: [exVault, exBack],
+    text: ['Tip the vault back. The anterior leaf lies on the anterior vaginal wall and the front of the cervix.', 'Fix it the same way: each far corner, then the cervix.', 'The bladder lies just beyond the lower edge of the leaf.'],
+    pearl: 'The cervix is the strongest tissue you have here: take a good bite of it. Keep the lowest sutures clear of the bladder, and look at both ureteric orifices at cystoscopy afterwards.',
+    focus(o) { return scWall(180, -0.5, 0, o); }
+  }),
+  {
+    id: 'sacral', kind: 'fix', tool: 'needle', phase: 'Mesh', short: 'Fix the mesh to the promontory', title: 'Set the tension and fix the mesh to the promontory', dist: 8.5, rec: { yaw: 0, pitch: PITCH0, push: 0.55 }, expo: [exTen],
+    text: ['The arm of the mesh is unrolled along the gutter to the promontory. Have the probe hold the vault at its natural level: supported, not stretched, with the arm lying free of tension.', 'Suture the arm to the anterior longitudinal ligament over the body of S1, just below the promontory, with two bites in the area you cleared.', 'Stay to the right of the midline vessels and below the disc.'],
+    pearl: 'Too tight and she has pain, urgency or new stress incontinence. Too loose and the apex is not supported. Take the ligament, not the disc: a deep bite at L5 to S1 risks discitis. Permanent suture and tacks are both in use.',
+    next() { const n = S.scp.sac.length; return n >= 2 ? null : { p: scPath(SC.SAC[n], 0, 0.15, new V3()), act: 'bite', label: n ? 'Second suture, a little lower' : 'Suture the mesh to the ligament over S1' }; },
+    targets() { const n = S.scp.sac.length; return n >= 2 ? [] : [scPath(SC.SAC[n], 0, 0.15, new V3())]; },
+    click(h) {
+      const m = S.scp, P = h.pick; if (h.inst !== 'needle') return false; if (m.sac.length >= 2 || scNeedleOff(h)) return true;
+      const q = scOnPath(P.point);
+      if (P.ent !== 'mesh' || q.t > SC.T1 || Math.abs(q.a) > 1.15) { hint('sacspot', 'Place the bite through the mesh into the ligament you bared over the promontory'); return true; }
+      if (m.sac.length && Math.hypot(P.point.x - m.sac[0].x, P.point.z - m.sac[0].z) < 0.4) { hint('sacclose', 'Too close to the first suture: place the second a little away from it'); return true; }
+      if (Math.abs(P.point.x - SC.MSX) < 0.4) scMsv(P.point);
+      if (P.point.z > SC.DISC) logEvent('tech', 'Bite taken at the L5 to S1 disc: risk of discitis. Take the ligament over the body of S1, just below the promontory.');
+      m.sac.push({ x: P.point.x, z: P.point.z }); h.roll = 1; sfx.bite(); S.ebl += 0.5;
+      if (m.sac.length === 1) { m.tension = S.pose.push; if (m.tension >= 0.8) logEvent('tech', 'Mesh fixed with the vault pushed hard up: it is under tension'); else if (m.tension <= 0.35) logEvent('tech', 'Mesh fixed with the vault low: the apex is not supported'); }
+      if (m.sac.length >= 2) { S.manipOut = true; toast('Mesh fixed to the promontory. The probe comes out.', 'ok'); }
+      uiDirty(); return true;
+    },
+    done() { return S.scp.sac.length >= 2; }, progress() { return S.scp.sac.length + ' of 2 sutures'; }, frac() { return S.scp.sac.length / 2; }, focus(o) { return scPath(0.17, 0, 0, o); },
+    force() { const m = S.scp; while (m.sac.length < 2) { const p = scPath(SC.SAC[m.sac.length], 0, 0, _w); m.sac.push({ x: p.x, z: p.z }); } if (m.tension == null) m.tension = 0.55; S.manipOut = true; }
+  },
+  {
+    id: 'perit', kind: 'close', tool: 'needle', phase: 'Completion', short: 'Close the peritoneum', title: 'Close the peritoneum over the mesh', dist: 12, rec: null, expo: [],
+    text: ['Run a suture down the peritoneal incision from the promontory to the cul-de-sac, taking both edges in each bite.', 'Four bites stand for the running closure here.', 'Take peritoneum only: the right ureter runs lateral to the edge all the way down.'],
+    pearl: 'Bowel that meets bare mesh can adhere to it, or slip beneath it and obstruct. Cover all of it.',
+    next() { const n = S.scp.per; return n >= 4 ? null : { p: scPath(SC.PER[n], 0, 0.14, new V3()), act: 'bite', label: n ? 'Next bite, toward the pelvis' : 'Start the closure at the promontory' }; },
+    targets() { const n = S.scp.per; return n >= 4 ? [] : [scPath(SC.PER[n], 0, 0.14, new V3())]; },
+    click(h) {
+      const m = S.scp; if (h.inst !== 'needle') return false; if (m.per >= 4 || scNeedleOff(h)) return true;
+      if (scPath(SC.PER[m.per], 0, 0.14, _w2).distanceTo(h.pick.point) > 0.9) { hint('perspot', m.per ? 'Carry on from the last bite: take both edges at the next mark' : 'Start the closure at the promontory'); return true; }
+      m.per++; m.shutGoal = SC.SHUT[m.per - 1]; h.roll = 1; sfx.bite(); S.ebl += 0.3;
+      if (m.per >= 4) toast('Peritoneum closed over the mesh', 'ok');
+      uiDirty(); return true;
+    },
+    done() { return S.scp.per >= 4 && S.scp.shut > 0.97; }, progress() { return S.scp.per + ' of 4 bites'; }, frac() { return S.scp.per / 4; }, focus(o) { return scPath(0.45, 0, 0, o); },
+    force() { const m = S.scp; m.per = 4; m.shutGoal = 1; }
+  },
+  Object.assign({}, TLH_FINAL, {
+    phase: 'Completion', dist: 14,
+    text: ['Drop the pneumoperitoneum to 8 mmHg and inspect the promontory, the gutter and the vagina.', 'Control any ooze with short bipolar bursts.', 'Aspirate pooled blood, then hold a tip beside each ureter for a moment to confirm peristalsis.'],
+    pearl: 'Cystoscopy follows: look for both ureteric jets and for suture or mesh in the bladder. Examine vaginally for a suture through the wall. Record the mesh, the sutures and the level of fixation.',
+    button: { label: 'Lower pressure to 8 mmHg', fn() { if (S.lowP) return; S.lowP = true; S.pressureGoal = 8; addBleeder(o => scPath(0.8, 0.5, 0.05, o), 12, false, 'peritoneal edge'); S.oozeDone = true; toast('Pressure down: venous ooze from the peritoneal edge in the gutter', 'bleed'); uiDirty(); }, hide: () => S.lowP },
+    focus(o) { return o.set(0.5, -4.5, 1); }
+  })
+];
+SC.iP = SCP_STEPS.findIndex(s => s.id === 'meshP');
+// ---------- scoring, debrief, sutures ----------
+function scScore() {
+  const s = S.stats, m = S.scp, inj = Object.keys(S.injuries).length;
+  let pts = 100; const notes = [];
+  if (inj) { pts -= 25 * inj; notes.push(inj + ' organ or vessel injur' + (inj > 1 ? 'ies' : 'y')); }
+  if (m.msv) { pts -= 8; notes.push('Middle sacral vessels opened'); }
+  if (s.nearMiss) { pts -= Math.min(15, 5 * s.nearMiss); notes.push(s.nearMiss + ' near miss' + (s.nearMiss > 1 ? 'es' : '') + ' at the ureter'); }
+  const tight = m.tension != null && m.tension >= 0.8, slack = m.tension != null && m.tension <= 0.35;
+  if (tight || slack) { pts -= 8; notes.push(tight ? 'Mesh fixed under tension' : 'Mesh fixed slack: apex not supported'); }
+  if (s.expoMiss) { pts -= Math.min(12, 2 * s.expoMiss); notes.push(s.expoMiss + ' step' + (s.expoMiss > 1 ? 's' : '') + ' started without the recommended exposure'); }
+  if (S.ebl > SCP.eblWarn) { pts -= Math.min(20, Math.round((S.ebl - SCP.eblWarn) / 20)); notes.push('Blood loss above ' + SCP.eblWarn + ' mL'); }
+  const tech = S.events.filter(e => e.type === 'tech').length - (tight || slack ? 1 : 0);
+  if (tech > 0) { pts -= Math.min(10, 3 * tech); notes.push(tech + ' point' + (tech > 1 ? 's' : '') + ' of technique in the event log'); }
+  if (s.nonTarget > 3) { pts -= Math.min(6, Math.round(s.nonTarget)); notes.push('Energy applied off target for ' + s.nonTarget.toFixed(1) + ' s'); }
+  pts = Math.max(0, Math.round(pts));
+  return { pts, grade: pts >= 90 ? 'Proficient' : pts >= 75 ? 'Competent' : pts >= 60 ? 'Developing' : 'Needs review', notes };
+}
+function scDebrief(row) {
+  const s = S.stats, m = S.scp, inj = Object.keys(S.injuries).length, n = L => m.fix.filter(f => f.leaf === L).length;
+  const ten = m.tension == null ? 'n/a' : m.tension >= 0.8 ? 'Tight' : m.tension <= 0.35 ? 'Slack' : 'Without tension', disc = m.sac.filter(b => b.z > SC.DISC).length;
+  return [
+    row('Organ or vessel injuries', inj, inj ? 'crit' : 'ok') + row('Middle sacral vessels', m.msv ? 'Opened' : 'Intact', m.msv ? 'warn' : 'ok') + row('Near misses at the ureter', s.nearMiss, s.nearMiss ? 'warn' : 'ok') + row('Sacral bites at the disc', disc, disc ? 'warn' : 'ok'),
+    row('Mesh tension', ten, ten === 'Tight' || ten === 'Slack' ? 'warn' : 'ok') + row('Sutures: posterior leaf / anterior leaf / promontory', n('P') + ' / ' + n('A') + ' / ' + m.sac.length) + row('Peritoneum closed over the mesh', m.per >= 4 ? 'Yes' : 'No', m.per >= 4 ? 'ok' : 'warn') + row('Blunt dissection', s.blunt.toFixed(0) + ' s') + row('Steps started without exposure set', s.expoMiss, s.expoMiss ? 'warn' : 'ok')
+  ];
+}
+function scSutures() { // every suture as a short loop of thread: on the leaves, at the promontory, across the peritoneal edges
+  const m = S.scp, st = [], N = () => new V3();
+  for (const f of m.fix) { const q = SC.MARK[f.leaf][f.i]; st.push([scWall(q[0] - 7, q[1], 0.09, N()), scWall(q[0], q[1], 0.22, N()), scWall(q[0] + 7, q[1], 0.09, N())]); }
+  for (const b of m.sac) st.push([scFloor(b.x - 0.3, b.z, 0.13, N()), scFloor(b.x, b.z, 0.3, N()), scFloor(b.x + 0.3, b.z, 0.13, N())]);
+  for (let i = 0; i < m.per; i++) st.push([scPath(SC.PER[i], -0.45, 0.06, N()), scPath(SC.PER[i], 0, 0.2, N()), scPath(SC.PER[i], 0.45, 0.06, N())]);
+  const cur = STEPS[S.step];
+  return { st, from: st.length ? st[st.length - 1][2] : null, on: cur.tool === 'needle' && !cur.done() };
+}
+const SCP = {
+  id: 'scp', name: 'Laparoscopic sacrocolpopexy', tag: ', onto the cervical stump', blurb: 'Mesh from the kept cervix to the promontory. 11 steps.',
+  sub: 'Sacrocervicopexy with a Y-shaped mesh, after supracervical hysterectomy.',
+  brief: ['The same 48-year-old with stage III uterovaginal prolapse. The supracervical hysterectomy with bilateral salpingectomy has just been done: the body of the uterus is out in its bag, the cervical stump is dry, and the bladder has been taken down only as far as the amputation needed.',
+    'A probe in the vagina has replaced the manipulator and moves the vault. Same ports, steep Trendelenburg, 15 mmHg. The sigmoid lies over the sacral promontory. The plan: expose the promontory, open the peritoneum down to the cul-de-sac, free the vaginal walls from rectum and bladder, fix a Y-shaped mesh to the vagina and cervix and to the promontory, and cover it with peritoneum.'],
+  steps: SCP_STEPS, insts: ['grasper', 'bipolar', 'hook', 'suction', 'needle'], warp: [0, 0], tipZ: 4.6, ureters: true, eblWarn: 100,
+  needleHint: 'The needle driver is for fixing the mesh and closing the peritoneum',
+  cervix: true, probe: true, // the cervix was kept; a probe in the vagina goes on moving the vault
+  labels: [['Cervical stump', () => _w.set(0, LS.YA, 0).applyMatrix4(VG.M)], ['Sacral promontory', () => scFloor(0.4, 8.6, 0.2, _w)], ['Left common iliac vein', () => sampleArr(SC.civA, 0.55, _w)], ['Middle sacral vessels', () => scFloor(SC.MSX, 6, 0.1, _w)], ['Mesh', () => _w.set(0, LS.YA + 0.2, 0).applyMatrix4(VG.M), () => S.step >= SC.iP]],
+  // The pelvis as the supracervical hysterectomy leaves it: every pedicle sealed and divided, both leaves open, the body of the uterus out.
+  state(s) {
+    lsState(s, true);
+    for (const k of ['R', 'L']) {
+      const sd = s.side[k];
+      for (const e of ['round', 'uo', 'ua']) { sd[e].cut = true; sd[e].gk = 1; sd[e].seals.push({ u: sd[e].uc, w: SEALSPEC[e].w }); }
+      sd.roofCut = true; sd.roofGk = 1; sd.antGoal = sd.antP = sd.postGoal = sd.postP = 1; sd.meso.pGoal = sd.meso.p = 1; sd.tubeGoal = sd.tubeFree = 1; s.mesoBite[k] = 2;
+      for (const g of ['upper', 'ua']) { startRelease(AN.side[k], g); sd.rel[g].t = 1; }
+    }
+    lsHold();
+    s.vufGoal = s.vufP = s.vufGk = 1; s.flap = s.flapGoal = 0.5; s.specimen = 'out'; s.lift = 1; s.ureterID.R = s.ureterID.L = true;
+    s.pose.push = s.poseGoal.push = 0.3;
+    s.scp = { sig: 0, sigP: 0, seen: { P: false, U: false, V: false }, cut: 0, cutGoal: 0, clear: 0, clearP: 0, rv: 0, rvP: 0, fix: [], sac: [], tension: null, per: 0, shut: 0, shutGoal: 0, msv: false, msvT: 0, civ: false };
+    SC.rkey = '';
+  },
+  show(on) { lsShow(); scShow(on); }, update(dt) { lsUpdate(dt); scUpdate(dt); }, heat: scHeat,
+  bite(h) { if (h.pick.ent === 'rectum') hint('bowel', 'Do not grasp the bowel wall. Sweep it with a blunt tip, or hold it by its fat.'); },
+  score: scScore, debrief: scDebrief, sutures: scSutures,
+  // what a scripted hand should find under its tip: a ureter when the prompt names one, otherwise the marked spot with nothing dangerous on it
+  want(st, n) {
+    const um = /(right|left) ureter/.exec(n.label || ''), bad = ['ureter', 'rectum', 'bladder', 'civ', 'msv', 'iliac'];
+    return um ? { ents: ['ureter'], side: um[1] === 'right' ? 'R' : 'L' } : n.act === 'bite' ? { spot: 0.45, avoid: bad } : n.act === 'trace' ? { spot: 0.5, avoid: bad } : null;
+  }
+};
+
 // ---------- the cases ----------
 // A case is its steps (each with its own targets, checks and teaching text), the instruments on its tray, how its
 // pelvis differs from the model's, and how it is scored. Everything else is shared.
-const BUILD = 'Build 0.7';
-const CASES = { tlh: TLH, myo: MYO, ect: ECT, cyst: CYS };
+const BUILD = 'Build 0.8';
+const CASES = { tlh: TLH, myo: MYO, ect: ECT, cyst: CYS, lsh: LSH, scp: SCP };
 
 // ---------- step engine (every case) ----------
 let stepExpoChecked = false, stepPressed = false;
@@ -4011,14 +4572,16 @@ const ENT_NAME = {
   ip: k => CAP[k] + ' infundibulopelvic ligament', ovary: k => CAP[k] + ' ovary', ua: k => CAP[k] + ' uterine vessels', card: k => CAP[k] + ' cardinal ligament',
   usl: k => CAP[k] + ' uterosacral ligament', ureter: k => CAP[k] + ' ureter', iliac: k => CAP[k] + ' external iliac vessels', bladder: () => 'Bladder',
   rectum: () => 'Rectosigmoid', ant: k => 'Broad ligament, anterior leaf', roof: k => 'Broad ligament', post: k => 'Broad ligament, posterior leaf',
-  meso: k => CAP[k] + ' mesosalpinx', areolar: () => 'Areolar tissue', vuf: () => 'Vesicouterine peritoneum', vagina: () => (S.specimen === 'out' ? 'Vaginal cuff' : 'Vagina over the cup'),
-  fibroid: () => 'Fibroid', clot: () => 'Blood clot', cyst: () => 'Ovarian cyst', spill: () => 'Spilled cyst contents'
+  meso: k => CAP[k] + ' mesosalpinx', areolar: () => 'Areolar tissue', vuf: () => 'Vesicouterine peritoneum', vagina: () => (CASE.cervix ? 'Vagina' : S.specimen === 'out' ? 'Vaginal cuff' : 'Vagina over the cup'),
+  fibroid: () => 'Fibroid', clot: () => 'Blood clot', cyst: () => 'Ovarian cyst', spill: () => 'Spilled cyst contents',
+  stump: () => 'Cervical stump', prom: () => 'Peritoneum over the sacral promontory', civ: () => 'Left common iliac vein', msv: () => 'Middle sacral vessels',
+  retro: () => (S.scp && S.scp.clear >= 1 ? 'Anterior longitudinal ligament and presacral space' : 'Opened retroperitoneum'), rvs: () => 'Rectovaginal space', mesh: () => 'Polypropylene mesh'
 };
 const LABELS = [
   ['Uterus', () => _w.set(0, 7.6, 0).applyMatrix4(UT.M), () => S.specimen !== 'out' && !CASE.labels],
   ['Bladder', () => _w.set(BL.c.x, BL.c.y + BL.r.y * 0.9, BL.c.z + 1.0)],
   ['Rectosigmoid', () => { sampleArr(AN.rectumArr, 0.42, _w); _w.y += 1.5; return _w; }],
-  ['Vaginal cuff', () => _w.set(0, 0.1, 0).applyMatrix4(VG.M), () => S.specimen === 'out']
+  ['Vaginal cuff', () => _w.set(0, 0.1, 0).applyMatrix4(VG.M), () => S.specimen === 'out' && !CASE.cervix]
 ];
 for (const k of ['R', 'L']) {
   const G = () => { const r = S.side[k].rel.upper; return r ? r.lat : curG(k); };
@@ -4173,7 +4736,7 @@ function drawHandPointers(c) {
 
 // ---------- suture ----------
 const SUT = { st: [], tail: new Tube(14, 5, IM.thread), arr: vecArr(9), tarr: vecArr(14) };
-for (let i = 0; i < 9; i++) { const t = new Tube(9, 5, IM.thread); t.mesh.visible = false; scene.add(t.mesh); SUT.st.push(t); }
+for (let i = 0; i < 14; i++) { const t = new Tube(9, 5, IM.thread); t.mesh.visible = false; scene.add(t.mesh); SUT.st.push(t); }
 SUT.tail.mesh.visible = false; scene.add(SUT.tail.mesh);
 function updateSuture() {
   const L = CASE.sutures();
@@ -4283,7 +4846,8 @@ function renderUI(dt) {
   const knob = $('knob'); knob.style.left = (50 + kx * 42) + '%'; knob.style.top = (50 - (ty * 2 - 1) * 42) + '%';
   if (document.activeElement !== $('push')) $('push').value = Math.round(P.push * 100);
   $('manip').classList.toggle('off', S.manipOut);
-  $('manipNote').textContent = S.manipOut ? 'Manipulator removed' : 'Uterine manipulator';
+  const pb = CASE.probe; $('manipNote').textContent = S.manipOut ? (pb ? 'Probe removed' : 'Manipulator removed') : pb ? 'Vaginal probe' : 'Uterine manipulator';
+  $('pushNote').textContent = pb ? 'Push the vault cephalad' : 'Push cup cephalad';
 }
 function setPoseGoal(p) { if (S.manipOut) return; if (p.yaw != null) S.poseGoal.yaw = clamp(p.yaw, -LIM.yaw, LIM.yaw); if (p.pitch != null) S.poseGoal.pitch = clamp(p.pitch, LIM.pMin, LIM.pMax); if (p.push != null) S.poseGoal.push = clamp(p.push, 0, 1); uiDirty(); }
 function showDebrief() {
@@ -5095,7 +5659,7 @@ function fakeHand(o) {
 }
 window.__sim = {
   forceStep, visibleAt, colpPt, SEALSPEC, URETER, VG, UT, BL, HT, HANDS, CTRL, fakeHand, htIngest, htEnable, htDisable, calibFinish, calBuild, camFillPickers,
-  get S() { return S; }, get STEPS() { return STEPS; }, get CASE() { return CASE; }, CASES, setCase, FB, fbSero, EC, CY, cySurf, cyBed, POOL, BAG, HAND, CAM, AN, INP, tick, setPoseGoal, setInst, setActive, cutAction, cutReady, startCase,
+  get S() { return S; }, get STEPS() { return STEPS; }, get CASE() { return CASE; }, CASES, setCase, FB, fbSero, EC, CY, cySurf, cyBed, LS, lsAmpPt, lsCanal, SC, scPath, scWall, scFloor, POOL, BAG, HAND, CAM, AN, INP, tick, setPoseGoal, setInst, setActive, cutAction, cutReady, startCase,
   get active() { return ACTIVE; }, get PICK() { return activeHand().pick; },
   next() { // the target the guidance is showing, as a scripted player needs it
     const st = STEPS[S.step];
@@ -5108,7 +5672,7 @@ window.__sim = {
   cuffAt(p) { const lp = new V3(p[0], p[1], p[2]).applyMatrix4(new THREE.Matrix4().copy(VG.M).invert()); return { x: lp.x, edge: lp.z < 0 ? 'ant' : 'post', depth: Math.max(0, -lp.y) }; }, // where on the vaginal cuff a point lies, as the bite check sees it
   render(dt) { renderFrame(dt == null ? 0.5 : dt, simTime, S.haze); drawOverlay(simTime); renderUI(1); htRenderUI(1, simTime); },
   setQuality, QUAL, GRADE, LIGHT, MAT, POST, head, scene, camera, renderer, THREE,
-  DEPTH, DENT, freeDepth, freePick, poseFromPoint, primaryDown, primaryUp, nearTarget, PICKS, shown
+  DEPTH, DENT, freeDepth, freePick, poseFromPoint, primaryDown, primaryUp, releaseGrab, nearTarget, PICKS, shown
 };
 
 </script>

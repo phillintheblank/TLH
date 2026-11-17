@@ -125,6 +125,27 @@ const VESSEL_STEPS = k => [
   })
 ];
 
+// Sweep the bladder off the cervix and vagina: N sweeps take it from `from` to `full` of the way down (1: clear of a colpotomy).
+const flapStep = o => Object.assign({
+  id: 'flap', kind: 'flap', tool: 'hook', alt: 'suction', phase: 'Bladder', short: 'Develop bladder flap', title: 'Develop the bladder flap', dist: 9, acc: 0, cnt: 0, N: 6, from: 0, full: 1,
+  rec: { yaw: 0, pitch: -0.18, push: 1 }, expo: [exPush],
+  text: ['Push the cup cephalad: its rim marks the anterior fornix.', 'Sweep the bladder caudally off the cervix, midline first, then each side. Use short hook bursts on the cervical side or blunt pushes with the suction tip.', 'Carry on until the bladder sits 1.5 to 2 cm below the cup rim.'],
+  pearl: 'The right plane is white, filmy and avascular. Yellow fat belongs to the bladder. The bladder pillars laterally carry vessels, and a prior caesarean scar hides the midline plane: start lateral in those cases.',
+  at() { return [0.5, 0.22, 0.78][this.cnt % 3]; },
+  targets() { return this.cnt >= this.N ? [] : [flapEdgePt(this.at(), new V3())]; },
+  next() { return this.cnt >= this.N ? null : { p: flapEdgePt(this.at(), new V3()), act: 'push', label: 'Sweep the bladder down', prog: this.acc / 0.4 }; },
+  sweep(h, dt, T) {
+    if (this.cnt >= this.N) return true;
+    if (h.pick.ent === 'bladder') return false;
+    if (nearTarget(h, flapEdgePt(this.at(), _w2), 0.9)) { this.acc += dt; if (this.acc > T) { this.acc = 0; this.cnt++; S.flapGoal = lerp(this.from, this.full, this.cnt / this.N); S.ebl += 0.6; sfx.click(); uiDirty(); } return true; }
+    return false;
+  },
+  hook(h, dt) { return this.sweep(h, dt, 0.4); }, blunt(h, dt) { if (this.sweep(h, dt, 0.6)) S.stats.blunt += dt; },
+  done() { return this.cnt >= this.N && S.flap > lerp(this.from, this.full, 0.93); }, progress() { return 'Bladder mobilized ' + Math.round(S.flap * 100) + '%'; }, frac() { return this.cnt / this.N; },
+  focus(o) { return flapEdgePt(0.5, o); },
+  force() { this.cnt = this.N; S.flapGoal = this.full; }
+}, o);
+
 const TLH_STEPS = [
   {
     id: 'survey', kind: 'survey', tool: 'any', phase: 'Survey', short: 'Identify both ureters', title: 'Survey the pelvis and identify both ureters', dist: 17,
@@ -155,24 +176,7 @@ const TLH_STEPS = [
     },
     done() { return this.n() >= 5; }, progress() { return 'Incision ' + this.n() + ' / 5'; }, frac() { return this.n() / 5; }, focus(o) { return vufPt(0.5, o); }
   },
-  {
-    id: 'flap', kind: 'flap', tool: 'hook', alt: 'suction', phase: 'Bladder', short: 'Develop bladder flap', title: 'Develop the bladder flap', dist: 9, acc: 0, cnt: 0,
-    rec: { yaw: 0, pitch: -0.18, push: 1 }, expo: [exPush],
-    text: ['Push the cup cephalad: its rim marks the anterior fornix.', 'Sweep the bladder caudally off the cervix, midline first, then each side. Use short hook bursts on the cervical side or blunt pushes with the suction tip.', 'Carry on until the bladder sits 1.5 to 2 cm below the cup rim.'],
-    pearl: 'The right plane is white, filmy and avascular. Yellow fat belongs to the bladder. The bladder pillars laterally carry vessels, and a prior caesarean scar hides the midline plane: start lateral in those cases.',
-    order: [0.5, 0.22, 0.78, 0.5, 0.22, 0.78],
-    targets() { return this.cnt >= 6 ? [] : [flapEdgePt(this.order[this.cnt], new V3())]; },
-    next() { return this.cnt >= 6 ? null : { p: flapEdgePt(this.order[this.cnt], new V3()), act: 'push', label: 'Sweep the bladder down', prog: this.acc / 0.4 }; },
-    sweep(h, dt, T) {
-      if (this.cnt >= 6) return true;
-      if (h.pick.ent === 'bladder') return false;
-      if (nearTarget(h, flapEdgePt(this.order[this.cnt], _w2), 0.9)) { this.acc += dt; if (this.acc > T) { this.acc = 0; this.cnt++; S.flapGoal = this.cnt / 6; S.ebl += 0.6; sfx.click(); uiDirty(); } return true; }
-      return false;
-    },
-    hook(h, dt) { return this.sweep(h, dt, 0.4); }, blunt(h, dt) { if (this.sweep(h, dt, 0.6)) S.stats.blunt += dt; },
-    done() { return this.cnt >= 6 && S.flap > 0.93; }, progress() { return 'Bladder mobilized ' + Math.round(S.flap * 100) + '%'; }, frac() { return this.cnt / 6; },
-    focus(o) { return flapEdgePt(0.5, o); }
-  },
+  flapStep({}),
   ...VESSEL_STEPS('R'), ...VESSEL_STEPS('L'),
   {
     id: 'colp', kind: 'colp', tool: 'hook', phase: 'Colpotomy and closure', short: 'Colpotomy', title: 'Circumferential colpotomy on the cup', dist: 9.5,
@@ -317,7 +321,6 @@ function tlhForce(st) { // complete the step in hand
   else if (st.which === 'ant') sd.antGoal = 1;
   else if (st.which === 'post') { sd.postGoal = 1; startRelease(AN.side[k], 'upper'); }
   else if (st.id === 'vuf') S.vufGoal = 1;
-  else if (st.id === 'flap') { st.cnt = 6; S.flapGoal = 1; }
   else if (st.id === 'colp') { S.colp.fill(1); S.colpDone = true; VG.dirty = true; }
   else if (st.id === 'deliver') deliverSpecimen();
   else if (st.id === 'cuff') { for (const x of [1.5, 0.9, 0.3, -0.3, -0.9, -1.5]) S.cuff.stitches.push({ x, da: 0.8, dp: 0.8 }); S.cuff.frontGoal = -2.8; S.cuff.done = true; }

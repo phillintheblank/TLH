@@ -1,5 +1,6 @@
 // Drive the whole case through the same "next target" data the guidance overlay draws. QUERY=case=myo plays the
-// myomectomy, QUERY=case=ect the salpingectomy for an ectopic.
+// myomectomy; ect, cyst, lsh and scp the salpingectomy for an ectopic, the ovarian cystectomy, the supracervical
+// hysterectomy and the sacrocolpopexy.
 // MODE=free: the mouse's free depth, each tip brought to its target in space. MODE=mouse: real mouse events with
 // Auto depth on. MODE=hands: scripted hands seen by two simulated cameras (free depth). MODE=handsauto: scripted
 // hands seen by one camera (auto depth). Both hand modes go through the whole hand-control pipeline.
@@ -135,7 +136,7 @@ export default async function (page) {
       await freeHand(); await setInst('bipolar'); n.tryNo = stuck; if ((await D.moveTo(n)) === false) { if (++stuck > 8) { say('NO PROGRESS at ' + I.id + ': the tip never came to rest on the bleeder'); break; } continue; } stuck = 0; await D.down(); await T(1.7); await D.up(); if (I.tool !== 'any') await setInst(I.tool); continue;
     }
     if (n.act === 'button') { await ev(() => window.__sim.render()); const b2 = await page.locator('#stepBtn2').isVisible(); await page.click(b2 ? '#stepBtn2' : '#stepBtn1'); await T(0.6); continue; }
-    if (I.id === 'colp' && (n.hidden || !n.vis)) { await setPose(colpPoses[colpI++ % colpPoses.length]); if (colpI > 40) { say('STUCK colp ' + I.prog); break; } continue; }
+    if ((I.id === 'colp' || I.id === 'amp') && (n.hidden || !n.vis)) { await setPose(colpPoses[colpI++ % colpPoses.length]); if (colpI > 40) { say('STUCK colp ' + I.prog); break; } continue; }
     // by hand a bite goes wherever on the edge is in line and in view, not only on the marker
     if (!n.vis && n.act !== 'suction' && !(n.act === 'bite' && MODE === 'hands')) { if (++stuck > 4) { say('TARGET HIDDEN at ' + I.id + ' act=' + n.act + ' label=' + n.label); await shot('hidden-' + I.id); break; } }
     if (process.env.PROBE && n.p) { // can each port reach this target in a straight line?
@@ -161,7 +162,7 @@ export default async function (page) {
     const after = JSON.stringify([J.prog, m && m.act, m && m.label]);
     if (J.i === I.i && after === before) { if (++stuck > 5) { say('NO PROGRESS at ' + I.id + ' act=' + n.act + ' label=' + n.label + ' pick=' + JSON.stringify(J.pick) + ' near=' + J.near + ' on=' + J.on + ' inst=' + J.inst + ' prog=' + J.prog); await shot('stuck-' + I.id); break; } } else stuck = 0;
   }
-  const fin = await ev(() => { const s = window.__sim.S; return { step: s.step, ended: s.ended, t: +s.t.toFixed(1), ebl: +s.ebl.toFixed(1), injuries: Object.keys(s.injuries), stats: s.stats, stitches: s.cuff.stitches.length, bites: s.cuff.stitches.map(b => [b.x, b.da, b.dp].map(v => +v.toFixed(2)).join('/')), score: window.__sim.CASE.score(), cyst: s.cyst && { rupt: s.cyst.rupt, burn: +s.cyst.burn.toFixed(1), n: s.cyst.n, out: s.cyst.out, spill: s.cyst.spill }, ect: s.ect && { tear: s.ect.tear, dropped: s.ect.dropped, tCtrl: s.ect.tCtrl && +s.ect.tCtrl.toFixed(1), pool: +s.pool.toFixed(1), stump: +s.side.R.isth.uc.toFixed(3), clots: s.ect.clots }, myo: s.myo && { fib: s.myo.fib, cavity: s.myo.cavity, coag: +s.myo.coag.toFixed(1), untold: s.myo.untold, dropped: s.myo.dropped, deep: s.myo.deep.st.map(b => [b.x, b.a, b.b].map(v => +v.toFixed(2)).join('/')), sero: s.myo.sero.st.map(b => [b.x, b.a, b.b].map(v => +v.toFixed(2)).join('/')) } }; });
+  const fin = await ev(() => { const s = window.__sim.S; return { step: s.step, ended: s.ended, t: +s.t.toFixed(1), ebl: +s.ebl.toFixed(1), injuries: Object.keys(s.injuries), stats: s.stats, stitches: s.cuff.stitches.length, bites: s.cuff.stitches.map(b => [b.x, b.da, b.dp].map(v => +v.toFixed(2)).join('/')), score: window.__sim.CASE.score(), lsh: s.lsh && !s.scp && { off: s.lsh.off, canal: s.lsh.canal, specimen: s.specimen }, scp: s.scp && { fix: s.scp.fix.map(f => f.leaf + f.i).join(), sac: s.scp.sac.map(b => [b.x, b.z].map(v => +v.toFixed(2)).join('/')), tension: s.scp.tension && +s.scp.tension.toFixed(2), per: s.scp.per, msv: s.scp.msv }, cyst: s.cyst && { rupt: s.cyst.rupt, burn: +s.cyst.burn.toFixed(1), n: s.cyst.n, out: s.cyst.out, spill: s.cyst.spill }, ect: s.ect && { tear: s.ect.tear, dropped: s.ect.dropped, tCtrl: s.ect.tCtrl && +s.ect.tCtrl.toFixed(1), pool: +s.pool.toFixed(1), stump: +s.side.R.isth.uc.toFixed(3), clots: s.ect.clots }, myo: s.myo && { fib: s.myo.fib, cavity: s.myo.cavity, coag: +s.myo.coag.toFixed(1), untold: s.myo.untold, dropped: s.myo.dropped, deep: s.myo.deep.st.map(b => [b.x, b.a, b.b].map(v => +v.toFixed(2)).join('/')), sero: s.myo.sero.st.map(b => [b.x, b.a, b.b].map(v => +v.toFixed(2)).join('/')) } }; });
   say(JSON.stringify(fin));
   fs.writeFileSync(OUT + 'flow-' + MODE + '.log', log.join('\n'));
   await ev(() => window.__sim.render());

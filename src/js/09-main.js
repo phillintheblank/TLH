@@ -168,7 +168,7 @@ function fakeHand(o) {
 }
 window.__sim = {
   forceStep, visibleAt, colpPt, SEALSPEC, URETER, VG, UT, BL, HT, HANDS, CTRL, fakeHand, htIngest, htEnable, htDisable, calibFinish, calBuild, camFillPickers,
-  get S() { return S; }, get STEPS() { return STEPS; }, get CASE() { return CASE; }, CASES, setCase, FB, fbSero, EC, CY, cySurf, cyBed, POOL, BAG, HAND, CAM, AN, INP, tick, setPoseGoal, setInst, setActive, cutAction, cutReady, startCase,
+  get S() { return S; }, get STEPS() { return STEPS; }, get CASE() { return CASE; }, CASES, setCase, FB, fbSero, EC, CY, cySurf, cyBed, LS, lsAmpPt, lsCanal, SC, scPath, scWall, scFloor, POOL, BAG, HAND, CAM, AN, INP, tick, setPoseGoal, setInst, setActive, cutAction, cutReady, startCase,
   get active() { return ACTIVE; }, get PICK() { return activeHand().pick; },
   next() { // the target the guidance is showing, as a scripted player needs it
     const st = STEPS[S.step];
@@ -181,5 +181,5 @@ window.__sim = {
   cuffAt(p) { const lp = new V3(p[0], p[1], p[2]).applyMatrix4(new THREE.Matrix4().copy(VG.M).invert()); return { x: lp.x, edge: lp.z < 0 ? 'ant' : 'post', depth: Math.max(0, -lp.y) }; }, // where on the vaginal cuff a point lies, as the bite check sees it
   render(dt) { renderFrame(dt == null ? 0.5 : dt, simTime, S.haze); drawOverlay(simTime); renderUI(1); htRenderUI(1, simTime); },
   setQuality, QUAL, GRADE, LIGHT, MAT, POST, head, scene, camera, renderer, THREE,
-  DEPTH, DENT, freeDepth, freePick, poseFromPoint, primaryDown, primaryUp, nearTarget, PICKS, shown
+  DEPTH, DENT, freeDepth, freePick, poseFromPoint, primaryDown, primaryUp, releaseGrab, nearTarget, PICKS, shown
 };

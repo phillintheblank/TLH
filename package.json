@@ -1,8 +1,8 @@
 {
   "name": "tlh-simulator",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
-  "description": "Browser-based laparoscopic gynaecological surgery simulator (hysterectomy, myomectomy) with camera hand control",
+  "description": "Browser-based laparoscopic gynaecological surgery simulator (six cases) with camera hand control",
   "type": "module",
   "scripts": {
     "fetch-model": "mkdir -p models && curl -sSfL -o models/hand_landmarker.task https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",

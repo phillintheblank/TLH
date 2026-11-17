@@ -16,14 +16,16 @@ const ENT_NAME = {
   ip: k => CAP[k] + ' infundibulopelvic ligament', ovary: k => CAP[k] + ' ovary', ua: k => CAP[k] + ' uterine vessels', card: k => CAP[k] + ' cardinal ligament',
   usl: k => CAP[k] + ' uterosacral ligament', ureter: k => CAP[k] + ' ureter', iliac: k => CAP[k] + ' external iliac vessels', bladder: () => 'Bladder',
   rectum: () => 'Rectosigmoid', ant: k => 'Broad ligament, anterior leaf', roof: k => 'Broad ligament', post: k => 'Broad ligament, posterior leaf',
-  meso: k => CAP[k] + ' mesosalpinx', areolar: () => 'Areolar tissue', vuf: () => 'Vesicouterine peritoneum', vagina: () => (S.specimen === 'out' ? 'Vaginal cuff' : 'Vagina over the cup'),
-  fibroid: () => 'Fibroid', clot: () => 'Blood clot', cyst: () => 'Ovarian cyst', spill: () => 'Spilled cyst contents'
+  meso: k => CAP[k] + ' mesosalpinx', areolar: () => 'Areolar tissue', vuf: () => 'Vesicouterine peritoneum', vagina: () => (CASE.cervix ? 'Vagina' : S.specimen === 'out' ? 'Vaginal cuff' : 'Vagina over the cup'),
+  fibroid: () => 'Fibroid', clot: () => 'Blood clot', cyst: () => 'Ovarian cyst', spill: () => 'Spilled cyst contents',
+  stump: () => 'Cervical stump', prom: () => 'Peritoneum over the sacral promontory', civ: () => 'Left common iliac vein', msv: () => 'Middle sacral vessels',
+  retro: () => (S.scp && S.scp.clear >= 1 ? 'Anterior longitudinal ligament and presacral space' : 'Opened retroperitoneum'), rvs: () => 'Rectovaginal space', mesh: () => 'Polypropylene mesh'
 };
 const LABELS = [
   ['Uterus', () => _w.set(0, 7.6, 0).applyMatrix4(UT.M), () => S.specimen !== 'out' && !CASE.labels],
   ['Bladder', () => _w.set(BL.c.x, BL.c.y + BL.r.y * 0.9, BL.c.z + 1.0)],
   ['Rectosigmoid', () => { sampleArr(AN.rectumArr, 0.42, _w); _w.y += 1.5; return _w; }],
-  ['Vaginal cuff', () => _w.set(0, 0.1, 0).applyMatrix4(VG.M), () => S.specimen === 'out']
+  ['Vaginal cuff', () => _w.set(0, 0.1, 0).applyMatrix4(VG.M), () => S.specimen === 'out' && !CASE.cervix]
 ];
 for (const k of ['R', 'L']) {
   const G = () => { const r = S.side[k].rel.upper; return r ? r.lat : curG(k); };
@@ -178,7 +180,7 @@ function drawHandPointers(c) {
 
 // ---------- suture ----------
 const SUT = { st: [], tail: new Tube(14, 5, IM.thread), arr: vecArr(9), tarr: vecArr(14) };
-for (let i = 0; i < 9; i++) { const t = new Tube(9, 5, IM.thread); t.mesh.visible = false; scene.add(t.mesh); SUT.st.push(t); }
+for (let i = 0; i < 14; i++) { const t = new Tube(9, 5, IM.thread); t.mesh.visible = false; scene.add(t.mesh); SUT.st.push(t); }
 SUT.tail.mesh.visible = false; scene.add(SUT.tail.mesh);
 function updateSuture() {
   const L = CASE.sutures();
@@ -288,7 +290,8 @@ function renderUI(dt) {
   const knob = $('knob'); knob.style.left = (50 + kx * 42) + '%'; knob.style.top = (50 - (ty * 2 - 1) * 42) + '%';
   if (document.activeElement !== $('push')) $('push').value = Math.round(P.push * 100);
   $('manip').classList.toggle('off', S.manipOut);
-  $('manipNote').textContent = S.manipOut ? 'Manipulator removed' : 'Uterine manipulator';
+  const pb = CASE.probe; $('manipNote').textContent = S.manipOut ? (pb ? 'Probe removed' : 'Manipulator removed') : pb ? 'Vaginal probe' : 'Uterine manipulator';
+  $('pushNote').textContent = pb ? 'Push the vault cephalad' : 'Push cup cephalad';
 }
 function setPoseGoal(p) { if (S.manipOut) return; if (p.yaw != null) S.poseGoal.yaw = clamp(p.yaw, -LIM.yaw, LIM.yaw); if (p.pitch != null) S.poseGoal.pitch = clamp(p.pitch, LIM.pMin, LIM.pMax); if (p.push != null) S.poseGoal.push = clamp(p.push, 0, 1); uiDirty(); }
 function showDebrief() {

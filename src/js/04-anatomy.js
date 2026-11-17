@@ -142,7 +142,7 @@ function freshState() { // what every case has; a case adds its own (CASE.state)
     pose: { yaw: 0, pitch: PITCH0, push: 0 }, poseGoal: { yaw: 0, pitch: PITCH0, push: 0 }, manipOut: false,
     flap: 0, flapGoal: 0, vufP: 0, vufGoal: 0, vufGk: 0,
     side: { R: newSide(1, 'R'), L: newSide(-1, 'L') },
-    colp: new Array(16).fill(0), colpDone: false, lift: 0, deliv: 0, specimen: 'in',
+    colp: new Array(16).fill(0), colpDone: false, lift: 0, deliv: 0, carry: null, specimen: 'in', // carry: how far a freed specimen has been taken off in its bag
     cuff: { stitches: [], pending: null, front: 2.4, frontGoal: 2.4, done: false },
     ebl: 0, pool: 0, bleeders: [], events: [], heat: {}, injuries: {}, pulls: [],
     stats: { activations: 0, energyTime: 0, nonTarget: 0, exchanges: 0, unsealedCuts: 0, nearMiss: 0, minUreter: { R: 99, L: 99 }, expoMiss: 0, traction: 0, blunt: 0 },
@@ -168,14 +168,14 @@ const AN = { side: {} };
   scene.add(AN.bowl);
 })();
 
-// rectosigmoid
-(function () {
-  const ctrl = [V(0, -4.6, -8.6), V(-0.4, -5.7, -5.5), V(-1.4, -6.1, -2), V(-3.3, -5.8, 2), V(-5.1, -5.0, 6), V(-6.5, -3.8, 10), V(-7.4, -2.0, 16)];
-  const A = spline(ctrl, vecArr(64));
-  const t = new Tube(64, 20, MAT.bowel, 1, 6);
-  t.set(A, 0, 1, u => 1.3 * (1 + 0.13 * Math.pow(Math.abs(Math.sin(u * 27 + Math.sin(u * 9))), 0.55) + 0.05 * Math.sin(u * 13 + 1)), null);
-  AN.rectum = reg(t.mesh, 'rectum'); AN.rectumArr = A; scene.add(t.mesh);
-})();
+// rectosigmoid. A case may lay it somewhere else (setRectum): fn(i, p) moves the i-th point of its course.
+const RECT = { ctrl: [V(0, -4.6, -8.6), V(-0.4, -5.7, -5.5), V(-1.4, -6.1, -2), V(-3.3, -5.8, 2), V(-5.1, -5.0, 6), V(-6.5, -3.8, 10), V(-7.4, -2.0, 16)], c: vecArr(7), t: new Tube(64, 20, MAT.bowel, 1, 6) };
+function setRectum(fn) {
+  for (let i = 0; i < 7; i++) { RECT.c[i].copy(RECT.ctrl[i]); if (fn) fn(i, RECT.c[i]); }
+  spline(RECT.c, AN.rectumArr);
+  RECT.t.set(AN.rectumArr, 0, 1, u => 1.3 * (1 + 0.13 * Math.pow(Math.abs(Math.sin(u * 27 + Math.sin(u * 9))), 0.55) + 0.05 * Math.sin(u * 13 + 1)), null);
+}
+AN.rectum = reg(RECT.t.mesh, 'rectum'); AN.rectumArr = vecArr(64); scene.add(RECT.t.mesh); setRectum();
 
 // iliac vessels, medial umbilical folds, ureters
 const URETER = {};
@@ -239,7 +239,7 @@ function utVertex(u, v, p, c) { // the uterus's surface, paler over the cervix
   const cup = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 1.6, 1.0, 40, 1, true), new THREE.MeshStandardMaterial({ color: 0x4f97d8, roughness: 0.32, metalness: 0.05, side: THREE.DoubleSide, envMapIntensity: 0.9 }));
   cup.position.y = -0.22; UT.g.add(cup);
   const cap = new THREE.Mesh(new THREE.CircleGeometry(1.7, 32), new THREE.MeshStandardMaterial({ color: 0xc66a74, roughness: 0.6 }));
-  cap.rotation.x = Math.PI / 2; cap.position.y = 0.26; UT.g.add(cap);
+  cap.rotation.x = Math.PI / 2; cap.position.y = 0.26; UT.g.add(cap); UT.cup = [cup, cap];
   // where the colpotomy has been cut, the scorched vaginal edge parts and the cup's rim shows through
   UT.segs = [];
   const charM = new THREE.MeshStandardMaterial({ color: 0x1e0d08, roughness: 0.95 }), rimM = new THREE.MeshStandardMaterial({ color: 0x4f97d8, roughness: 0.32, envMapIntensity: 0.9 });
@@ -408,6 +408,7 @@ function updateSide(sd, time) {
   cur.compute(UT.M, st, S.pulls);
   for (const g of ['upper', 'ua', 'card']) {
     const r = st.rel[g]; if (!r) continue;
+    if (r.stay) { r.ref.compute(VG.M, st, null); continue; } // held by what is left behind when the body of the uterus is taken off its cervix: it does not go with the specimen
     if (!r.settled) {
       const e = easeIO(r.t);
       r.ref.compute(poseMat(lerpPose(r.from, NEUTRAL, e, _tp), _m4), st, null);
@@ -497,10 +498,11 @@ function updateAnatomy(dt, time) {
   // manipulator pose
   const P = S.pose, G = S.poseGoal, rate = 4.5;
   P.yaw = damp(P.yaw, G.yaw, rate, dt); P.pitch = damp(P.pitch, G.pitch, rate, dt); P.push = damp(P.push, G.push, rate, dt);
-  if (S.specimen !== 'out') { VG.pose.yaw = P.yaw; VG.pose.pitch = P.pitch; VG.pose.push = P.push; }
-  else { VG.pose.yaw = damp(VG.pose.yaw, 0, 2.5, dt); VG.pose.pitch = damp(VG.pose.pitch, -0.38, 2.5, dt); VG.pose.push = damp(VG.pose.push, 0.3, 2.5, dt); }
+  if (S.specimen !== 'out' || CASE.probe) { VG.pose.yaw = P.yaw; VG.pose.pitch = P.pitch; VG.pose.push = P.push; } // probe: an instrument in the vagina goes on moving the vault once the uterus is out
+  else { const cx = CASE.cervix; VG.pose.yaw = damp(VG.pose.yaw, 0, 2.5, dt); VG.pose.pitch = damp(VG.pose.pitch, cx ? PITCH0 : -0.38, 2.5, dt); VG.pose.push = damp(VG.pose.push, cx ? 0 : 0.3, 2.5, dt); } // a cuff falls back; a cervix on its ligaments stays where it was
   poseMat(VG.pose, VG.M); setM(VG.g, VG.M);
-  poseMat(P, UT.M, S.lift, S.deliv); UT.Minv.copy(UT.M).invert(); setM(UT.g, UT.M);
+  poseMat(P, UT.M, S.lift, S.deliv); if (S.carry) { const e = UT.M.elements; e[12] += S.carry.x; e[13] += S.carry.y; e[14] += S.carry.z; }
+  UT.Minv.copy(UT.M).invert(); setM(UT.g, UT.M);
   UT.g.visible = S.specimen !== 'out';
   // eased state
   S.flap = damp(S.flap, S.flapGoal, 3.5, dt);
@@ -525,7 +527,7 @@ function updateAnatomy(dt, time) {
     const sd = AN.side[k], vis = S.specimen !== 'out';
     updateSide(sd, time);
     if (!vis) for (const m of [sd.t.roundA, sd.t.uoA, sd.t.tube, sd.t.tubeS, sd.t.uaA, sd.t.uvA]) m.mesh.visible = false;
-    for (const m of ['antM', 'roofM', 'postM', 'mesoM', 'cardM']) sd.st[m].mesh.visible = vis;
+    for (const m of ['antM', 'roofM', 'postM', 'mesoM', 'cardM']) sd.st[m].mesh.visible = vis || (m === 'cardM' && !S.side[k].card.cut); // an undivided cardinal ligament stays on the cervix
     // ureters with peristalsis, iliac pulse
     const U = URETER[k], ph = ((time + U.phase) % 5.2) / 1.7;
     U.tube.set(U.arr, 0, 1, u => 0.165 * (1 + 0.42 * Math.exp(-Math.pow((u - ph + 0.1) / 0.07, 2)) - 0.2 * Math.exp(-Math.pow((u - ph + 0.24) / 0.06, 2))),

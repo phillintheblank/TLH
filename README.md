@@ -1,7 +1,7 @@
 # MIGS Simulator
 
 A browser-based simulator of laparoscopic gynaecological surgery: a 3D scope view of the pelvis, a uterine
-manipulator, instruments driven by your hands or the mouse, complications and an end-of-case debrief. Four cases
+manipulator, instruments driven by your hands or the mouse, complications and an end-of-case debrief. Six cases
 share the one pelvis, and you choose between them on the start screen:
 
 - **Total laparoscopic hysterectomy** with bilateral salpingectomy: 21 steps, five instruments.
@@ -10,6 +10,10 @@ share the one pelvis, and you choose between them on the start screen:
   instruments.
 - **Laparoscopic ovarian cystectomy** for a dermoid cyst of the right ovary, keeping the ovary: 7 steps, four
   instruments.
+- **Laparoscopic supracervical hysterectomy** with bilateral salpingectomy, for prolapse, keeping the cervix: 19
+  steps, four instruments.
+- **Laparoscopic sacrocolpopexy**, which carries on from the supracervical hysterectomy in the same patient: a
+  Y-shaped mesh from the vagina and cervix to the sacral promontory. 11 steps, five instruments.
 
 Two things set it apart. **Hand control:** cameras track both hands, each hand drives its own instrument at the
 same time, a pinch works the instrument, and an open, flat hand acts as a clutch. With two cameras a hand also
@@ -33,16 +37,15 @@ does not replace supervised training. The score comes from the simulator's own r
 | Fire the bipolar cut blade | Relax, then pinch again on the sealed zone, or `C` | Right-click or `C` |
 | Hold an instrument still | Open that hand flat (clutch); curl it again to carry on | `Space` or `X` switches hands; the other holds |
 
-Keyboard in either mode: the number keys change the selected hand's instrument (`1` to `5` in the hysterectomy,
-`1` to `7` in the myomectomy, `1` to `3` in the salpingectomy, `1` to `4` in the cystectomy), `W A S D` tilt and
-deviate the uterus,
-`Q E` push the cup, `+` and `-` advance and withdraw the scope, arrow keys aim it, `G` guidance, `L` anatomy labels,
+Keyboard in either mode: the number keys change the selected hand's instrument (`1` up to the number of instruments
+on the case's tray), `W A S D` tilt and deviate the uterus, `Q E` push it cephalad (in the sacrocolpopexy these move
+the vault on its probe), `+` and `-` advance and withdraw the scope, arrow keys aim it, `G` guidance, `L` anatomy labels,
 `M` sound. With the mouse, `Esc` frees the cursor for the panels and a click on the picture takes the instruments again.
 
 ## Cases
 
-The start screen offers the cases; the choice is remembered, and `?case=tlh`, `?case=myo`, `?case=ect` or `?case=cyst` in the
-address picks one.
+The start screen offers the cases; the choice is remembered, and `?case=tlh`, `?case=myo`, `?case=ect`, `?case=cyst`,
+`?case=lsh` or `?case=scp` in the address picks one.
 Everything outside the case is shared: the pelvis, the instruments, hand and mouse control, depth, the picture,
 bleeding, the step engine and the debrief.
 
@@ -136,10 +139,78 @@ left ovary are normal.
   the cortex off the marked line; a step started without its exposure (uterus deviated to the patient's left, ovary
   steadied); more than 100 mL lost.
 
+**Laparoscopic supracervical hysterectomy.** A woman with stage III uterovaginal prolapse who is to have a
+sacrocolpopexy. The body of the uterus comes out and the cervix stays, as the anchor for the mesh. The case ends with
+the specimen out and the stump dry.
+
+It is the total hysterectomy as far as the uterine vessels and uses the same steps for that: the survey and both
+ureters, each side in turn (round ligament, anterior leaf, salpingectomy, utero-ovarian ligament, posterior leaf)
+and the vesicouterine fold. From there it differs:
+
+| Step | What you do | What it teaches |
+|---|---|---|
+| Mobilize the bladder | Three sweeps where the total hysterectomy takes six | Only as far as the amputation needs |
+| Uterine vessels, each side | Seal and divide at the internal os | The ascending branch, against the uterus. The cardinal and uterosacral ligaments are left alone |
+| Amputate | Hook round the cervix at the internal os: the front first, then the back with the uterus anteverted | The level of the cut; exposing the back of the cervix |
+| Remove the specimen | Bag it (a button) | Contained extraction, never open morcellation |
+| Secure the stump | Bipolar on the bleeding vessel, then held on the canal until it is coagulated | Haemostasis of the stump, and why the canal is treated |
+| Low-pressure check | Lower the pressure, control the ooze, confirm both ureters | A second look at low pressure |
+
+- **What stays.** When the cut is complete the body of the uterus lifts off and the manipulator is withdrawn. The
+  cervix stays on the vagina with its cardinal and uterosacral ligaments, and rests near neutral where a vaginal cuff
+  would fall back. There is no cup, no colpotomy and no cuff, and no needle driver on the tray.
+- **Shared with the total hysterectomy:** the sealing rules, bleeding from a pedicle cut unsealed, near misses at the
+  ureter, the distance from each uterine seal to the ureter, the injuries and the scoring.
+
+**Laparoscopic sacrocolpopexy.** The same patient, straight after the supracervical hysterectomy: the pelvis starts
+as that case leaves it. A probe in the vagina takes the manipulator's place and moves the vault, with the same pad
+and keys.
+
+| Step | What you do | What it teaches |
+|---|---|---|
+| Move the sigmoid | Three pushes with the suction tip sweep it to the patient's left | Exposing the promontory. Bowel is swept, not grasped |
+| Identify the landmarks | Hold a tip beside the promontory, the right ureter at the brim and the left common iliac vein | What bounds the safe ground, before any incision |
+| Open the promontory | Hook down the marked line, then two sweeps to clear the fat | The anterior longitudinal ligament has to be seen bare |
+| Incise down the gutter | Hook from the promontory down the right pararectal gutter to the cul-de-sac | Medial to the ureter and the uterosacral ligament, lateral to the rectum |
+| Posterior dissection | Vault pushed up and tipped forward; four sweeps on the vaginal side | The rectovaginal space: stay on the vagina |
+| Anterior dissection | Vault tipped back; three sweeps take the bladder flap further down | The vesicovaginal space |
+| Fix the posterior leaf | Needle driver: a suture at each far corner of the leaf and one on the cervix | Each bite takes the mesh |
+| Fix the anterior leaf | The same, with the vault tipped back | The bladder lies just beyond the leaf |
+| Fix the mesh to the promontory | Hold the vault at its natural level, then two bites through the mesh into the ligament over S1 | Tension; S1, not the disc; clear of the midline vessels |
+| Close the peritoneum | Four bites from the promontory to the cul-de-sac | No mesh is left uncovered |
+| Low-pressure check | Lower the pressure, control the ooze, confirm both ureters | A second look. Cystoscopy follows |
+
+- **The promontory.** This case adds a sacral promontory to the posterior wall, the left common iliac vein crossing
+  above it and the middle sacral vessels in the midline. The sigmoid starts across it.
+- **The incision** opens as a window over the promontory, which shows fat until it is swept and then the white
+  ligament, and as a bed down the gutter. The closure draws it shut from the top, and the arm of the mesh goes under.
+- **The mesh** comes in at the first fixing step: two leaves over the cervical stump and an arm along the gutter. The
+  posterior leaf lies between the uterosacral ligaments. A corner suture is taken by the hand on that side, and the
+  guidance changes hands for it.
+- **Tension** is read from where the probe holds the vault when the first promontory suture goes in: pushed hard up
+  (the last fifth of its travel) fixes the mesh under tension, and low (the first third) leaves it slack. After the
+  second suture the probe is out and the vault stays where the mesh holds it.
+- **What can go wrong:** the hook on, or a needle into, the left common iliac vein (a major vascular injury); the
+  middle sacral vessels opened by energy or by a bite at the medial edge of the mesh (presacral bleeding, controlled
+  with bipolar); a bite at the L5 to S1 disc; a needle through the bladder, the bowel or a ureter; and energy on the
+  bowel, the bladder, a ureter or the iliac vessels, as in every case.
+- **What counts against you:** all of those, mesh fixed tight or slack, a step started without its exposure, energy
+  off target, and more than 100 mL lost.
+- **Sources** for the figures in this case's teaching text, found through PubMed: the left common iliac vein lies a
+  mean 27 mm above the mid-promontory and the middle sacral vessels within a few millimetres of it (Wieslander et al.
+  2006, [doi:10.1016/j.ajog.2006.07.045](https://doi.org/10.1016/j.ajog.2006.07.045)); the right ureter, right common
+  iliac artery and left common iliac vein are all within 3 cm of it (Good et al. 2013,
+  [doi:10.1016/j.ajog.2013.02.039](https://doi.org/10.1016/j.ajog.2013.02.039)); and mesh erosion after
+  sacrocolpopexy is less common with a supracervical than with a total hysterectomy (Nassif et al. 2022, a
+  meta-analysis, [doi:10.1097/AOG.0000000000004901](https://doi.org/10.1097/AOG.0000000000004901)).
+
 A case is its list of steps (each with its own targets, checks and teaching text), the instruments on its tray, how
 its pelvis differs from the model's (a fibroid in the wall, blood and clot, a swollen tube, an ovary with a cyst in
-it), and how it is scored. In the source that is one file per case (`06a-hysterectomy.js`, `06b-myomectomy.js`,
-`06c-ectopic.js`, `06d-cystectomy.js`).
+it, a cervix left on its ligaments, a promontory and a mesh), and how it is scored. In the source that is one file
+per case (`06a-hysterectomy.js`, `06b-myomectomy.js`, `06c-ectopic.js`, `06d-cystectomy.js`,
+`06e-supracervical.js`, `06f-sacrocolpopexy.js`). A case may also build on another: the supracervical hysterectomy
+takes most of its steps from the total hysterectomy, and the sacrocolpopexy starts in the state the supracervical
+hysterectomy ends in.
 `06-steps.js` holds what the cases share, such as the steps that seal and divide a pedicle, and `06z-cases.js`
 lists the cases and runs their steps.
 
@@ -205,7 +276,8 @@ the jaws and energy needs contact. There are three ways to drive it.
 
 | Build | Added | Removed | Play it |
 |---|---|---|---|
-| 0.7 | A fourth case: laparoscopic ovarian cystectomy for a dermoid. An ovary stretched over a cyst that opens along an incision, gives up its cyst and is left as an open cup; three ways to rupture the cyst, and spilled contents to wash out; counter-traction on the cut edge of the cortex; the seconds of bipolar on the ovary counted | The ectopic's own builder for clot shapes (now shared, and used for spilled contents too); the fibroid's line inside the grasper's code (now the myomectomy's own); an ovary snapping to its ligament when grasped (it is now held where the jaws close); the flow test waiting without end on a bleeding point its player cannot reach | https://phillintheblank.github.io/TLH/ |
+| 0.8 | Two cases for one patient. A fifth, laparoscopic supracervical hysterectomy: the hysterectomy as far as the uterine vessels, then amputation at the internal os, the specimen out in a bag, and a cervix left on its cardinal and uterosacral ligaments. A sixth, laparoscopic sacrocolpopexy, which starts where the fifth ends: a vaginal probe, a sigmoid to sweep off the promontory, the promontory with the left common iliac vein and the middle sacral vessels, a peritoneal incision that opens and is closed again, rectovaginal and vesicovaginal dissection, a Y-shaped mesh sutured to the vagina, the cervix and the anterior longitudinal ligament, and tension judged from where the vault is held | The bladder flap's fixed six sweeps (the step is now a builder that each case sets); the rectosigmoid as a fixed shape (a case may now lay it elsewhere); the rule that the cardinal ligament's inner half always leaves with the specimen; the cuff's fall-back applied to whatever is left on the vagina (a cervix on its ligaments rests near neutral); the limit of nine suture threads | https://phillintheblank.github.io/TLH/ |
+| 0.7 | A fourth case: laparoscopic ovarian cystectomy for a dermoid. An ovary stretched over a cyst that opens along an incision, gives up its cyst and is left as an open cup; three ways to rupture the cyst, and spilled contents to wash out; counter-traction on the cut edge of the cortex; the seconds of bipolar on the ovary counted | The ectopic's own builder for clot shapes (now shared, and used for spilled contents too); the fibroid's line inside the grasper's code (now the myomectomy's own); an ovary snapping to its ligament when grasped (it is now held where the jaws close); the flow test waiting without end on a bleeding point its player cannot reach | https://phillintheblank.github.io/TLH/v0.7/ |
 | 0.6 | A third case: laparoscopic salpingectomy for a ruptured right tubal ectopic. Haemoperitoneum to aspirate, clots, a rupture that bleeds until the mesosalpinx is sealed, a swollen tube, a tube divided at the isthmus and carried out in the grasper | The myomectomy's own specimen bag and its own search for a place where the blood pool is in view (both now shared by the cases); the rule inside the cut blade that swung the tube free (now the hysterectomy step's own); a bagged specimen travelling into the lens (it now leaves by the top of the picture) | https://phillintheblank.github.io/TLH/v0.6/ |
 | 0.5 | A second case, laparoscopic myomectomy, and a case chooser on the start screen. Laparoscopic tenaculum and injection needle. A fibroid uterus that opens, gives up its fibroid and is repaired in two layers. Each case in its own file | The single-case wiring: the fixed tray and number keys, the hysterectomy's own debrief and suture code inside the interface, and the name *TLH Simulator* on the page | https://phillintheblank.github.io/TLH/v0.5/ |
 | 0.4 | Second camera for hand control of depth; camera choosers; one calibration watched by both cameras, with a check of where the second camera sits; grip read from the camera with the clearer view; a hand lost by one camera keeps moving as the other sees it. Tissue contact with no hidden travel; structures across the shaft no longer pull the tip back | Depth from palm size, with its smoothing, dead band and the *Depth speed* and *Depth steadiness* sliders; depth assist; target lock; grip hold; the forward calibration step with one camera | https://phillintheblank.github.io/TLH/v0.4/ |
@@ -217,12 +289,15 @@ the jaws and energy needs contact. There are three ways to drive it.
 
 Each build's source is kept on a `checkpoint/…` branch (`checkpoint/v0.1-hands`, `checkpoint/v0.2-realism`,
 `checkpoint/v0.3a-depth`, `checkpoint/v0.3b-handdepth`, `checkpoint/v0.3c-assist`, `checkpoint/v0.4-twocam`,
-`checkpoint/v0.5-myomectomy`, `checkpoint/v0.6-ectopic`, `checkpoint/v0.7-cystectomy`), and the built page of each
+`checkpoint/v0.5-myomectomy`, `checkpoint/v0.6-ectopic`, `checkpoint/v0.7-cystectomy`,
+`checkpoint/v0.8-sacrocolpopexy`), and the built page of each
 earlier build stays in `docs/` under its version number.
 
 Each build removes what it replaces. Size is tracked, with no target. Builds 0.5 to 0.7 each grew by a whole case
 and its tests (the salpingectomy is 251 lines and the cystectomy 321, against 492 for the myomectomy: the first
-reuses the steps that seal and divide a pedicle, and the second draws its ovary from two simple shapes):
+reuses the steps that seal and divide a pedicle, and the second draws its ovary from two simple shapes). Build 0.8
+added two cases: the supracervical hysterectomy is 152 lines, because most of its steps are the total
+hysterectomy's, and the sacrocolpopexy 402:
 
 | Build | Source (`src/`) | Tests (`test/`) | Built page |
 |---|---|---|---|
@@ -231,6 +306,7 @@ reuses the steps that seal and divide a pedicle, and the second draws its ovary 
 | 0.5 | 4,493 lines | 1,157 lines | 327 KB |
 | 0.6 | 4,773 lines | 1,276 lines | 354 KB |
 | 0.7 | 5,102 lines | 1,399 lines | 388 KB |
+| 0.8 | 5,664 lines | 1,662 lines | 445 KB |
 
 ## Hand control
 
@@ -266,9 +342,25 @@ reuses the steps that seal and divide a pedicle, and the second draws its ovary 
 
 ### Limits of this build
 
-- The cystectomy is new and has been played by script only: start to finish with the mouse in both depth modes
-  and with simulated hands. No person has played it yet, and its clinical content (the case, the order of steps, the
-  teaching text, how the cyst ruptures, the energy allowance, what is scored) has not been reviewed by a surgeon.
+- The supracervical hysterectomy and the sacrocolpopexy are new and have been played by script only: start to
+  finish with the mouse in both depth modes and with simulated hands. No person has played them yet, and their
+  clinical content (the patient, the order of steps, the teaching text, where the sutures go, what counts as
+  tension, what is scored) has not been reviewed by a surgeon. Nor has the cystectomy's, from the build before.
+- The supracervical hysterectomy is simplified. The amputation is twelve places on a fixed line: it cannot be made
+  too high or too low, and the cone toward the canal is drawn, not cut. The manipulator stays in until the cut is
+  complete, where in theatre its tip is drawn back before the cut reaches the canal. The body of the uterus does not
+  blanch when its vessels are sealed. Bagging is a button and tissue extraction is not shown. The ovaries are kept,
+  as in the total hysterectomy.
+- The sacrocolpopexy is simplified. The promontory is a rise on the posterior wall. The aortic bifurcation and the
+  right common iliac vessels are not drawn, and the vessels on each side wall carry the name of the external iliacs
+  all the way up. The sigmoid takes three pushes and then stays where it is put. The peritoneum is not lifted before
+  it is cut, and both incisions follow fixed lines. Each dissection is a few sweeps in a fixed order and never
+  bleeds. The mesh arrives in place: it is not introduced, trimmed or laid out, and it does not move. Three sutures
+  stand for six or more on each leaf, two for the promontory, and four bites for a running peritoneal closure. A
+  suture is one bite and ties itself, and how deep a bite goes into the vaginal wall is not judged. Tension is read
+  only from how far the probe is pushed when the first promontory suture goes in. The peritoneum is closed along
+  the gutter but not over the mesh on the vagina. The posterior leaf is narrower than in theatre, to lie between
+  this model's uterosacral ligaments. Cystoscopy and the vaginal examination are a line of text.
 - The cystectomy is simplified. The cyst is a ball and the cortex an even shell over it: there is no thick and thin
   side, and no island of normal ovary to find and keep. The plane is eight places worked in a fixed order, all on
   the working hand's side of the cyst; it never bleeds and cannot be lost into the ovary. Irrigation is not an
@@ -283,10 +375,11 @@ reuses the steps that seal and divide a pedicle, and the second draws its ovary 
   normal, so the choice between salpingectomy and salpingotomy never arises.
 - A tube that is lifted is a thin target for the other hand in free depth, about 3 mm across at the isthmus and
   standing clear of everything else: the bipolar has to meet it in depth as well as on the screen.
-- With two cameras and tracker jitter the scripted hands do not finish every run. On this build they finished the
-  cystectomy in 4 of 4 runs and the hysterectomy in 1 of 2 (in the other the hook strayed onto the bladder while
-  raising the flap, and the cuff closure then stalled after four stitches). The salpingectomy and the myomectomy
-  were run once each and finished; on build 0.6 they finished 5 of 6 and 1 of 2, stopping at the isthmus and at a
+- With two cameras and tracker jitter the scripted hands do not finish every run cleanly. On this build they
+  finished the sacrocolpopexy in 3 of 3 runs and the supracervical hysterectomy in 2 of 2, but in one of those two
+  the hook strayed onto the bladder while it was being mobilized: the same place, under the same jitter, as in the
+  total hysterectomy on build 0.7. The total hysterectomy, the myomectomy, the salpingectomy and the cystectomy were
+  run once each and finished clean. On earlier builds a run now and then stopped at the cuff, at the isthmus or at a
   bite on the serosal edge. With the mouse, and with hands and one camera, every case plays through every time.
 - The myomectomy is simplified. One fibroid, modelled as a ball. Its attachments are eight separate strands, the
   last a single pedicle. A stitch is two bites and ties itself. Aspiration before injecting, bagging and tissue
@@ -324,15 +417,17 @@ reuses the steps that seal and divide a pedicle, and the second draws its ovary 
 6. A second camera for hand control of depth (done)
 7. A second case on the same pelvis, laparoscopic myomectomy, and a case chooser (done)
 8. A third case, salpingectomy for a ruptured tubal ectopic with haemoperitoneum (done)
-9. A fourth case, ovarian cystectomy for a dermoid (this build)
-10. Scope control with both hands: two open palms moved together pan, tilt and advance the view
-11. Contact along the instrument shaft, lifting tissue with the side of an instrument, and instruments that cannot
+9. A fourth case, ovarian cystectomy for a dermoid (done)
+10. A fifth and a sixth case for one patient: supracervical hysterectomy, and the sacrocolpopexy that carries on
+    from it (this build)
+11. Scope control with both hands: two open palms moved together pan, tilt and advance the view
+12. Contact along the instrument shaft, lifting tissue with the side of an instrument, and instruments that cannot
     pass through each other
-12. Side-by-side stereo for XR glasses and 3D displays
-13. Wrist orientation driving a wristed instrument tip
-14. Robotic instrument set and multiport robotic case flow
-15. Voice commands for the uterine manipulator and instrument exchanges
-16. Wristed suturing
+13. Side-by-side stereo for XR glasses and 3D displays
+14. Wrist orientation driving a wristed instrument tip
+15. Robotic instrument set and multiport robotic case flow
+16. Voice commands for the uterine manipulator and instrument exchanges
+17. Wristed suturing
 
 If two webcams do not give steady enough depth with real hands, the fallback is a sensor made for hand tracking.
 
@@ -352,8 +447,8 @@ Tests drive a headless Chrome through Playwright (`test/shot.mjs <screenshot> <s
 
 - `test/steps/free.mjs` checks free depth through real mouse events: swing, fulcrum inversion, wheel travel, contact
   and the stop, working only in contact, traction, complications.
-- `test/steps/flow.mjs` plays a whole case (`QUERY=case=myo` for the myomectomy, `QUERY=case=ect` for the
-  salpingectomy, `QUERY=case=cyst` for the cystectomy): in free depth (`MODE=free`), with real mouse events in auto depth
+- `test/steps/flow.mjs` plays a whole case (`QUERY=case=myo` for the myomectomy, and likewise `ect`, `cyst`, `lsh`
+  and `scp`): in free depth (`MODE=free`), with real mouse events in auto depth
   (`MODE=mouse`), or with scripted hands pushed through the full hand-control pipeline, seen by two simulated cameras
   (`MODE=hands`, free depth) or by one (`MODE=handsauto`, auto depth). `RIG` picks the cameras (`one`, `tilted`,
   `two`, `shallow`) and `NOISE=0.004` adds tracker jitter. Jitter is random, so a jittered run differs each time;
@@ -392,6 +487,17 @@ Tests drive a headless Chrome through Playwright (`test/shot.mjs <screenshot> <s
   a rupture leaves to clear, the plane that opens only against counter-traction, the cyst coming out whole and
   being bagged, the bed's bleeding points, bipolar on the operated ovary counted and on the other ovary an injury,
   the score, the debrief, and each case played to its debrief after another.
+- `test/steps/lsh.mjs` checks the supracervical hysterectomy: its place among the six cases, the steps it shares
+  and the ones it drops, the shorter bladder mobilization, the amputation (the groove, the back of the cervix out of
+  reach from in front, the body coming off and the cervix staying on its ligaments), the bag, the stump's bleeding
+  vessel and its canal, the low-pressure check, the debrief, energy on the bladder, and the uterus and cup put back
+  on leaving the case.
+- `test/steps/scp.mjs` checks the sacrocolpopexy: the pelvis it starts in, the probe, the sigmoid grasped and then
+  swept, energy held off while the landmarks are found, the vein and the middle sacral vessels under the hook, the
+  window over the promontory and its clearing, the gutter, the exposure check and both dissections, the mesh
+  arriving, bites that fix nothing, a needle into the rectum or the bladder, each leaf fixed, tension, a second
+  suture on top of the first, a bite at the medial edge of the mesh, a bite at the disc, the peritoneal closure and
+  what it covers, the low-pressure check, the debrief, and the pelvis put back on leaving the case.
 - `test/steps/realcam.mjs` loads the real camera and model pipeline against Chrome's fake camera (`LIVE=1 QUERY=q=low`).
 - `test/steps/handviews.mjs` takes screenshots of the setup screen and of hand control at work (`RIG=two|one`);
   `look.mjs` and `views.mjs` take screenshots of chosen steps for judging the picture.
