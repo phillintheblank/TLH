@@ -181,5 +181,5 @@ window.__sim = {
   cuffAt(p) { const lp = new V3(p[0], p[1], p[2]).applyMatrix4(new THREE.Matrix4().copy(VG.M).invert()); return { x: lp.x, edge: lp.z < 0 ? 'ant' : 'post', depth: Math.max(0, -lp.y) }; }, // where on the vaginal cuff a point lies, as the bite check sees it
   render(dt) { renderFrame(dt == null ? 0.5 : dt, simTime, S.haze); drawOverlay(simTime); renderUI(1); htRenderUI(1, simTime); },
   setQuality, QUAL, GRADE, LIGHT, MAT, POST, head, scene, camera, renderer, THREE,
-  DEPTH, DENT, freeDepth, freePick, poseFromPoint, primaryDown, primaryUp, releaseGrab, nearTarget, PICKS, shown, VUF
+  DEPTH, DENT, freeDepth, freePick, poseFromPoint, primaryDown, primaryUp, releaseGrab, nearTarget, PICKS, shown, VUF, PF
 };

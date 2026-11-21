@@ -3,8 +3,10 @@
 // cardinal ligament), the advanced bipolar for all of it and the hook only for the colpotomy. Peritoneum is sealed and
 // then cut with the blade, bite by bite; the uterine vessels take three burns and are cut through the middle one; the
 // ovary lifts anteriorly off the sidewall at the ureter survey; the bladder is taken down by holding an instrument at
-// its edge and stays one sheet with the leaves beside it; the cuff is closed in two layers; the needle is held two
-// thirds back from its point. Real mouse input, auto depth.
+// its edge and stays one sheet with the leaves beside it; the cuff is closed in two layers, the second in single bites
+// through both edges; the needle is held two thirds back from its point; at low pressure the right uterine pedicle
+// oozes and the blood collects in the posterior cul-de-sac until it is controlled, to be aspirated from there. Real
+// mouse input, auto depth.
 export default async function (page) {
   const ev = (fn, a) => page.evaluate(fn, a);
   const ok = (name, pass, info) => console.log((pass ? 'PASS ' : 'FAIL ') + name + (info !== undefined ? ' ' + JSON.stringify(info) : ''));
@@ -39,7 +41,7 @@ export default async function (page) {
       roof: [R.roofS, R.roofGoal], roofCut: R.roofCut, round: R.round.cut, post: [R.postS, R.postGoal], ant: [R.antS, R.antGoal], fold: [R.vufGoal, L.vufGoal], foldS: R.vufS, upper: !!R.rel.upper,
       flap: +S.flap.toFixed(2), flapGoal: +S.flapGoal.toFixed(3), cnt: st.cnt, sweep: !!(s.HAND.R.sweep || s.HAND.L.sweep), join: [join('R'), join('L')],
       seals: R.ua.seals.map(z => +z.u.toFixed(3)).sort(), ua: R.ua.cut, uc: +(+R.ua.uc).toFixed(3), card: R.card.cut, colp: S.colp.filter(c => c >= 1).length,
-      cuff: { layer: c.layer, done: c.done, n: [c.stitches.filter(b => b.layer === 1).length, c.stitches.filter(b => b.layer === 2).length], xs: c.stitches.map(b => +b.x.toFixed(2)), pitch: +s.VG.pose.pitch.toFixed(2) },
+      cuff: { layer: c.layer, done: c.done, pending: !!c.pending, through: c.stitches.filter(b => b.layer === 2).every(b => b.da === b.dp), n: [c.stitches.filter(b => b.layer === 1).length, c.stitches.filter(b => b.layer === 2).length], xs: c.stitches.map(b => +b.x.toFixed(2)), pitch: +s.VG.pose.pitch.toFixed(2) },
       needle: { jaw: nd.jaws[0].rotation.x, point: +grip.distanceTo(s.HAND.R.tip).toFixed(2), swage: +grip.distanceTo(sw).toFixed(2) },
       acts: S.stats.activations, blunt: +S.stats.blunt.toFixed(1), unsealed: S.stats.unsealedCuts, xm: S.stats.expoMiss, inj: Object.keys(S.injuries), bleeders: S.bleeders.length, tech: S.events.filter(e => e.type === 'tech').map(e => e.text),
       toast: document.getElementById('toast').textContent, act: nx && nx.act, label: nx && nx.label, chips: [...document.querySelectorAll('#stepChips .chip')].map(e => e.textContent).join(' | ') };
@@ -140,10 +142,35 @@ export default async function (page) {
   ok('the needle driver is closed on its needle, which it holds two thirds of the way back from the point: the point is the working tip', m.needle.jaw === 0 && Math.abs(m.needle.point - 1.47) < 0.03 && Math.abs(m.needle.swage - 0.85) < 0.03, m.needle); // chords of 120 and 60 degrees of a needle of radius 0.85 cm
   for (let i = 0; i < 10 && (await M()).cuff.layer === 1; i++) await click();
   await T(2.5); m = await M();
-  ok('five stitches right to left close the cuff, and that is the first layer only: the same suture is to be run back', m.cuff.n[0] === 5 && m.cuff.n[1] === 0 && m.cuff.layer === 2 && !m.cuff.done && m.step === 'cuff' && /Second layer: anterior bite/.test(m.label) && /Run the same suture back/.test(m.toast), { stitches: m.cuff.n, label: m.label, toast: m.toast });
-  ok('the closed cuff is presented end-on for it', m.cuff.pitch > 0.3, { pitch: m.cuff.pitch });
+  ok('five stitches right to left, each an anterior bite and then a posterior one, close the cuff; that is the first layer only', m.cuff.n[0] === 5 && m.cuff.n[1] === 0 && m.cuff.layer === 2 && !m.cuff.done && m.step === 'cuff' && /Second layer: one bite through both edges/.test(m.label) && /Run the same suture back/.test(m.toast), { stitches: m.cuff.n, label: m.label, toast: m.toast });
+  ok('the closed cuff is presented end-on for the second layer', m.cuff.pitch > 0.3, { pitch: m.cuff.pitch });
   const xl = m.cuff.xs[4];
-  for (let i = 0; i < 12 && !(await M()).cuff.done; i++) await click();
+  await click(); m = await M();
+  ok('in the second layer one bite is a whole stitch, through both edges: nothing is left waiting for a second bite', m.cuff.n[1] === 1 && !m.cuff.pending && m.cuff.through && /one bite through both edges/.test(m.label), { stitches: m.cuff.n, pending: m.cuff.pending, label: m.label });
+  let k2 = 1; for (; k2 < 12 && !(await M()).cuff.done; k2++) await click();
   await T(2.5); m = await M(); const x2 = m.cuff.xs.slice(5), said = await ev(() => window.__sim.S.events.filter(e => e.type === 'info').map(e => e.text).pop());
-  ok('four stitches run back left to right, between those of the first layer, finish it', m.cuff.done && m.cuff.n[1] === 4 && x2[0] > xl && x2[0] < xl + 0.6 && x2.every((x, i) => !i || x > x2[i - 1] + 0.3) && x2[3] > 0.85 && /two layers/.test(said) && m.tech.length === 0 && m.step === 'final', { first: m.cuff.xs.slice(0, 5), second: x2, record: said, step: m.step });
+  ok('four such bites run back left to right, between the stitches of the first layer, finish it', k2 === 4 && m.cuff.done && m.cuff.n[1] === 4 && m.cuff.through && x2[0] > xl && x2[0] < xl + 0.6 && x2.every((x, i) => !i || x > x2[i - 1] + 0.3) && x2[3] > 0.8 && /two layers/.test(said) && m.tech.length === 0 && m.step === 'final', { bites: k2, first: m.cuff.xs.slice(0, 5), second: x2, record: said, step: m.step });
+  // ---- low pressure: the right uterine pedicle oozes into the cul-de-sac ----
+  const F = () => ev(() => {
+    const s = window.__sim, S = s.S, st = s.STEPS[S.step], V = new s.THREE.Vector3(), nx = s.next(); s.render();
+    let deep = null; if (s.POOL.visible && s.PF.cols) { const c = s.PF.cols, L = s.POOL.position.y; let d = 0; for (let i = 0; i < c.length; i += 4) if (L - c[i + 2] > d) { d = L - c[i + 2]; deep = [c[i], c[i + 1], +d.toFixed(2)]; } } // where the blood stands deepest: x, z, cm
+    return { pool: +S.pool.toFixed(2), shown: s.POOL.visible, deep, bleeders: S.bleeders.map(b => b.label), at: S.bleeders[0] ? s.proj(S.bleeders[0].pt(V).toArray()) : null, ureter: S.bleeders[0] ? +Math.min(...s.URETER.R.arr.map(q => q.distanceTo(S.bleeders[0].pt(V)))).toFixed(2) : null,
+      near: S.stats.nearMiss, inj: Object.keys(S.injuries), act: nx && nx.act, label: nx && nx.label, end: !!st.button2.show(), mmHg: S.pressureGoal, toast: document.getElementById('toast').textContent, ok: [S.ureterOK.R, S.ureterOK.L] };
+  });
+  let f = await F();
+  ok('before the pressure is lowered the pelvis is dry', f.pool === 0 && !f.shown && f.bleeders.length === 0 && f.act === 'button', { pool: f.pool, act: f.act });
+  await ev(() => { const s = window.__sim; s.STEPS[s.S.step].button.fn(); }); await T(2); f = await F(); const p1 = f.pool;
+  ok('at 8 mmHg the right uterine pedicle oozes, about 2 cm from the ureter', f.mmHg === 8 && f.bleeders.join() === 'right uterine pedicle' && /right uterine pedicle is oozing/.test(f.toast) && f.ureter > 1.5 && f.ureter < 2.5, { bleeders: f.bleeders, toast: f.toast, ureter: f.ureter });
+  ok('and blood collects in the posterior cul-de-sac, behind the cuff and beside the rectum', f.shown && p1 > 1 && p1 < 2.5 && f.deep && f.deep[1] < -3 && f.deep[1] > -7.5 && Math.abs(f.deep[0]) < 3, { mL: p1, deepestAt: f.deep });
+  await T(3); f = await F(); const p2 = f.pool;
+  ok('it goes on collecting for as long as the pedicle bleeds; the only prompt is at the bleeding point, and the case cannot be ended', p2 > p1 + 1.5 && f.act === 'bleed' && !f.end, { mL: [p1, p2], act: f.act });
+  await inst('R', 'bipolar'); await page.mouse.move(box.x + f.at.x, box.y + f.at.y, { steps: 3 }); await T(0.6); await page.mouse.down(); await T(2.2); f = await F(); const p3 = f.pool; await T(1.5); await page.mouse.up(); await T(1.5); f = await F();
+  ok('the bipolar held on the pedicle stops it, without a near miss at the ureter even if the press is held on, and the pool stops growing', f.bleeders.length === 0 && f.near === 0 && f.inj.length === 0 && Math.abs(f.pool - p3) < 0.01 && p3 > p2, { mL: [p3, f.pool], near: f.near });
+  ok('the blood in the cul-de-sac is then to be aspirated: the case cannot be ended with it there', f.act === 'suction' && /cul-de-sac/.test(f.label) && !f.end && f.shown, { act: f.act, label: f.label, end: f.end });
+  await inst('R', 'suction'); await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.88, { steps: 3 }); await T(0.6); await hold(1.5); f = await F();
+  ok('suction away from the blood takes none of it', Math.abs(f.pool - p3) < 0.01, { mL: f.pool });
+  await atNext(); await hold(3); f = await F();
+  ok('suction in the cul-de-sac clears it, and the ureters are next', f.pool < 1 && f.act === 'hover' && /right ureter/.test(f.label), { mL: f.pool, label: f.label });
+  await atNext(); await T(1.8); await atNext(); await T(1.8); f = await F();
+  ok('with both ureters confirmed the case can be ended', f.ok[0] && f.ok[1] && f.end && f.act === 'button', { ureters: f.ok, end: f.end });
 }

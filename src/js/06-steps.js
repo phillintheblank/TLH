@@ -15,12 +15,19 @@ const lumpGeo = (seed, r) => paramSurface(22, 14, (u, v, p) => {
 }, { closedU: true, su: 2, sv: 1, flip: true });
 // A place where the blood pool lies in view, for a prompt to aspirate it: the surface, where nothing stands in front of it.
 const POOLSPOT = { p: new V3(), t: -9 };
-const poolTop = z => POOL.position.y - 0.06 * (z + 1.5); // the pool's surface tips a little toward the scope
 // where a bagged specimen is drawn to: up beside the scope and out of the top of the picture, on its way to the port
 const BAGX = new V3();
 const bagExit = () => BAGX.copy(camera.position).addScaledVector(_w.setFromMatrixColumn(camera.matrixWorld, 1), 8).addScaledVector(camera.getWorldDirection(_w2), 5);
 function poolSpot() {
   const P = POOLSPOT, p = P.p; if (Math.abs(S.t - P.t) < 0.5) return p; P.t = S.t;
+  if (CASE.poolTilt) { // a pool in the cul-de-sac: its deepest place that the scope sees
+    if (!PF.cols) poolFit();
+    const c = PF.cols, L = POOL.position.y, deep = [];
+    for (let i = 0; i < c.length; i += 4) if (L - c[i + 2] > 0.02) deep.push(i);
+    deep.sort((a, b) => c[a + 3] - c[b + 3] || c[a + 2] - c[b + 2]); // clear of the rectum first, then the deepest
+    for (let n = 0; n < Math.min(14, deep.length); n++) { const i = deep[n]; if (visibleAt(p.set(c[i], poolTop(c[i + 1]) + 0.05, c[i + 1]), 0.3)) return p; }
+    return deep.length ? p.set(c[deep[0]], poolTop(c[deep[0] + 1]) + 0.05, c[deep[0] + 1]) : p.set(1, poolTop(-4) + 0.05, -4);
+  }
   for (const z of [4, 3, 5, 2, 1, 6, 0, -1.5]) for (const x of [0, 1.2, -1.2, 2.4, -2.4]) if (visibleAt(p.set(x, poolTop(z) + 0.1, z), 0.3)) return p;
   return p.set(0, poolTop(3) + 0.1, 3);
 }

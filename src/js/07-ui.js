@@ -333,7 +333,7 @@ function resetWorld(running) {
 function setCase(id) {
   CASE = CASES[id] || CASES.tlh; STEPS = CASE.steps; UTW.a = CASE.warp[0]; UTW.b = CASE.warp[1];
   for (const k in CASES) if (CASES[k].show) CASES[k].show(CASES[k] === CASE);
-  BAG.visible = false; POOL.scale.setScalar(CASE.poolWide || 1);
+  BAG.visible = false; POOL.scale.setScalar(CASE.poolWide || 1); POOL.rotation.x = -Math.PI / 2 + (CASE.poolTilt || POOL_TILT); PF.cols = null;
   try { localStorage.setItem(KEYS, CASE.id); } catch (_) {}
   buildCaseUI(); resetWorld(false);
 }

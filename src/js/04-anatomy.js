@@ -334,6 +334,40 @@ reg(VUF.up.mesh, 'vuf'); reg(VUF.lo.mesh, 'vuf'); scene.add(VUF.up.mesh, VUF.lo.
 // blood pool in the cul-de-sac
 const POOL = new THREE.Mesh(new THREE.CircleGeometry(9, 40), MAT.blood);
 POOL.rotation.x = -Math.PI / 2 + 0.06; POOL.position.set(0, -7, -1.5); POOL.visible = false; scene.add(POOL);
+// Pooled blood is one flat sheet; the pelvis hides it wherever its floor stands higher. In most cases it lies nearly level
+// (tipped a little toward the scope, POOL_TILT). A case with poolTilt lets blood run caudally instead, into the posterior
+// cul-de-sac: there the height of the sheet is worked out from the volume and from the shape of the floor and the rectum
+// under it (poolFit), so that a few millilitres show as a few millilitres.
+const POOL_TILT = 0.06, PF = { cols: null, lv: [], vol: [], dA: 0.0625 };
+const poolSlope = () => Math.tan(CASE.poolTilt || POOL_TILT);
+const poolTop = z => POOL.position.y - poolSlope() * (z + 1.5); // the height of the pool's surface at z
+function poolFit() {
+  const cols = [], t = poolSlope(), R = AN.rectumArr, RR = 1.42;
+  for (let z = -7.5; z <= 8; z += 0.25) for (let x = -5; x <= 5; x += 0.25) {
+    let k = 1, cs = 0, sn = -1; const r = bowlR(z, 0), r0 = r[0], r1 = r[1];
+    for (let n = 0; n < 3; n++) { cs = x / (r0 * k); if (Math.abs(cs) >= 1) break; sn = -Math.sqrt(1 - cs * cs); k = 1 + 0.07 * (fbm3(cs * 1.3 + 5, sn * 1.3 + 2, z * 0.16, 3) - 0.5); }
+    if (Math.abs(cs) >= 0.97) continue; // off the floor, up the wall
+    let top = BOWL_YC + r1 * k * sn, by = 0;
+    for (let i = 0; i < R.length; i++) { const dx = x - R[i].x, dz = z - R[i].z, d2 = dx * dx + dz * dz; if (d2 < RR * RR) top = Math.max(top, R[i].y + Math.sqrt(RR * RR - d2)); if (d2 < (RR + 0.5) * (RR + 0.5)) by = 1; } // the rectum lies in it
+    cols.push(x, z, top + t * (z + 1.5), by); // four numbers a place: x, z, the sheet height (at z = -1.5) at which it goes under, and whether the rectum is on it or beside it
+  }
+  let lo = 1e9; for (let i = 2; i < cols.length; i += 4) lo = Math.min(lo, cols[i]);
+  PF.cols = cols; PF.lv.length = PF.vol.length = 0;
+  for (let n = 0; n <= 90; n++) { const L = lo + 0.04 * n; let v = 0; for (let i = 2; i < cols.length; i += 4) if (cols[i] < L) v += (L - cols[i]) * PF.dA; PF.lv.push(L); PF.vol.push(v); }
+}
+function poolLevel(v) { // the sheet's height (at z = -1.5) that holds v mL
+  if (!PF.cols) poolFit();
+  const V = PF.vol, L = PF.lv, n = V.length - 1; if (v >= V[n]) return L[n];
+  let i = 1; while (V[i] < v) i++;
+  return lerp(L[i - 1], L[i], (v - V[i - 1]) / (V[i] - V[i - 1] || 1));
+}
+// How deep the pooled blood stands at (x, z), taking the deepest place within about 0.6 cm (a tilted pool only).
+function poolDepthAt(x, z) {
+  if (!PF.cols) poolFit();
+  let d = 0; const c = PF.cols, L = POOL.position.y;
+  for (let i = 0; i < c.length; i += 4) if (L - c[i + 2] > d && Math.abs(c[i] - x) < 0.6 && Math.abs(c[i + 1] - z) < 0.6) d = L - c[i + 2];
+  return d;
+}
 
 // a specimen bag, for whichever case takes something out in one
 const BAG = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), new THREE.MeshPhysicalMaterial({ color: 0xc6dcf0, roughness: 0.3, transparent: true, opacity: 0.62, side: THREE.DoubleSide }));
@@ -558,8 +592,8 @@ function updateAnatomy(dt, time) {
   // colpotomy segments, cuff, pool
   for (let k = 0; k < 16; k++) UT.segs[k].visible = S.colp[k] >= 1 && !S.colpDone;
   updateCuff();
-  POOL.visible = S.pool > 2;
-  if (POOL.visible) POOL.position.y = CASE.poolY ? CASE.poolY(S.pool) : -6.95 + 2.3 * Math.pow(Math.min(S.pool, 600) / 300, 0.45);
+  POOL.visible = S.pool > (CASE.poolTilt ? 0.15 : 2);
+  if (POOL.visible) POOL.position.y = CASE.poolTilt ? poolLevel(S.pool) : CASE.poolY ? CASE.poolY(S.pool) : -6.95 + 2.3 * Math.pow(Math.min(S.pool, 600) / 300, 0.45);
   if (CASE.update) CASE.update(dt, time);
 }
 // Where the vesicouterine peritoneum lies this frame. Each side's half is cut from that side toward the midline; where

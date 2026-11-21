@@ -1448,6 +1448,40 @@ reg(VUF.up.mesh, 'vuf'); reg(VUF.lo.mesh, 'vuf'); scene.add(VUF.up.mesh, VUF.lo.
 // blood pool in the cul-de-sac
 const POOL = new THREE.Mesh(new THREE.CircleGeometry(9, 40), MAT.blood);
 POOL.rotation.x = -Math.PI / 2 + 0.06; POOL.position.set(0, -7, -1.5); POOL.visible = false; scene.add(POOL);
+// Pooled blood is one flat sheet; the pelvis hides it wherever its floor stands higher. In most cases it lies nearly level
+// (tipped a little toward the scope, POOL_TILT). A case with poolTilt lets blood run caudally instead, into the posterior
+// cul-de-sac: there the height of the sheet is worked out from the volume and from the shape of the floor and the rectum
+// under it (poolFit), so that a few millilitres show as a few millilitres.
+const POOL_TILT = 0.06, PF = { cols: null, lv: [], vol: [], dA: 0.0625 };
+const poolSlope = () => Math.tan(CASE.poolTilt || POOL_TILT);
+const poolTop = z => POOL.position.y - poolSlope() * (z + 1.5); // the height of the pool's surface at z
+function poolFit() {
+  const cols = [], t = poolSlope(), R = AN.rectumArr, RR = 1.42;
+  for (let z = -7.5; z <= 8; z += 0.25) for (let x = -5; x <= 5; x += 0.25) {
+    let k = 1, cs = 0, sn = -1; const r = bowlR(z, 0), r0 = r[0], r1 = r[1];
+    for (let n = 0; n < 3; n++) { cs = x / (r0 * k); if (Math.abs(cs) >= 1) break; sn = -Math.sqrt(1 - cs * cs); k = 1 + 0.07 * (fbm3(cs * 1.3 + 5, sn * 1.3 + 2, z * 0.16, 3) - 0.5); }
+    if (Math.abs(cs) >= 0.97) continue; // off the floor, up the wall
+    let top = BOWL_YC + r1 * k * sn, by = 0;
+    for (let i = 0; i < R.length; i++) { const dx = x - R[i].x, dz = z - R[i].z, d2 = dx * dx + dz * dz; if (d2 < RR * RR) top = Math.max(top, R[i].y + Math.sqrt(RR * RR - d2)); if (d2 < (RR + 0.5) * (RR + 0.5)) by = 1; } // the rectum lies in it
+    cols.push(x, z, top + t * (z + 1.5), by); // four numbers a place: x, z, the sheet height (at z = -1.5) at which it goes under, and whether the rectum is on it or beside it
+  }
+  let lo = 1e9; for (let i = 2; i < cols.length; i += 4) lo = Math.min(lo, cols[i]);
+  PF.cols = cols; PF.lv.length = PF.vol.length = 0;
+  for (let n = 0; n <= 90; n++) { const L = lo + 0.04 * n; let v = 0; for (let i = 2; i < cols.length; i += 4) if (cols[i] < L) v += (L - cols[i]) * PF.dA; PF.lv.push(L); PF.vol.push(v); }
+}
+function poolLevel(v) { // the sheet's height (at z = -1.5) that holds v mL
+  if (!PF.cols) poolFit();
+  const V = PF.vol, L = PF.lv, n = V.length - 1; if (v >= V[n]) return L[n];
+  let i = 1; while (V[i] < v) i++;
+  return lerp(L[i - 1], L[i], (v - V[i - 1]) / (V[i] - V[i - 1] || 1));
+}
+// How deep the pooled blood stands at (x, z), taking the deepest place within about 0.6 cm (a tilted pool only).
+function poolDepthAt(x, z) {
+  if (!PF.cols) poolFit();
+  let d = 0; const c = PF.cols, L = POOL.position.y;
+  for (let i = 0; i < c.length; i += 4) if (L - c[i + 2] > d && Math.abs(c[i] - x) < 0.6 && Math.abs(c[i + 1] - z) < 0.6) d = L - c[i + 2];
+  return d;
+}
 
 // a specimen bag, for whichever case takes something out in one
 const BAG = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), new THREE.MeshPhysicalMaterial({ color: 0xc6dcf0, roughness: 0.3, transparent: true, opacity: 0.62, side: THREE.DoubleSide }));
@@ -1672,8 +1706,8 @@ function updateAnatomy(dt, time) {
   // colpotomy segments, cuff, pool
   for (let k = 0; k < 16; k++) UT.segs[k].visible = S.colp[k] >= 1 && !S.colpDone;
   updateCuff();
-  POOL.visible = S.pool > 2;
-  if (POOL.visible) POOL.position.y = CASE.poolY ? CASE.poolY(S.pool) : -6.95 + 2.3 * Math.pow(Math.min(S.pool, 600) / 300, 0.45);
+  POOL.visible = S.pool > (CASE.poolTilt ? 0.15 : 2);
+  if (POOL.visible) POOL.position.y = CASE.poolTilt ? poolLevel(S.pool) : CASE.poolY ? CASE.poolY(S.pool) : -6.95 + 2.3 * Math.pow(Math.min(S.pool, 600) / 300, 0.45);
   if (CASE.update) CASE.update(dt, time);
 }
 // Where the vesicouterine peritoneum lies this frame. Each side's half is cut from that side toward the midline; where
@@ -1910,21 +1944,23 @@ function doPick(h) { // auto depth: what lies under this hand's pointer
 }
 // When a pointer is over a working point of the current step (an incision line, the cup rim), the tip rides that
 // point rather than dropping through the opened tissue onto whatever lies behind it. Auto depth only. The hook and
-// the suction tip always do; a step says which other instruments do at its own working points (snap).
-const _sp = new V3();
+// the suction tip always do; a step says which other instruments do at its own working points (snap). The bipolar
+// also rides a bleeding point it is pointed at, so that it is not put on whatever lies behind a thin pedicle; where
+// the bleeding point lies on the tissue the pointer is over, that tissue is still what the jaws are on.
+const _sp = new V3(), _sb = new V3();
 function snapPick(h) {
   if (!S.running || !h.ptr.on) return;
   const st = STEPS[S.step], inst = h.inst, P = h.pick;
-  if (!st.targets || (inst !== 'hook' && inst !== 'suction' && !(st.snap && st.snap.includes(inst)))) return;
-  let bd = 0.2, bz = 0, found = false;
-  for (const p of st.targets()) {
-    const d2 = h.ray.distanceSqToPoint(p);
-    if (d2 >= bd) continue;
+  let bd = 0.2, bz = 0, found = false, on = false;
+  const at = (p, bleeder) => {
+    const d2 = h.ray.distanceSqToPoint(p); if (d2 >= bd) return;
     const depth = _sp.copy(p).sub(h.ray.origin).dot(h.ray.direction);
-    if (P.hit && depth > P.dist + 0.35) continue;
-    bd = d2; bz = depth; found = true;
-  }
-  if (!found) return;
+    if (P.hit && depth > P.dist + 0.35) return;
+    bd = d2; bz = depth; found = true; on = bleeder && P.hit && P.dist - depth < 0.6;
+  };
+  if (st.targets && (inst === 'hook' || inst === 'suction' || (st.snap && st.snap.includes(inst)))) for (const p of st.targets()) at(p, false);
+  if (inst === 'bipolar') for (const b of S.bleeders) at(b.pt(_sb), true);
+  if (!found || on) return; // on: the bleeding point is on the surface already picked
   P.hit = true; P.mesh = null; P.ent = 'target'; P.side = null; P.piece = null; P.dist = bz;
   P.point.copy(h.ray.origin).addScaledVector(h.ray.direction, bz); P.normal.copy(h.ray.direction).negate();
 }
@@ -2359,7 +2395,7 @@ function controlBleeders(h, dt) {
   let any = false;
   for (let i = S.bleeders.length - 1; i >= 0; i--) {
     const b = S.bleeders[i];
-    if (b.pt(_bp).distanceTo(h.tip) < 1.0) { any = true; b.seal += dt / 1.2; if (b.seal >= 1) { S.bleeders.splice(i, 1); logEvent('info', 'Bleeding controlled'); sfx.sealDone(); } }
+    if (b.pt(_bp).distanceTo(h.tip) < 1.0) { any = true; b.seal += dt / 1.2; if (b.seal >= 1) { S.bleeders.splice(i, 1); logEvent('info', 'Bleeding controlled'); sfx.sealDone(); h.firing = false; stopSustain(); } } // the energy stops with the bleeding: what lies behind the point is not burned by a press held a moment too long
   }
   return any;
 }
@@ -2489,7 +2525,7 @@ function hookTick(h, dt) {
 }
 function suctionTick(h, dt) {
   sustain('suc', 900, 'noise', 0.035);
-  if (S.pool > 0 && POOL.visible && h.tip.y < POOL.position.y + 1.0) { const v = Math.min(S.pool, 28 * dt); S.pool -= v; }
+  if (S.pool > 0 && POOL.visible && h.tip.y < poolTop(h.tip.z) + 1.0 && (!CASE.poolTilt || poolDepthAt(h.tip.x, h.tip.z) > 0)) S.pool -= Math.min(S.pool, clamp(1.2 * S.pool, 3, 28) * dt); // a tip at the blood takes it: a large pool fast, the last few millilitres in about a second
   if (CASE.suction) CASE.suction(h, dt);
   const st = STEPS[S.step];
   if (st.blunt) st.blunt(h, dt);
@@ -2566,12 +2602,19 @@ const lumpGeo = (seed, r) => paramSurface(22, 14, (u, v, p) => {
 }, { closedU: true, su: 2, sv: 1, flip: true });
 // A place where the blood pool lies in view, for a prompt to aspirate it: the surface, where nothing stands in front of it.
 const POOLSPOT = { p: new V3(), t: -9 };
-const poolTop = z => POOL.position.y - 0.06 * (z + 1.5); // the pool's surface tips a little toward the scope
 // where a bagged specimen is drawn to: up beside the scope and out of the top of the picture, on its way to the port
 const BAGX = new V3();
 const bagExit = () => BAGX.copy(camera.position).addScaledVector(_w.setFromMatrixColumn(camera.matrixWorld, 1), 8).addScaledVector(camera.getWorldDirection(_w2), 5);
 function poolSpot() {
   const P = POOLSPOT, p = P.p; if (Math.abs(S.t - P.t) < 0.5) return p; P.t = S.t;
+  if (CASE.poolTilt) { // a pool in the cul-de-sac: its deepest place that the scope sees
+    if (!PF.cols) poolFit();
+    const c = PF.cols, L = POOL.position.y, deep = [];
+    for (let i = 0; i < c.length; i += 4) if (L - c[i + 2] > 0.02) deep.push(i);
+    deep.sort((a, b) => c[a + 3] - c[b + 3] || c[a + 2] - c[b + 2]); // clear of the rectum first, then the deepest
+    for (let n = 0; n < Math.min(14, deep.length); n++) { const i = deep[n]; if (visibleAt(p.set(c[i], poolTop(c[i + 1]) + 0.05, c[i + 1]), 0.3)) return p; }
+    return deep.length ? p.set(c[deep[0]], poolTop(c[deep[0] + 1]) + 0.05, c[deep[0] + 1]) : p.set(1, poolTop(-4) + 0.05, -4);
+  }
   for (const z of [4, 3, 5, 2, 1, 6, 0, -1.5]) for (const x of [0, 1.2, -1.2, 2.4, -2.4]) if (visibleAt(p.set(x, poolTop(z) + 0.1, z), 0.3)) return p;
   return p.set(0, poolTop(3) + 0.1, 3);
 }
@@ -2927,42 +2970,49 @@ const TLH_STEPS = [
   },
   {
     id: 'cuff', kind: 'cuff', tool: 'needle', phase: 'Colpotomy and closure', short: 'Close the vaginal cuff', title: 'Close the vaginal cuff', dist: 6.3, rec: null, expo: [],
-    text: ['Take the needle driver. Run a barbed suture from the patient\'s right angle to the left, then run the same suture back to the right as a second layer.', 'For each stitch click or pinch on the anterior edge, then the posterior edge.', 'Take full-thickness bites about 1 cm from the cut edge and about 1 cm apart, with mucosa in every bite of the first layer. Secure both angles.'],
+    text: ['Take the needle driver. Run a barbed suture from the patient\'s right angle to the left, then run the same suture back to the right as a second layer.', 'First layer: for each stitch click or pinch on the anterior edge, then the posterior edge. Second layer: one click or pinch for each stitch, a single bite through both edges.', 'Take full-thickness bites about 1 cm from the cut edge and about 1 cm apart, with mucosa in every bite of the first layer. Secure both angles.'],
     pearl: 'Shallow bites and missed mucosa are how cuffs dehisce. The second layer, run back over the first, buries it and takes the tension off it. A deep anterior bite risks the bladder; lateral to the angle lies the ureter.',
     nextX() { // where the next stitch goes: right to left for the first layer, then back between those stitches
       const c = S.cuff, last = c.stitches.length ? c.stitches[c.stitches.length - 1] : null;
       if (c.layer === 1) return last ? Math.max(-1.3, last.x - 0.62) : 1.3;
-      return last.layer === 1 ? last.x + 0.31 : Math.min(1.3, last.x + 0.62);
+      return last.layer === 1 ? last.x + 0.31 : Math.min(1.1, last.x + 0.62); // not out at the angle itself: on the closed cuff, turned end-on, an instrument cannot always reach that
     },
     next() {
       const c = S.cuff; if (c.done) return null;
-      if (c.pending) return { p: c.layer === 2 ? cuffPt(c.pending.x, 'post', 0.75, new V3()) : cuffPtIn(c.pending.x, 0.75, new V3()), act: 'bite', label: 'Posterior bite' }; // first layer: the posterior edge is seen from inside the open cuff; second: the closed cuff's posterior wall
-      return { p: cuffPt(this.nextX(), 'ant', 0.75, new V3()), act: 'bite', label: c.layer === 2 ? 'Second layer: anterior bite' : 'Anterior bite' };
+      if (c.pending) return { p: cuffPtIn(c.pending.x, 0.75, new V3()), act: 'bite', label: 'Posterior bite' }; // the posterior edge is seen from inside the open cuff
+      return { p: cuffPt(this.nextX(), 'ant', 0.75, new V3()), act: 'bite', label: c.layer === 2 ? 'Second layer: one bite through both edges' : 'Anterior bite' };
     },
     click(h) {
       if (h.inst !== 'needle') return false;
       if (!h.pick.hit || !h.near || h.pick.ent !== 'vagina') { hint('cuffmiss', 'Place the bite on the vaginal edge'); return true; }
       const c = S.cuff; if (c.done) return true;
       const lp = _w.copy(h.pick.point).applyMatrix4(_m4.copy(VG.M).invert()), x = lp.x, edge = lp.z < 0 ? 'ant' : 'post', depth = Math.max(0, -lp.y);
-      if (!c.pending) {
+      const spaced = () => { // is this place right for the next stitch of the layer? The second layer runs back, left to right.
+        const prev = c.stitches.length ? c.stitches[c.stitches.length - 1] : null, last = prev && prev.x, dir = c.layer === 2 ? 1 : -1;
+        if (last === null && x < 0.95) { hint('cuffstart', 'Start at the right angle of the cuff'); return false; }
+        if (prev && prev.layer !== c.layer) { if (x > last + 0.8) { hint('cuffback', 'Start the second layer at the left angle, where the first ended'); return false; } }
+        else if (last !== null && (x - last) * dir < 0.3) { hint('cuffclose', 'Too close to the last stitch: advance toward the ' + (dir > 0 ? 'right' : 'left') + ' angle'); return false; }
+        if (last !== null && (x - last) * dir > 1.3) { hint('cuffgap', 'That leaves a gap. Bites should be about 1 cm apart.'); return false; }
+        return true;
+      };
+      if (c.layer === 2) { // the cuff is closed: one bite goes through both edges
+        if (!spaced()) return true;
+        c.stitches.push({ x, da: depth, dp: depth, layer: 2 }); S.ebl += 0.5;
+        if (x >= 0.8) { c.done = true; logEvent('info', 'Cuff closed in two layers. Suture cut.'); }
+      } else if (!c.pending) {
         if (edge !== 'ant') { hint('cuffant', 'Anterior edge first, then the posterior'); return true; }
-        const prev = c.stitches.length ? c.stitches[c.stitches.length - 1] : null, last = prev && prev.x, dir = c.layer === 2 ? 1 : -1; // the second layer runs back, left to right
-        if (last === null && x < 0.95) { hint('cuffstart', 'Start at the right angle of the cuff'); return true; }
-        if (prev && prev.layer !== c.layer) { if (x > last + 0.8) { hint('cuffback', 'Start the second layer at the left angle, where the first ended'); return true; } }
-        else if (last !== null && (x - last) * dir < 0.3) { hint('cuffclose', 'Too close to the last stitch: advance toward the ' + (dir > 0 ? 'right' : 'left') + ' angle'); return true; }
-        if (last !== null && (x - last) * dir > 1.3) { hint('cuffgap', 'That leaves a gap. Bites should be about 1 cm apart.'); return true; }
+        if (!spaced()) return true;
         c.pending = { x, da: depth };
       } else {
         if (edge !== 'post') { hint('cuffpost', 'Now the posterior edge, opposite the anterior bite'); return true; }
         if (Math.abs(x - c.pending.x) > 0.6) { hint('cuffmatch', 'Match the posterior bite to the anterior one'); return true; }
-        const s = { x: c.pending.x, da: c.pending.da, dp: depth, layer: c.layer }; c.stitches.push(s); c.pending = null;
-        S.ebl += 0.5;
-        if (c.layer === 1) { c.frontGoal = s.x - 0.4; if (s.x <= -1.05) { c.frontGoal = -2.8; c.layer = 2; toast('First layer done. Run the same suture back to the right as a second layer.', 'ok'); } }
-        else if (s.x >= 0.85) { c.done = true; logEvent('info', 'Cuff closed in two layers. Suture cut.'); }
+        const s = { x: c.pending.x, da: c.pending.da, dp: depth, layer: 1 }; c.stitches.push(s); c.pending = null;
+        S.ebl += 0.5; c.frontGoal = s.x - 0.4;
+        if (s.x <= -1.05) { c.frontGoal = -2.8; c.layer = 2; toast('First layer done. Run the same suture back to the right: one bite through both edges for each stitch.', 'ok'); }
       }
       h.roll = 1; sfx.bite();
       if (depth < 0.4) logEvent('tech', 'Shallow bite (' + Math.round(depth * 10) + ' mm from the edge): risk of pull-through');
-      else if (depth > 1.5) logEvent('tech', 'Deep ' + (edge === 'ant' ? 'anterior bite: the bladder is close' : 'posterior bite: the rectum is close'));
+      else if (depth > 1.5) logEvent('tech', 'Deep ' + (S.cuff.stitches.length && !S.cuff.pending && S.cuff.stitches[S.cuff.stitches.length - 1].layer === 2 ? 'bite: the bladder and the rectum are close' : edge === 'ant' ? 'anterior bite: the bladder is close' : 'posterior bite: the rectum is close'));
       uiDirty(); return true;
     },
     done() { return S.cuff.done && S.cuff.front < -2.2; },
@@ -2972,24 +3022,27 @@ const TLH_STEPS = [
   },
   {
     id: 'final', kind: 'final', tool: 'any', phase: 'Colpotomy and closure', short: 'Low-pressure inspection', title: 'Inspect at low pressure and confirm the ureters', dist: 12, rec: null, expo: [],
-    text: ['Drop the pneumoperitoneum to 8 mmHg and inspect the pedicles and cuff.', 'Control any ooze with short bipolar bursts, away from the ureter at the cuff angle.', 'Aspirate pooled blood, then hold a tip beside each ureter for a moment to confirm peristalsis.'],
+    text: ['Drop the pneumoperitoneum to 8 mmHg and inspect the pedicles and cuff.', 'Control any ooze with short bipolar bursts, on the pedicle and away from the ureter lateral to it. Until it is controlled, blood runs down into the posterior cul-de-sac.', 'Aspirate the blood from the cul-de-sac, then hold a tip beside each ureter for a moment to confirm peristalsis.'],
     pearl: 'Venous bleeding that 15 mmHg tamponades shows itself at 8. Cystoscopy follows according to your institution\'s practice.',
     click: clickUreter, tick: ureterDwell,
-    button: { label: 'Lower pressure to 8 mmHg', fn() { if (S.lowP) return; S.lowP = true; S.pressureGoal = 8; addBleeder(o => cuffPt(1.7, 'ant', 0.5, o), 14, false, 'cuff angle'); S.oozeDone = true; toast('Pressure down: venous ooze at the right cuff angle', 'bleed'); uiDirty(); }, hide: () => S.lowP },
-    button2: { label: 'End case', fn() { endCase(); }, show: () => S.lowP && !S.bleeders.length && S.pool < 8 && S.ureterOK.R && S.ureterOK.L },
+    button: { label: 'Lower pressure to 8 mmHg', fn() { if (S.lowP) return; S.lowP = true; S.pressureGoal = 8; addBleeder(oozePt, OOZE, false, 'right uterine pedicle'); S.oozeDone = true; toast('Pressure down: the right uterine pedicle is oozing', 'bleed'); uiDirty(); }, hide: () => S.lowP },
+    button2: { label: 'End case', fn() { endCase(); }, show: () => S.lowP && !S.bleeders.length && S.pool < poolDry() && S.ureterOK.R && S.ureterOK.L },
     next() {
       if (!S.lowP) return { p: cuffPt(0, 'ant', 0, new V3()), act: 'button', label: 'Lower the pressure' };
       if (S.bleeders.length) return null;
-      if (S.pool >= 8) return { p: new V3(POOL.position.x, POOL.position.y + 0.1, -1.5), act: 'suction', label: 'Aspirate the pool' };
+      if (S.pool >= poolDry()) return { p: CASE.poolTilt ? poolSpot().clone() : new V3(POOL.position.x, POOL.position.y + 0.1, -1.5), act: 'suction', label: CASE.poolTilt ? 'Aspirate the blood in the cul-de-sac' : 'Aspirate the pool' };
       for (const k of ['R', 'L']) if (!S.ureterOK[k]) return { p: ureterMarker(k), act: 'hover', side: k, label: 'Hold near the ' + WORD[k] + ' ureter to confirm it', prog: UDW[k] / UDW.T };
       return { p: cuffPt(0, 'ant', 0, new V3()), act: 'button', label: 'End the case' };
     },
     done() { return S.ended; },
-    progress() { return !S.lowP ? 'At 15 mmHg' : S.bleeders.length ? 'Ooze to control' : S.pool >= 8 ? 'Blood to aspirate: ' + Math.round(S.pool) + ' mL' : (S.ureterOK.R ? 1 : 0) + (S.ureterOK.L ? 1 : 0) + ' of 2 ureters confirmed'; },
+    progress() { return !S.lowP ? 'At 15 mmHg' : S.bleeders.length ? 'Ooze to control' + (CASE.poolTilt ? ': ' + S.pool.toFixed(0) + ' mL in the cul-de-sac' : '') : S.pool >= poolDry() ? 'Blood to aspirate: ' + Math.round(S.pool) + ' mL' : (S.ureterOK.R ? 1 : 0) + (S.ureterOK.L ? 1 : 0) + ' of 2 ureters confirmed'; },
     frac() { return (S.lowP ? 0.25 : 0) + (S.lowP && !S.bleeders.length ? 0.25 : 0) + (S.ureterOK.R ? 0.25 : 0) + (S.ureterOK.L ? 0.25 : 0); },
     focus(o) { return o.set(0, -1.6, -2.5); }
   }
 ];
+// At low pressure the right uterine pedicle oozes, at OOZE mL a minute: where on the pedicle's stump, and how little blood left in the pelvis counts as dry.
+const OOZE = 45, poolDry = () => CASE.poolDry || 8;
+function oozePt(out) { const st = S.side.R, G = st.rel.ua ? st.rel.ua.lat : AN.side.R.cur; return sampleArr(G.ua, st.ua.uc + 0.03, out); }
 // world point on the inner (mucosal) face of the posterior cuff wall
 function cuffPtIn(x, depth, out) {
   const sn = clamp(x / 1.47, -0.995, 0.995), f = depth <= 0.64 ? 5 + depth / 0.64 : 6 + Math.min(1, (depth - 0.64) / 1.9);
@@ -3055,6 +3108,7 @@ const TLH = {
     'She is in lithotomy and Trendelenburg with a uterine manipulator and colpotomy cup in place. 10 mm umbilical scope, two 5 mm lateral ports, pneumoperitoneum at 15 mmHg. You are looking toward the pelvis: her right is on the right of the screen.'],
   steps: TLH_STEPS, insts: ['grasper', 'bipolar', 'hook', 'suction', 'needle'], warp: [0, 0], tipZ: 4.6, ureters: true, eblWarn: 100,
   needleHint: 'The needle driver is for closing the vaginal cuff',
+  poolTilt: 0.46, poolDry: 1, // blood runs back into the posterior cul-de-sac, and a millilitre left there is still to be aspirated
   score: tlhScore, debrief: tlhDebrief, sutures: tlhSutures, force: tlhForce, want: tlhWant
 };
 
@@ -4682,7 +4736,7 @@ const SCP = {
 // ---------- the cases ----------
 // A case is its steps (each with its own targets, checks and teaching text), the instruments on its tray, how its
 // pelvis differs from the model's, and how it is scored. Everything else is shared.
-const BUILD = 'Build 0.10';
+const BUILD = 'Build 1.0';
 const CASES = { tlh: TLH, myo: MYO, ect: ECT, cyst: CYS, lsh: LSH, scp: SCP };
 
 // ---------- step engine (every case) ----------
@@ -5054,7 +5108,7 @@ function resetWorld(running) {
 function setCase(id) {
   CASE = CASES[id] || CASES.tlh; STEPS = CASE.steps; UTW.a = CASE.warp[0]; UTW.b = CASE.warp[1];
   for (const k in CASES) if (CASES[k].show) CASES[k].show(CASES[k] === CASE);
-  BAG.visible = false; POOL.scale.setScalar(CASE.poolWide || 1);
+  BAG.visible = false; POOL.scale.setScalar(CASE.poolWide || 1); POOL.rotation.x = -Math.PI / 2 + (CASE.poolTilt || POOL_TILT); PF.cols = null;
   try { localStorage.setItem(KEYS, CASE.id); } catch (_) {}
   buildCaseUI(); resetWorld(false);
 }
@@ -5838,7 +5892,7 @@ window.__sim = {
   cuffAt(p) { const lp = new V3(p[0], p[1], p[2]).applyMatrix4(new THREE.Matrix4().copy(VG.M).invert()); return { x: lp.x, edge: lp.z < 0 ? 'ant' : 'post', depth: Math.max(0, -lp.y) }; }, // where on the vaginal cuff a point lies, as the bite check sees it
   render(dt) { renderFrame(dt == null ? 0.5 : dt, simTime, S.haze); drawOverlay(simTime); renderUI(1); htRenderUI(1, simTime); },
   setQuality, QUAL, GRADE, LIGHT, MAT, POST, head, scene, camera, renderer, THREE,
-  DEPTH, DENT, freeDepth, freePick, poseFromPoint, primaryDown, primaryUp, releaseGrab, nearTarget, PICKS, shown, VUF
+  DEPTH, DENT, freeDepth, freePick, poseFromPoint, primaryDown, primaryUp, releaseGrab, nearTarget, PICKS, shown, VUF, PF
 };
 
 </script>

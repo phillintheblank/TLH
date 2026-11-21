@@ -187,21 +187,23 @@ function doPick(h) { // auto depth: what lies under this hand's pointer
 }
 // When a pointer is over a working point of the current step (an incision line, the cup rim), the tip rides that
 // point rather than dropping through the opened tissue onto whatever lies behind it. Auto depth only. The hook and
-// the suction tip always do; a step says which other instruments do at its own working points (snap).
-const _sp = new V3();
+// the suction tip always do; a step says which other instruments do at its own working points (snap). The bipolar
+// also rides a bleeding point it is pointed at, so that it is not put on whatever lies behind a thin pedicle; where
+// the bleeding point lies on the tissue the pointer is over, that tissue is still what the jaws are on.
+const _sp = new V3(), _sb = new V3();
 function snapPick(h) {
   if (!S.running || !h.ptr.on) return;
   const st = STEPS[S.step], inst = h.inst, P = h.pick;
-  if (!st.targets || (inst !== 'hook' && inst !== 'suction' && !(st.snap && st.snap.includes(inst)))) return;
-  let bd = 0.2, bz = 0, found = false;
-  for (const p of st.targets()) {
-    const d2 = h.ray.distanceSqToPoint(p);
-    if (d2 >= bd) continue;
+  let bd = 0.2, bz = 0, found = false, on = false;
+  const at = (p, bleeder) => {
+    const d2 = h.ray.distanceSqToPoint(p); if (d2 >= bd) return;
     const depth = _sp.copy(p).sub(h.ray.origin).dot(h.ray.direction);
-    if (P.hit && depth > P.dist + 0.35) continue;
-    bd = d2; bz = depth; found = true;
-  }
-  if (!found) return;
+    if (P.hit && depth > P.dist + 0.35) return;
+    bd = d2; bz = depth; found = true; on = bleeder && P.hit && P.dist - depth < 0.6;
+  };
+  if (st.targets && (inst === 'hook' || inst === 'suction' || (st.snap && st.snap.includes(inst)))) for (const p of st.targets()) at(p, false);
+  if (inst === 'bipolar') for (const b of S.bleeders) at(b.pt(_sb), true);
+  if (!found || on) return; // on: the bleeding point is on the surface already picked
   P.hit = true; P.mesh = null; P.ent = 'target'; P.side = null; P.piece = null; P.dist = bz;
   P.point.copy(h.ray.origin).addScaledVector(h.ray.direction, bz); P.normal.copy(h.ray.direction).negate();
 }
@@ -636,7 +638,7 @@ function controlBleeders(h, dt) {
   let any = false;
   for (let i = S.bleeders.length - 1; i >= 0; i--) {
     const b = S.bleeders[i];
-    if (b.pt(_bp).distanceTo(h.tip) < 1.0) { any = true; b.seal += dt / 1.2; if (b.seal >= 1) { S.bleeders.splice(i, 1); logEvent('info', 'Bleeding controlled'); sfx.sealDone(); } }
+    if (b.pt(_bp).distanceTo(h.tip) < 1.0) { any = true; b.seal += dt / 1.2; if (b.seal >= 1) { S.bleeders.splice(i, 1); logEvent('info', 'Bleeding controlled'); sfx.sealDone(); h.firing = false; stopSustain(); } } // the energy stops with the bleeding: what lies behind the point is not burned by a press held a moment too long
   }
   return any;
 }
@@ -766,7 +768,7 @@ function hookTick(h, dt) {
 }
 function suctionTick(h, dt) {
   sustain('suc', 900, 'noise', 0.035);
-  if (S.pool > 0 && POOL.visible && h.tip.y < POOL.position.y + 1.0) { const v = Math.min(S.pool, 28 * dt); S.pool -= v; }
+  if (S.pool > 0 && POOL.visible && h.tip.y < poolTop(h.tip.z) + 1.0 && (!CASE.poolTilt || poolDepthAt(h.tip.x, h.tip.z) > 0)) S.pool -= Math.min(S.pool, clamp(1.2 * S.pool, 3, 28) * dt); // a tip at the blood takes it: a large pool fast, the last few millilitres in about a second
   if (CASE.suction) CASE.suction(h, dt);
   const st = STEPS[S.step];
   if (st.blunt) st.blunt(h, dt);

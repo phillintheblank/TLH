@@ -307,42 +307,49 @@ const TLH_STEPS = [
   },
   {
     id: 'cuff', kind: 'cuff', tool: 'needle', phase: 'Colpotomy and closure', short: 'Close the vaginal cuff', title: 'Close the vaginal cuff', dist: 6.3, rec: null, expo: [],
-    text: ['Take the needle driver. Run a barbed suture from the patient\'s right angle to the left, then run the same suture back to the right as a second layer.', 'For each stitch click or pinch on the anterior edge, then the posterior edge.', 'Take full-thickness bites about 1 cm from the cut edge and about 1 cm apart, with mucosa in every bite of the first layer. Secure both angles.'],
+    text: ['Take the needle driver. Run a barbed suture from the patient\'s right angle to the left, then run the same suture back to the right as a second layer.', 'First layer: for each stitch click or pinch on the anterior edge, then the posterior edge. Second layer: one click or pinch for each stitch, a single bite through both edges.', 'Take full-thickness bites about 1 cm from the cut edge and about 1 cm apart, with mucosa in every bite of the first layer. Secure both angles.'],
     pearl: 'Shallow bites and missed mucosa are how cuffs dehisce. The second layer, run back over the first, buries it and takes the tension off it. A deep anterior bite risks the bladder; lateral to the angle lies the ureter.',
     nextX() { // where the next stitch goes: right to left for the first layer, then back between those stitches
       const c = S.cuff, last = c.stitches.length ? c.stitches[c.stitches.length - 1] : null;
       if (c.layer === 1) return last ? Math.max(-1.3, last.x - 0.62) : 1.3;
-      return last.layer === 1 ? last.x + 0.31 : Math.min(1.3, last.x + 0.62);
+      return last.layer === 1 ? last.x + 0.31 : Math.min(1.1, last.x + 0.62); // not out at the angle itself: on the closed cuff, turned end-on, an instrument cannot always reach that
     },
     next() {
       const c = S.cuff; if (c.done) return null;
-      if (c.pending) return { p: c.layer === 2 ? cuffPt(c.pending.x, 'post', 0.75, new V3()) : cuffPtIn(c.pending.x, 0.75, new V3()), act: 'bite', label: 'Posterior bite' }; // first layer: the posterior edge is seen from inside the open cuff; second: the closed cuff's posterior wall
-      return { p: cuffPt(this.nextX(), 'ant', 0.75, new V3()), act: 'bite', label: c.layer === 2 ? 'Second layer: anterior bite' : 'Anterior bite' };
+      if (c.pending) return { p: cuffPtIn(c.pending.x, 0.75, new V3()), act: 'bite', label: 'Posterior bite' }; // the posterior edge is seen from inside the open cuff
+      return { p: cuffPt(this.nextX(), 'ant', 0.75, new V3()), act: 'bite', label: c.layer === 2 ? 'Second layer: one bite through both edges' : 'Anterior bite' };
     },
     click(h) {
       if (h.inst !== 'needle') return false;
       if (!h.pick.hit || !h.near || h.pick.ent !== 'vagina') { hint('cuffmiss', 'Place the bite on the vaginal edge'); return true; }
       const c = S.cuff; if (c.done) return true;
       const lp = _w.copy(h.pick.point).applyMatrix4(_m4.copy(VG.M).invert()), x = lp.x, edge = lp.z < 0 ? 'ant' : 'post', depth = Math.max(0, -lp.y);
-      if (!c.pending) {
+      const spaced = () => { // is this place right for the next stitch of the layer? The second layer runs back, left to right.
+        const prev = c.stitches.length ? c.stitches[c.stitches.length - 1] : null, last = prev && prev.x, dir = c.layer === 2 ? 1 : -1;
+        if (last === null && x < 0.95) { hint('cuffstart', 'Start at the right angle of the cuff'); return false; }
+        if (prev && prev.layer !== c.layer) { if (x > last + 0.8) { hint('cuffback', 'Start the second layer at the left angle, where the first ended'); return false; } }
+        else if (last !== null && (x - last) * dir < 0.3) { hint('cuffclose', 'Too close to the last stitch: advance toward the ' + (dir > 0 ? 'right' : 'left') + ' angle'); return false; }
+        if (last !== null && (x - last) * dir > 1.3) { hint('cuffgap', 'That leaves a gap. Bites should be about 1 cm apart.'); return false; }
+        return true;
+      };
+      if (c.layer === 2) { // the cuff is closed: one bite goes through both edges
+        if (!spaced()) return true;
+        c.stitches.push({ x, da: depth, dp: depth, layer: 2 }); S.ebl += 0.5;
+        if (x >= 0.8) { c.done = true; logEvent('info', 'Cuff closed in two layers. Suture cut.'); }
+      } else if (!c.pending) {
         if (edge !== 'ant') { hint('cuffant', 'Anterior edge first, then the posterior'); return true; }
-        const prev = c.stitches.length ? c.stitches[c.stitches.length - 1] : null, last = prev && prev.x, dir = c.layer === 2 ? 1 : -1; // the second layer runs back, left to right
-        if (last === null && x < 0.95) { hint('cuffstart', 'Start at the right angle of the cuff'); return true; }
-        if (prev && prev.layer !== c.layer) { if (x > last + 0.8) { hint('cuffback', 'Start the second layer at the left angle, where the first ended'); return true; } }
-        else if (last !== null && (x - last) * dir < 0.3) { hint('cuffclose', 'Too close to the last stitch: advance toward the ' + (dir > 0 ? 'right' : 'left') + ' angle'); return true; }
-        if (last !== null && (x - last) * dir > 1.3) { hint('cuffgap', 'That leaves a gap. Bites should be about 1 cm apart.'); return true; }
+        if (!spaced()) return true;
         c.pending = { x, da: depth };
       } else {
         if (edge !== 'post') { hint('cuffpost', 'Now the posterior edge, opposite the anterior bite'); return true; }
         if (Math.abs(x - c.pending.x) > 0.6) { hint('cuffmatch', 'Match the posterior bite to the anterior one'); return true; }
-        const s = { x: c.pending.x, da: c.pending.da, dp: depth, layer: c.layer }; c.stitches.push(s); c.pending = null;
-        S.ebl += 0.5;
-        if (c.layer === 1) { c.frontGoal = s.x - 0.4; if (s.x <= -1.05) { c.frontGoal = -2.8; c.layer = 2; toast('First layer done. Run the same suture back to the right as a second layer.', 'ok'); } }
-        else if (s.x >= 0.85) { c.done = true; logEvent('info', 'Cuff closed in two layers. Suture cut.'); }
+        const s = { x: c.pending.x, da: c.pending.da, dp: depth, layer: 1 }; c.stitches.push(s); c.pending = null;
+        S.ebl += 0.5; c.frontGoal = s.x - 0.4;
+        if (s.x <= -1.05) { c.frontGoal = -2.8; c.layer = 2; toast('First layer done. Run the same suture back to the right: one bite through both edges for each stitch.', 'ok'); }
       }
       h.roll = 1; sfx.bite();
       if (depth < 0.4) logEvent('tech', 'Shallow bite (' + Math.round(depth * 10) + ' mm from the edge): risk of pull-through');
-      else if (depth > 1.5) logEvent('tech', 'Deep ' + (edge === 'ant' ? 'anterior bite: the bladder is close' : 'posterior bite: the rectum is close'));
+      else if (depth > 1.5) logEvent('tech', 'Deep ' + (S.cuff.stitches.length && !S.cuff.pending && S.cuff.stitches[S.cuff.stitches.length - 1].layer === 2 ? 'bite: the bladder and the rectum are close' : edge === 'ant' ? 'anterior bite: the bladder is close' : 'posterior bite: the rectum is close'));
       uiDirty(); return true;
     },
     done() { return S.cuff.done && S.cuff.front < -2.2; },
@@ -352,24 +359,27 @@ const TLH_STEPS = [
   },
   {
     id: 'final', kind: 'final', tool: 'any', phase: 'Colpotomy and closure', short: 'Low-pressure inspection', title: 'Inspect at low pressure and confirm the ureters', dist: 12, rec: null, expo: [],
-    text: ['Drop the pneumoperitoneum to 8 mmHg and inspect the pedicles and cuff.', 'Control any ooze with short bipolar bursts, away from the ureter at the cuff angle.', 'Aspirate pooled blood, then hold a tip beside each ureter for a moment to confirm peristalsis.'],
+    text: ['Drop the pneumoperitoneum to 8 mmHg and inspect the pedicles and cuff.', 'Control any ooze with short bipolar bursts, on the pedicle and away from the ureter lateral to it. Until it is controlled, blood runs down into the posterior cul-de-sac.', 'Aspirate the blood from the cul-de-sac, then hold a tip beside each ureter for a moment to confirm peristalsis.'],
     pearl: 'Venous bleeding that 15 mmHg tamponades shows itself at 8. Cystoscopy follows according to your institution\'s practice.',
     click: clickUreter, tick: ureterDwell,
-    button: { label: 'Lower pressure to 8 mmHg', fn() { if (S.lowP) return; S.lowP = true; S.pressureGoal = 8; addBleeder(o => cuffPt(1.7, 'ant', 0.5, o), 14, false, 'cuff angle'); S.oozeDone = true; toast('Pressure down: venous ooze at the right cuff angle', 'bleed'); uiDirty(); }, hide: () => S.lowP },
-    button2: { label: 'End case', fn() { endCase(); }, show: () => S.lowP && !S.bleeders.length && S.pool < 8 && S.ureterOK.R && S.ureterOK.L },
+    button: { label: 'Lower pressure to 8 mmHg', fn() { if (S.lowP) return; S.lowP = true; S.pressureGoal = 8; addBleeder(oozePt, OOZE, false, 'right uterine pedicle'); S.oozeDone = true; toast('Pressure down: the right uterine pedicle is oozing', 'bleed'); uiDirty(); }, hide: () => S.lowP },
+    button2: { label: 'End case', fn() { endCase(); }, show: () => S.lowP && !S.bleeders.length && S.pool < poolDry() && S.ureterOK.R && S.ureterOK.L },
     next() {
       if (!S.lowP) return { p: cuffPt(0, 'ant', 0, new V3()), act: 'button', label: 'Lower the pressure' };
       if (S.bleeders.length) return null;
-      if (S.pool >= 8) return { p: new V3(POOL.position.x, POOL.position.y + 0.1, -1.5), act: 'suction', label: 'Aspirate the pool' };
+      if (S.pool >= poolDry()) return { p: CASE.poolTilt ? poolSpot().clone() : new V3(POOL.position.x, POOL.position.y + 0.1, -1.5), act: 'suction', label: CASE.poolTilt ? 'Aspirate the blood in the cul-de-sac' : 'Aspirate the pool' };
       for (const k of ['R', 'L']) if (!S.ureterOK[k]) return { p: ureterMarker(k), act: 'hover', side: k, label: 'Hold near the ' + WORD[k] + ' ureter to confirm it', prog: UDW[k] / UDW.T };
       return { p: cuffPt(0, 'ant', 0, new V3()), act: 'button', label: 'End the case' };
     },
     done() { return S.ended; },
-    progress() { return !S.lowP ? 'At 15 mmHg' : S.bleeders.length ? 'Ooze to control' : S.pool >= 8 ? 'Blood to aspirate: ' + Math.round(S.pool) + ' mL' : (S.ureterOK.R ? 1 : 0) + (S.ureterOK.L ? 1 : 0) + ' of 2 ureters confirmed'; },
+    progress() { return !S.lowP ? 'At 15 mmHg' : S.bleeders.length ? 'Ooze to control' + (CASE.poolTilt ? ': ' + S.pool.toFixed(0) + ' mL in the cul-de-sac' : '') : S.pool >= poolDry() ? 'Blood to aspirate: ' + Math.round(S.pool) + ' mL' : (S.ureterOK.R ? 1 : 0) + (S.ureterOK.L ? 1 : 0) + ' of 2 ureters confirmed'; },
     frac() { return (S.lowP ? 0.25 : 0) + (S.lowP && !S.bleeders.length ? 0.25 : 0) + (S.ureterOK.R ? 0.25 : 0) + (S.ureterOK.L ? 0.25 : 0); },
     focus(o) { return o.set(0, -1.6, -2.5); }
   }
 ];
+// At low pressure the right uterine pedicle oozes, at OOZE mL a minute: where on the pedicle's stump, and how little blood left in the pelvis counts as dry.
+const OOZE = 45, poolDry = () => CASE.poolDry || 8;
+function oozePt(out) { const st = S.side.R, G = st.rel.ua ? st.rel.ua.lat : AN.side.R.cur; return sampleArr(G.ua, st.ua.uc + 0.03, out); }
 // world point on the inner (mucosal) face of the posterior cuff wall
 function cuffPtIn(x, depth, out) {
   const sn = clamp(x / 1.47, -0.995, 0.995), f = depth <= 0.64 ? 5 + depth / 0.64 : 6 + Math.min(1, (depth - 0.64) / 1.9);
@@ -435,5 +445,6 @@ const TLH = {
     'She is in lithotomy and Trendelenburg with a uterine manipulator and colpotomy cup in place. 10 mm umbilical scope, two 5 mm lateral ports, pneumoperitoneum at 15 mmHg. You are looking toward the pelvis: her right is on the right of the screen.'],
   steps: TLH_STEPS, insts: ['grasper', 'bipolar', 'hook', 'suction', 'needle'], warp: [0, 0], tipZ: 4.6, ureters: true, eblWarn: 100,
   needleHint: 'The needle driver is for closing the vaginal cuff',
+  poolTilt: 0.46, poolDry: 1, // blood runs back into the posterior cul-de-sac, and a millilitre left there is still to be aspirated
   score: tlhScore, debrief: tlhDebrief, sutures: tlhSutures, force: tlhForce, want: tlhWant
 };
