@@ -62,7 +62,7 @@ export default async function (page) {
 
   // traction: grasp the round ligament with the left hand and pull
   const tr = await ev(() => {
-    const s = window.__sim, T3 = s.THREE; s.forceStep(); for (let i = 0; i < 90; i++) s.tick(0.033); s.setPoseGoal(s.STEPS[s.S.step].rec); for (let i = 0; i < 50; i++) s.tick(0.033); s.setActive('L'); const h = s.HAND.L, p = new T3.Vector3().fromArray(s.next().p);
+    const s = window.__sim, T3 = s.THREE; let g = 0; while (s.STEPS[s.S.step].id !== 'roundR' && g++ < 9) { s.forceStep(); for (let i = 0; i < 90; i++) s.tick(0.033); } s.S.side.R.roofGoal = 1; s.setPoseGoal(s.STEPS[s.S.step].rec); /* the round ligament step, its two bites of peritoneum already taken */ for (let i = 0; i < 50; i++) s.tick(0.033); s.setActive('L'); const h = s.HAND.L, p = new T3.Vector3().fromArray(s.next().p);
     const d = p.clone().sub(h.port), L = d.length(); h.dir.copy(d.normalize()); h.ins = L - 1.5;
     for (let i = 0; i < 10; i++) s.tick(0.033);
     let n = 0; while (n++ < 200 && !h.touch) { h.cmd.dz += 0.1; s.tick(0.033); }

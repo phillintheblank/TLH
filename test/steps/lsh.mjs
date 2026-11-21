@@ -10,7 +10,7 @@ export default async function (page) {
   // ---- the chooser ----
   await page.click('#caseList .case:nth-child(5)'); await settle(); let c = await look();
   ok('the fifth of six cases is the supracervical hysterectomy: 19 steps, no needle driver, no cup', c.cases === 6 && c.id === 'lsh' && c.steps.length === 19 && c.tools.length === 4 && !c.tools.includes('Needle driver') && !c.cup && c.uterus && !c.stump && c.saved === 'lsh', { cases: c.cases, id: c.id, n: c.steps.length, tools: c.tools, cup: c.cup });
-  ok('it takes the hysterectomy as far as the uterine vessels, then amputates: no cardinal ligaments, colpotomy or cuff', c.steps.join().includes('uaR,uaL,amp,bag,stump,final') && !c.steps.some(s => /card|colp|cuff|deliver/.test(s)), c.steps.slice(13));
+  ok('it is the hysterectomy a side at a time as far as the uterine vessels, then amputates: no cardinal ligaments, colpotomy or cuff', c.steps.join() === 'survey,mesoR,uoR,roundR,postR,antR,bladR,uaR,mesoL,uoL,roundL,postL,antL,bladL,uaL,amp,bag,stump,final', c.steps);
   await page.click('#caseList .case:nth-child(1)'); await settle(); c = await look();
   ok('choosing the total hysterectomy puts the cup back', c.id === 'tlh' && c.cup && c.uterus && !c.corpus && !c.stump, c.cup);
   await page.click('#caseList .case:nth-child(5)');
@@ -33,10 +33,14 @@ export default async function (page) {
       bleeders: S.bleeders.map(b => b.label), inj: Object.keys(S.injuries), ebl: +S.ebl.toFixed(1), lowP: S.lowP, b1: !document.getElementById('stepBtn1').hidden, b2: !document.getElementById('stepBtn2').hidden, ended: S.ended, prompt: (s.next() || {}).label };
   });
   // ---- the bladder: only as far as the amputation needs ----
-  await restart('flap'); await inst('R', 'hook');
-  for (let i = 0; i < 3; i++) { await atNext(); await hold(0.6); }
+  await restart('bladR'); await inst('R', 'bipolar');
+  for (let i = 0; i < 2; i++) { await atNext(); await T(1.5); }
   await T(1.5); let m = await M();
-  ok('three sweeps take the bladder half as far as a total hysterectomy needs, and that is enough', m.step === 'uaR' && m.flapGoal === 0.5 && Math.abs(m.flap - 0.5) < 0.04, { step: m.step, flap: m.flap });
+  ok('on the right, the bipolar held twice at the bladder\'s edge takes it a quarter of the way down, and the vessels are next', m.step === 'uaR' && m.flapGoal === 0.25 && Math.abs(m.flap - 0.25) < 0.03 && m.inj.length === 0, { step: m.step, flap: m.flap });
+  await restart('bladL'); await inst('R', 'grasper');
+  for (let i = 0; i < 2; i++) { await atNext(); await T(1.5); }
+  await T(1.5); m = await M();
+  ok('on the left, the grasper does the same: the bladder ends half as far down as a total hysterectomy takes it', m.step === 'uaL' && m.flapGoal === 0.5 && Math.abs(m.flap - 0.5) < 0.03, { step: m.step, flap: m.flap });
   // ---- the amputation ----
   await restart('amp'); m = await M();
   ok('with both uterine pedicles divided the next step is the amputation; the cardinal ligaments are untouched', m.step === 'amp' && !m.cardCut && m.uterus && !m.stump && m.amp === 0, { step: m.step, cardCut: m.cardCut });

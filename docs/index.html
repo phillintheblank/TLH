@@ -395,20 +395,6 @@ function hashI(ix, iy, seed) {
   h ^= h >>> 16;
   return (h >>> 0) / 4294967296;
 }
-// periodic 2D value noise (tileable with period `per`)
-function pnoise(x, y, per, seed) {
-  const x0 = Math.floor(x), y0 = Math.floor(y), fx = x - x0, fy = y - y0;
-  const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
-  const X0 = ((x0 % per) + per) % per, X1 = (X0 + 1) % per;
-  const Y0 = ((y0 % per) + per) % per, Y1 = (Y0 + 1) % per;
-  const a = hashI(X0, Y0, seed), b = hashI(X1, Y0, seed), c = hashI(X0, Y1, seed), d = hashI(X1, Y1, seed);
-  return lerp(lerp(a, b, sx), lerp(c, d, sx), sy);
-}
-function pfbm(x, y, per, oct, seed) {
-  let s = 0, a = 0.5, f = 1, n = 0;
-  for (let i = 0; i < oct; i++) { s += a * pnoise(x * f, y * f, per * f, seed + i * 17); n += a; a *= 0.5; f *= 2; }
-  return s / n;
-}
 function hash3(ix, iy, iz) {
   let h = (Math.imul(ix, 374761393) + Math.imul(iy, 668265263) + Math.imul(iz, 1440662683)) | 0;
   h = Math.imul(h ^ (h >>> 13), 1274126177);
@@ -1186,7 +1172,7 @@ for (const s of [1, -1]) {
     uslSac: wallPt(-62, -2.0, 0.1, s)
   };
 }
-const NS = 33;
+const NS = 33, OVLIFT = V(1.5, 1.0, -0.2); // how far an ovary is lifted off the sidewall: toward the midline, anteriorly, cephalad
 class SideGeom {
   constructor(s) {
     this.s = s; this.M = new THREE.Matrix4();
@@ -1204,6 +1190,7 @@ class SideGeom {
     spline([cR, c.r1, c.r2, K.ring], this.round);
     const ax = c.ax.subVectors(K.ip, cU);
     const ovR = c.ovR.copy(cU).addScaledVector(ax, 0.38); ovR.x += 0.5 * s; ovR.y -= 0.4; ovR.z -= 0.4;
+    if (st && st.ovLift > 0) { const lf = easeIO(st.ovLift); ovR.x -= OVLIFT.x * s * lf; ovR.y += OVLIFT.y * lf; ovR.z += OVLIFT.z * lf; } // lifted off the sidewall, toward the uterus, by an instrument looking for the ureter under it
     const a = this.ovA.copy(ax).normalize(); a.x += 0.25 * s; a.normalize();
     const ovMed = c.ovMed.copy(ovR).addScaledVector(a, -1.2), ovLat = c.ovLat.copy(ovR).addScaledVector(a, 1.2);
     const ovTop = c.ovTop.copy(ovR); ovTop.y += 0.3;
@@ -1217,7 +1204,7 @@ class SideGeom {
     if (st && st.spec) { for (let i = 0; i < NS; i++) this.tube[i].copy(st.spec.pts[i]).add(st.spec.off); this.tubeCur = this.tube; }
     else if (st && st.tubeFree > 0) {
       const k = easeIO(st.tubeFree);
-      t1.lerp(this.L(c.f1, 3.3 * s, 7.4, -0.35), k); t2.lerp(this.L(c.f2, 3.65 * s, 6.7, -1.1), k); fim.lerp(this.L(c.f3, 3.2 * s, 5.5, -1.55), k);
+      t1.lerp(this.L(c.f1, 2.6 * s, 7.3, 0.7), k); t2.lerp(this.L(c.f2, 2.2 * s, 6.4, 1.25), k); fim.lerp(this.L(c.f3, 1.6 * s, 5.3, 1.45), k); // freed of its mesosalpinx it falls back behind the uterus, on its cornu
       spline([cT, t1, t2, fim], this.tube); this.tubeCur = this.tube;
     } else this.tubeCur = this.tubeAtt;
     spline([this.L(c.a0, 1.21 * s, 3.3, -0.6), K.fa1, K.wallAnt], this.floorA);
@@ -1248,7 +1235,8 @@ function newSide(s, name) {
   return {
     s, name, round: ent(0.45), uo: ent(0.1), ua: ent(0.14), card: ent(0.2), isth: ent(0.12), // isth: the tube's isthmus, by distance along the tube
     meso: { p: 0, pGoal: 0, seals: [], act: null, cut: false, uc: 0, gk: 0 },
-    antP: 0, antGoal: 0, postP: 0, postGoal: 0, roofGk: 0, roofCut: false, tubeFree: 0, tubeGoal: 0,
+    antP: 0, antGoal: 0, postP: 0, postGoal: 0, roofP: 0, roofGoal: 0, roofGk: 0, roofCut: false, tubeFree: 0, tubeGoal: 0,
+    vufP: 0, vufGoal: 0, ovLift: 0, ovGoal: 0, // vuf: how much of this side's half of the vesicouterine fold is cut, from the side toward the midline; ov: the ovary lifted off the sidewall
     rel: { upper: null, ua: null, card: null },
     spec: null // a tube cut free of the uterus: { pts: its shape, off: how far it has been carried, gone: taken out }
   };
@@ -1257,7 +1245,7 @@ function freshState() { // what every case has; a case adds its own (CASE.state)
   return {
     t: 0, running: false, ended: false, guided: true, labels: false,
     pose: { yaw: 0, pitch: PITCH0, push: 0 }, poseGoal: { yaw: 0, pitch: PITCH0, push: 0 }, manipOut: false,
-    flap: 0, flapGoal: 0, vufP: 0, vufGoal: 0, vufGk: 0,
+    flap: 0, flapGoal: 0, vufGk: 0,
     side: { R: newSide(1, 'R'), L: newSide(-1, 'L') },
     colp: new Array(16).fill(0), colpDone: false, lift: 0, deliv: 0, carry: null, specimen: 'in', // carry: how far a freed specimen has been taken off in its bag
     cuff: { stitches: [], pending: null, front: 2.4, frontGoal: 2.4, done: false },
@@ -1322,10 +1310,6 @@ const BL = { c0: V(0, 0.9, -5.2), c: V(0, 0.9, -5.2), r: V(3.4, 1.6, 2.6) };
   }, { closedU: true, su: 3, sv: 2 });
   AN.bladder = reg(new THREE.Mesh(g, MAT.bladder), 'bladder'); scene.add(AN.bladder);
 })();
-function bladderDist(p) {
-  const dx = (p.x - BL.c.x) / BL.r.x, dy = (p.y - BL.c.y) / BL.r.y, dz = (p.z - BL.c.z) / (BL.r.z - 0.6 * S.flap), q = Math.sqrt(dx * dx + dy * dy + dz * dz);
-  return p.distanceTo(BL.c) * (1 - 1 / Math.max(q, 0.01));
-}
 function bladderPt(psi, out) { // fold line on the cephalad-posterior dome
   const dx = Math.sin(psi), dy = 0.25, dz = Math.cos(psi) * 0.8 + 0.3, l = Math.hypot(dx, dy, dz);
   return out.set(BL.c.x + (dx / l) * BL.r.x, BL.c.y + (dy / l) * BL.r.y, BL.c.z + (dz / l) * (BL.r.z - 0.6 * S.flap));
@@ -1526,8 +1510,8 @@ function updateSide(sd, time) {
   for (const g of ['upper', 'ua', 'card']) {
     const r = st.rel[g]; if (!r) continue;
     if (r.stay) { r.ref.compute(VG.M, st, null); continue; } // held by what is left behind when the body of the uterus is taken off its cervix: it does not go with the specimen
-    if (!r.settled) {
-      const e = easeIO(r.t);
+    if (!r.settled || r.ov !== st.ovLift) { // settled, it is worked out again only while an ovary is being lifted
+      const e = easeIO(r.t); r.ov = st.ovLift;
       r.ref.compute(poseMat(lerpPose(r.from, NEUTRAL, e, _tp), _m4), st, null);
       r.lat.compute(poseMat(lerpPose(r.from, relaxedPose(s), e, _tp2), _m4), st, null);
       if (r.t >= 1) r.settled = true;
@@ -1575,7 +1559,7 @@ function updateSide(sd, time) {
   p.antL.update((sx, v, o, c) => { const m = antMask(v), ucv = 0.03 + (uR - 0.03) * v, u = lerp(ucv + antG * m, 1, sx); stripPt(Ul.floorA, u, Ul.round, u, v, 0.22, o); edgeCol(c, m, 1 - sx); });
   p.antM.map = (sx, v) => [sx * (0.03 + (uR - 0.03) * v), v]; p.antL.map = (sx, v) => [lerp(0.03 + (uR - 0.03) * v, 1, sx), v];
   // roof (round ligament to utero-ovarian/IP ridge)
-  const roofMask = v => Math.max(st.roofGk, rd.gk * sstep(0.28, 0, v), uo.gk * sstep(0.72, 1, v));
+  const roofMask = v => Math.max(st.roofGk, rd.gk * sstep(0.28, 0, v), uo.gk * sstep(0.72, 1, v), st.roofP > 0 ? sstep(1 - st.roofP - 0.12, 1 - st.roofP + 0.02, v) : 0);
   p.roofM.update((sx, v, o, c) => { const m = roofMask(v), ucv = uR + (uU - uR) * v, u = sx * Math.max(0, ucv - 0.07 * m); stripPt(Um.round, u, Um.ridge, u, v, 0.3, o); edgeCol(c, m, sx); }); setM(p.roofM.mesh, UT_);
   p.roofL.update((sx, v, o, c) => { const m = roofMask(v), ucv = uR + (uU - uR) * v, u = lerp(ucv + 0.07 * m, 1, sx); stripPt(Ul.round, u, Ul.ridge, u, v, 0.3, o); edgeCol(c, m, 1 - sx); });
   // posterior leaf
@@ -1623,8 +1607,7 @@ function updateAnatomy(dt, time) {
   UT.g.visible = S.specimen !== 'out';
   // eased state
   S.flap = damp(S.flap, S.flapGoal, 3.5, dt);
-  S.vufP = damp(S.vufP, S.vufGoal, 9, dt);
-  S.vufGk = damp(S.vufGk, S.vufGoal >= 1 ? 1 : 0, 4, dt);
+  S.vufGk = damp(S.vufGk, S.side.R.vufGoal >= 1 || S.side.L.vufGoal >= 1 ? 1 : 0, 4, dt);
   S.cuff.front = damp(S.cuff.front, S.cuff.frontGoal, 8, dt);
   if (S.colpDone && S.specimen === 'in') S.lift = damp(S.lift, 1, 3, dt);
   if (S.specimen === 'delivering') { S.deliv = Math.min(1, S.deliv + dt / 1.6); if (S.deliv >= 1) { S.specimen = 'out'; S.manipOut = true; onSpecimenOut(); } }
@@ -1633,7 +1616,8 @@ function updateAnatomy(dt, time) {
     for (const e of ['round', 'uo', 'ua', 'card', 'isth']) st[e].gk = damp(st[e].gk, st[e].cut ? 1 : 0, 7, dt);
     st.antP = damp(st.antP, st.antGoal, 9, dt); st.postP = damp(st.postP, st.postGoal, 9, dt);
     st.meso.p = damp(st.meso.p, st.meso.pGoal, 6, dt);
-    st.roofGk = damp(st.roofGk, st.roofCut ? 1 : 0, 5, dt);
+    st.roofGk = damp(st.roofGk, st.roofCut ? 1 : 0, 5, dt); st.roofP = damp(st.roofP, st.roofGoal, 9, dt); st.vufP = damp(st.vufP, st.vufGoal, 9, dt);
+    st.ovLift = damp(st.ovLift, st.ovGoal, 5, dt); st.ovGoal = 0; // whatever lifts an ovary asks again each frame
     st.tubeFree = Math.min(1, st.tubeFree + (st.tubeGoal > st.tubeFree ? dt / 1.1 : 0));
     for (const g of ['upper', 'ua', 'card']) { const r = st.rel[g]; if (r && r.t < 1) r.t = Math.min(1, r.t + dt / 0.9); }
   }
@@ -1653,7 +1637,8 @@ function updateAnatomy(dt, time) {
     I.ta.set(I.aA, 0, 1, () => 0.47 * pl, (u, c) => { c[0] = COL.iliacA[0]; c[1] = COL.iliacA[1]; c[2] = COL.iliacA[2]; });
   }
   // vesicouterine peritoneum
-  const gk = S.vufGk, cutMask = u => (S.vufP > 0 ? sstep(1 - S.vufP - 0.1, 1 - S.vufP + 0.02, u) : 0);
+  // each side's half is cut from that side toward the midline; where it is cut, the bladder's edge hangs free
+  const pR = S.side.R.vufP, pL = S.side.L.vufP, cutMask = u => Math.max(pR > 0 ? sstep(1 - 0.5 * pR - 0.1, 1 - 0.5 * pR + 0.02, u) : 0, pL > 0 ? 1 - sstep(0.5 * pL - 0.02, 0.5 * pL + 0.1, u) : 0);
   for (let i = 0; i < 13; i++) {
     const u = i / 12; // anterior surface, patient's left -> right as u goes 0 -> 1
     utSurf(180 - lerp(-60, 60, u), 3.3, 0.03, VUF.e0[i]).applyMatrix4(UT.M);
@@ -1664,13 +1649,13 @@ function updateAnatomy(dt, time) {
   const VC = 0.35;
   VUF.up.mesh.visible = S.specimen !== 'out';
   VUF.up.update((sx, t, o, c) => {
-    const m = cutMask(sx), v = t * (VC - 0.1 * m);
+    const m = cutMask(sx), v = t * (VC - 0.1 * m), gk = S.vufGk * m;
     sampleArr(VUF.e0, sx, _a); sampleArr(VUF.e1, sx, _b); o.lerpVectors(_a, _b, v);
     if (gk > 0) { sampleArr(VUF.e0b, sx, _b); _b.lerpVectors(_a, _b, t); o.lerp(_b, gk); }
     edgeCol(c, m, t);
   });
   VUF.lo.update((sx, t, o, c) => {
-    const m = cutMask(sx), v = lerp(VC + 0.1 * m, 1, t);
+    const m = cutMask(sx), v = lerp(VC + 0.1 * m, 1, t), gk = S.vufGk * m;
     sampleArr(VUF.e0, sx, _a); sampleArr(VUF.e1, sx, _b); o.lerpVectors(_a, _b, v);
     if (gk > 0) { sampleArr(VUF.q, sx, _a); _a.lerpVectors(_a, _b, t); o.lerp(_a, gk); }
     edgeCol(c, m, 1 - t);
@@ -1705,6 +1690,7 @@ const IM = {
   shaft: new THREE.MeshStandardMaterial({ color: 0x0d0e10, metalness: 0, roughness: 0.5, envMap: ENV, envMapIntensity: 0.6 }),
   dark: new THREE.MeshStandardMaterial({ color: 0x070809, metalness: 0.3, roughness: 0.7, envMap: ENV, envMapIntensity: 0.2 }),
   ceramic: new THREE.MeshStandardMaterial({ color: 0xf0ece0, roughness: 0.34, envMap: ENV, envMapIntensity: 0.5 }),
+  plate: new THREE.MeshStandardMaterial({ color: 0x8e99a3, metalness: 0.65, roughness: 0.42, envMap: ENV, envMapIntensity: 0.9, side: THREE.DoubleSide }),
   blue: new THREE.MeshStandardMaterial({ color: 0x2a6db5, roughness: 0.36, metalness: 0.1, envMap: ENV, envMapIntensity: 0.5 }),
   thread: new THREE.MeshStandardMaterial({ color: 0x4b2e83, roughness: 0.55 })
 };
@@ -1726,6 +1712,20 @@ function jawGeo(w, h, len, taper, sg, teeth) {
   }
   g.computeVertexNormals(); return g;
 }
+// A jaw of the advanced bipolar: straight-sided and blunt, a half circle at the nose and rounded across its back.
+// plate: instead of the coated body, the bare sealing plate on the face that meets the other jaw (side sg), set in
+// from the edge so that the coating shows as a rim round it, and ridged across.
+function bluntGeo(R, H, len, sg, plate) {
+  const nose = (d, r) => (d <= 0 ? 0 : d < r ? Math.sqrt(1 - Math.pow(1 - d / r, 2)) : 1);
+  if (plate) return paramSurface(5, 60, (u, v, p) => {
+    const d = (1 - v) * len - 0.09, k = nose(d, R) * sstep(0.07, 0.11, v);
+    p.set(lerp(-R, R, u) * k * lerp(1, 0.9, v), -sg * (0.014 + 0.011 * Math.abs(((v * 30) % 1) - 0.5)), -v * len);
+  }, {});
+  return paramSurface(20, 34, (u, v, p) => {
+    const a = u * TAU, vv = 1 - Math.pow(1 - v, 1.6), d = (1 - vv) * len, k = nose(d, R), sn = Math.sin(a); // rows gather toward the nose
+    p.set(R * Math.cos(a) * k * lerp(1, 0.9, vv), sg * (sn > 0 ? H * Math.pow(sn, 0.75) * lerp(0.72, 1, sstep(0, 2.2 * R, d)) * Math.pow(k, 0.45) : 0.012 * sn), -vv * len);
+  }, { closedU: true, flip: sg > 0 });
+}
 function buildInst(type) {
   const g = new THREE.Group(), o = { g, jaws: [], needle: null };
   const addJaws = (w, h, len, taper, mat, teeth) => {
@@ -1745,11 +1745,11 @@ function buildInst(type) {
     for (const piv of o.jaws) { const w = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.014, 0.85), IM.dark); w.position.set(0, piv.userData.sg * 0.108, -0.95); piv.add(w); } // fenestration
     yoke(1.9, 0.4); g.add(zCyl(0.2, 0.25, 0.3, 2.5, IM.steel, 24)); shaft(ribs(2.8, 4, IM.steel));
   } else if (type === 'bipolar') {
-    addJaws(0.5, 0.17, 2.1, 0.3, IM.steel, 0.012);
-    for (const piv of o.jaws) {
-      const sg = piv.userData.sg;
-      const e = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.03, 1.7), IM.ceramic); e.position.set(0, sg * 0.02, -0.95); piv.add(e);
-      const slot = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.034, 1.5), IM.dark); slot.position.set(0, sg * 0.02, -0.9); piv.add(slot); // blade track
+    for (const sg of [1, -1]) { // blunt-tipped jaws: a coated body, and on the face that meets the other jaw a bare sealing plate with the blade's track down it
+      const piv = new THREE.Group(); piv.position.set(0, 0, 2.1); piv.userData.sg = sg;
+      piv.add(new THREE.Mesh(bluntGeo(0.25, 0.17, 2.1, sg, false), IM.ceramic), new THREE.Mesh(bluntGeo(0.18, 0, 2.1, sg, true), IM.plate));
+      const slot = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.02, 1.45), IM.dark); slot.position.set(0, -sg * 0.024, -1.02); piv.add(slot);
+      g.add(piv); o.jaws.push(piv);
     }
     yoke(2.1, 0.52); g.add(zCyl(0.27, 0.27, 1.1, 2.7, IM.blue, 24)); shaft(ribs(3.8, 3, IM.ceramic));
   } else if (type === 'hook') {
@@ -1782,7 +1782,7 @@ const HAND = {};
 for (const [k, sx, inst] of [['L', -1, 'grasper'], ['R', 1, 'bipolar']]) {
   const h = {
     key: k, inst, port: V(8.5 * sx, 3.5, 13.5), tip: V(3.4 * sx, -0.4, 4.6), goal: V(3.4 * sx, -0.4, 4.6), grp: new THREE.Group(), sub: {},
-    open: 0.7, openGoal: 0.7, grab: null, exch: 0, exchTo: null, firing: false, depth: 12, roll: 0, near: false, surf: new V3(),
+    open: 0.7, openGoal: 0.7, grab: null, exch: 0, exchTo: null, firing: false, depth: 12, roll: 0, sweep: null, near: false, surf: new V3(),
     // each hand has its own pointer, view ray and pick so both instruments can work at once
     ptr: { x: 0, y: 0, on: false, ndc: new THREE.Vector2() }, ray: new THREE.Ray(), pick: newPick(), nearFlag: false, lastUp: -9,
     // pose about the port: direction, commanded insertion, the length actually reached, and contact with tissue
@@ -1851,12 +1851,13 @@ function doPick(h) { // auto depth: what lies under this hand's pointer
   fillPick(h, hit);
 }
 // When a pointer is over a working point of the current step (an incision line, the cup rim), the tip rides that
-// point rather than dropping through the opened tissue onto whatever lies behind it. Auto depth only.
+// point rather than dropping through the opened tissue onto whatever lies behind it. Auto depth only. The hook and
+// the suction tip always do; a step says which other instruments do at its own working points (snap).
 const _sp = new V3();
 function snapPick(h) {
   if (!S.running || !h.ptr.on) return;
   const st = STEPS[S.step], inst = h.inst, P = h.pick;
-  if (!st.targets || (inst !== 'hook' && inst !== 'suction')) return;
+  if (!st.targets || (inst !== 'hook' && inst !== 'suction' && !(st.snap && st.snap.includes(inst)))) return;
   let bd = 0.2, bz = 0, found = false;
   for (const p of st.targets()) {
     const d2 = h.ray.distanceSqToPoint(p);
@@ -2039,13 +2040,19 @@ function updateHands(dt) {
     }
     _g.copy(h.port).sub(h.tip).normalize();
     h.grp.position.copy(h.tip).addScaledVector(_g, retract);
+    if (h.sweep) { const w = h.sweep; w.t += dt / w.T; if (w.t >= 1) h.sweep = null; else h.grp.position.add(w.at(_sw).sub(w.base)).addScaledVector(w.dir, w.len * Math.sin(2 * Math.PI * w.n * w.t) * Math.sin(Math.PI * w.t)); } // the brushing the instrument does by itself (see sweepWith)
     h.grp.lookAt(h.port);
-    h.open = damp(h.open, h.firing && h.inst === 'bipolar' ? 0.06 : h.openGoal, 16, dt);
+    h.open = damp(h.open, (h.firing && h.inst === 'bipolar') || h.sweep ? 0.06 : h.openGoal, 16, dt);
     const sub = h.sub[h.inst], ang = h.open * (h.inst === 'bipolar' ? 0.5 : h.inst === 'tenaculum' ? 0.6 : 0.42);
-    for (const piv of sub.jaws) piv.rotation.x = -piv.userData.sg * ang * (h.inst === 'bipolar' && piv.userData.sg < 0 ? 0.25 : 1);
+    for (const piv of sub.jaws) piv.rotation.x = piv.userData.sg * ang * (h.inst === 'bipolar' && piv.userData.sg < 0 ? 0.25 : 1); // each jaw swings away from the other, its meeting face still toward it
     if (sub.needle) { h.roll = Math.max(0, h.roll - dt / 0.45); sub.needle.rotation.z = -Math.sin(Math.PI * h.roll) * 2.2; }
   }
 }
+// The instrument in this hand works by itself for T seconds, jaws closed: it goes with the moving point `at` (the tissue
+// it is pushing) and brushes n times from side to side along dir, up to len cm each way. Display only: the tip the
+// rules see stays where the trainee holds it.
+function sweepWith(h, at, dir, len, T, n) { h.sweep = { t: 0, T, len, n, at, base: at(new V3()), dir: dir.clone().normalize() }; }
+const _sw = new V3();
 function setInst(k, type) {
   const h = HAND[k];
   if (h.inst === type || h.exch > 0 || !S.running) return;
@@ -2381,7 +2388,7 @@ function cutAction(hand) {
   } else {
     if (e.cut) return;
     e.cut = true; e.uc = clamp(tg.u, sp.lo, sp.hi);
-    if (tg.ent === 'uo') st.roofCut = true;
+    if (st.uo.cut && st.round.cut) st.roofCut = true; // with both pedicles divided the top of the broad ligament is open between them
     if (tg.ent === 'ua') { const pp = sampleArr(sd.cur.ua, e.uc, new V3()); S.stats['uaDist' + tg.side] = nearestUreter(pp).d; if (tg.u > 0.32) logEvent('tech', 'Uterine pedicle taken lateral to the uterine margin: closer to the ureter'); startRelease(sd, 'ua'); }
     if (tg.ent === 'card') startRelease(sd, 'card');
     if (tg.ent === 'round' && (tg.u < 0.25 || tg.u > 0.75)) logEvent('tech', tg.u < 0.25 ? 'Round ligament divided close to the cornu: expect back-bleeding from the ascending uterine branches' : 'Round ligament divided far laterally, near the internal ring and iliac vessels');
@@ -2538,7 +2545,7 @@ function mesoStep(o) {
   const pt = (w, out) => { const G = curG(k); return sampleArr(G.ridge, 0.6 * w, out).lerp(sampleArr(G.tubeAtt, w, _w), 0.82); };
   return Object.assign({
     kind: 'meso', tool: 'bipolar', seal: { ent: 'meso', side: k },
-    onCut() { if (o.swing && S.mesoBite[k] >= 2) S.side[k].tubeGoal = 1; }, // swing: the tube, still on the uterus, falls forward out of the way
+    onCut() { if (o.swing && S.mesoBite[k] >= 2) S.side[k].tubeGoal = 1; }, // swing: the tube, still on the uterus, falls back behind it
     next() {
       const b = S.mesoBite[k]; if (b >= 2) return null;
       const e = S.side[k].meso, w = b === 0 ? 0.78 : 0.3;
@@ -2555,41 +2562,72 @@ function mesoStep(o) {
 // ---------- case: total laparoscopic hysterectomy ----------
 const exPush = { label: 'Cup pushed cephalad', ok: () => S.pose.push > 0.7 };
 const exAnt = { label: 'Uterus anteverted', ok: () => S.pose.pitch > 0.5 };
-const exMid = { label: 'Uterus in the midline', ok: () => Math.abs(S.pose.yaw) < 0.2 };
 const TRACK_URETER = () => ['ua', 'card', 'colp'].includes(STEPS[S.step].kind);
-const KI = 6;
+const KI = 6, KF = 3, BITE = 0.22; // marks down a leaf of the broad ligament and across half the vesicouterine fold; seconds the bipolar is held for each bite
 
-function inciseStep(o) {
-  const k = o.side, which = o.which;
+// Is everything that holds the top of the uterus on this side divided? Then that side of it comes free.
+function upperFree(k) {
+  const st = S.side[k];
+  if (st.round.cut && st.uo.cut && st.antGoal >= 1 && st.postGoal >= 1 && !st.rel.upper) { dropGrabsOnSide(k); startRelease(AN.side[k], 'upper'); }
+}
+// Open a leaf of the broad ligament with the advanced bipolar, in small bites down a marked line: held on each mark
+// until that bite of peritoneum is sealed and cut. The anterior leaf carries on across its side's half of the
+// vesicouterine fold, as far as the midline.
+function leafStep(o) {
+  const k = o.side, which = o.which, NF = which === 'ant' ? KF : 0;
   const cp = (i, out) => {
     const G = curG(k), st = S.side[k], uR = st.round.uc, uU = st.uo.uc;
+    if (i >= KI) { const f = 0.9 - (i - KI) * 0.16; return vufPt(k === 'R' ? f : 1 - f, out); }
     if (which === 'ant') { const v = 0.94 - i * 0.18, u = 0.03 + (uR - 0.03) * v; return stripPt(G.floorA, u, G.round, u, v, 0.22, out); }
     const v = 0.06 + i * 0.18, u = uU - (uU - 0.03) * v; return stripPt(G.ridge, u, G.floorP, u, v, 0.3, out);
   };
-  const count = () => Math.round((which === 'ant' ? S.side[k].antGoal : S.side[k].postGoal) * KI);
+  const count = () => { const st = S.side[k]; return Math.round((which === 'ant' ? st.antGoal : st.postGoal) * KI) + Math.round(NF * st.vufGoal); };
   return Object.assign({
-    kind: 'incise', tool: 'hook', acc: 0,
-    next() { const n = count(); return n >= KI ? null : { p: cp(n, new V3()), act: 'trace', label: n === 0 ? 'Start here: hold to cut' : 'Trace' }; },
-    path() { const a = []; for (let i = count(); i < KI; i++) a.push(cp(i, new V3())); return a; },
-    targets() { const n = count(), a = []; for (let i = n; i < Math.min(KI, n + 2); i++) a.push(cp(i, new V3())); return a; },
-    hook(h, dt) {
-      const n = count(); if (n >= KI) return true;
-      if (nearTarget(h, cp(n, _w2), 0.8)) {
-        this.acc += dt;
-        if (this.acc > 0.11) {
-          this.acc = 0; if (which === 'ant') S.side[k].antGoal = (n + 1) / KI; else S.side[k].postGoal = (n + 1) / KI; S.ebl += 0.4; sfx.click(); uiDirty();
-          if (which === 'post' && n + 1 >= KI) { dropGrabsOnSide(k); startRelease(AN.side[k], 'upper'); }
+    kind: 'incise', tool: 'bipolar', snap: ['bipolar'], acc: 0,
+    next() { const n = count(); return n >= KI + NF ? null : { p: cp(n, new V3()), act: 'trace', label: n === 0 ? 'Start here: hold to seal and cut' : n === KI ? 'Carry on across the fold' : 'Next bite', prog: this.acc / BITE }; },
+    path() { const a = []; for (let i = count(); i < KI + NF; i++) a.push(cp(i, new V3())); return a; },
+    targets() { const n = count(), a = []; for (let i = n; i < Math.min(KI + NF, n + 2); i++) a.push(cp(i, new V3())); return a; },
+    bipolar(h, dt) {
+      const n = count(), st = S.side[k]; if (n >= KI + NF) return true;
+      if (nearTarget(h, cp(n, _w2), 0.8) && h.pick.ent !== 'bladder') {
+        this.acc += dt; sustain('bip', 440 + 190 * this.acc / BITE, 'sine', 0.07);
+        if (this.acc > BITE) {
+          this.acc = 0; S.ebl += 0.4; sfx.cut(); uiDirty();
+          if (n >= KI) st.vufGoal = (n - KI + 1) / NF; else if (which === 'ant') st.antGoal = (n + 1) / KI; else st.postGoal = (n + 1) / KI;
+          upperFree(k);
         }
         return true;
       }
-      if (h.pick.hit && (h.pick.ent === which || h.pick.ent === 'roof' || h.pick.ent === 'areolar')) { if (S.guided) hint('line', 'Follow the marked line from the divided pedicle'); return true; }
+      if (h.pick.hit && (h.pick.ent === which || h.pick.ent === 'roof' || h.pick.ent === 'areolar' || h.pick.ent === 'vuf')) { if (S.guided) hint('line', 'Follow the marked line from the divided pedicle'); return true; }
       return false;
     },
-    done() { return count() >= KI; },
-    progress() { return 'Incision ' + count() + ' / ' + KI; },
-    frac() { return count() / KI; },
-    focus(out) { return cp(2, out); }
+    done() { return count() >= KI + NF; },
+    progress() { return 'Bite ' + count() + ' / ' + (KI + NF); },
+    frac() { return count() / (KI + NF); },
+    focus(out) { return cp(2, out); },
+    force() { const st = S.side[k]; if (which === 'ant') { st.antGoal = 1; st.vufGoal = 1; } else st.postGoal = 1; upperFree(k); }
   }, o);
+}
+// Divide the round ligament, first carrying the incision to it across the top of the broad ligament from the
+// utero-ovarian pedicle: two bites of peritoneum, taken like a leaf's.
+function roundStep(o) {
+  const k = o.side, base = sealStep(o), sealNext = base.next, sealProg = base.progress;
+  const rp = (i, out) => { const G = curG(k), st = S.side[k], v = 0.72 - 0.36 * i, u = st.round.uc + (st.uo.uc - st.round.uc) * v; return stripPt(G.round, u, G.ridge, u, v, 0.3, out); };
+  const left = () => { const st = S.side[k], e = st.round; return e.cut || e.seals.length || e.act ? 0 : 2 - Math.round(st.roofGoal * 2); }; // roof bites still to take; none once the ligament itself is in the jaws
+  return Object.assign(base, {
+    acc: 0, snap: ['bipolar'],
+    targets() { const n = left(); return n ? [rp(2 - n, new V3())] : []; },
+    next() { const n = left(); return n ? { p: rp(2 - n, new V3()), act: 'trace', label: n === 2 ? 'Carry the incision forward: hold to seal and cut' : 'Next bite, up to the round ligament', prog: this.acc / BITE } : sealNext.call(this); },
+    path() { const n = left(), a = []; for (let i = 2 - n; i < 2 && n; i++) a.push(rp(i, new V3())); if (n) a.push(sampleArr(curG(k).round, o.uT, new V3())); return a; },
+    bipolar(h, dt) {
+      const n = left(); if (!n || !nearTarget(h, rp(2 - n, _w2), 0.8) || h.pick.ent === 'round') return false;
+      this.acc += dt; sustain('bip', 440 + 190 * this.acc / BITE, 'sine', 0.07);
+      if (this.acc > BITE) { this.acc = 0; S.side[k].roofGoal = (3 - n) / 2; S.ebl += 0.4; sfx.cut(); uiDirty(); }
+      return true;
+    },
+    progress() { const n = left(); return n ? 'Incision ' + (2 - n) + ' / 2, then the ligament' : sealProg.call(this); },
+    frac() { const e = S.side[k].round; return e.cut ? 1 : 0.3 * S.side[k].roofGoal + 0.7 * (e.seals.length ? 0.66 : e.act ? e.act.p * 0.6 : 0); }
+  });
 }
 function markUreter(k) {
   const sur = STEPS[S.step].id === 'survey', map = sur ? S.ureterID : S.ureterOK;
@@ -2605,15 +2643,21 @@ function clickUreter(h) {
 }
 // Hold-near identification: a driven instrument tip held beside a ureter for a moment identifies it (survey) or
 // confirms it (final inspection). No pinch or click is needed, so nothing beside it is grasped or burned by mistake.
-const UDW = { R: 0, L: 0, NEAR: 1.2, T: 1 };
+// An instrument at the sidewall there also lifts the ovary off it, as its shaft would, and more of the ureter shows.
+const UDW = { R: 0, L: 0, NEAR: 1.2, T: 1, LIFT: 2.8, held: { R: -9, L: -9 } };
 function ureterDwell(dt) {
   const st = STEPS[S.step];
   if (st.id !== 'survey' && !(st.id === 'final' && S.lowP && !S.bleeders.length)) { UDW.R = UDW.L = 0; return; }
   const map = st.id === 'survey' ? S.ureterID : S.ureterOK;
   for (const k of ['R', 'L']) {
-    if (map[k]) { UDW[k] = 0; continue; }
     let near = false;
-    for (const h of HANDS) if (h.ptr.on && h.exch <= 0 && !h.firing) { const n = nearestOnArr(URETER[k].arr, h.tip); if (n.d - 0.2 < UDW.NEAR && n.u > 0.05 && n.u < 0.65) near = true; }
+    for (const h of HANDS) if (h.ptr.on && h.exch <= 0 && !h.firing) {
+      const n = nearestOnArr(URETER[k].arr, h.tip); if (n.u <= 0.05 || n.u >= 0.65) continue;
+      if (n.d - 0.2 < UDW.NEAR) near = true;
+      if (n.d < UDW.LIFT) UDW.held[k] = S.t + 0.6; // the lift outlasts a tip that wavers at its edge
+    }
+    if (S.t < UDW.held[k]) S.side[k].ovGoal = 1;
+    if (map[k]) { UDW[k] = 0; continue; }
     UDW[k] = near ? UDW[k] + dt : Math.max(0, UDW[k] - 2 * dt);
     if (UDW[k] >= UDW.T) { UDW[k] = 0; markUreter(k); }
   }
@@ -2632,23 +2676,13 @@ function ureterMarkerRaw(k) {
 function deliverSpecimen() { if (S.colpDone && S.specimen === 'in') { S.specimen = 'delivering'; for (const k of ['L', 'R']) if (HAND[k].grab) releaseGrab(HAND[k]); toast('Specimen delivered through the vagina', 'ok'); uiDirty(); } }
 function onSpecimenOut() { S.poseGoal.yaw = 0; uiDirty(); }
 
-const SIDE_STEPS = k => [
-  sealStep({
-    id: 'round' + k, side: k, ent: 'round', uT: 0.45, phase: CAP[k] + ' side', short: CAP[k] + ' round ligament',
-    title: 'Divide the ' + WORD[k] + ' round ligament', dist: 11, rec: { yaw: yawFor(k), pitch: 0.1, push: 0.4 }, expo: [exSide(k)],
-    text: ['Deviate the uterus to the patient\'s ' + OPP[k] + ' to put the ' + WORD[k] + ' round ligament on stretch.', 'Grasp its mid-portion with the advanced bipolar and hold until the seal tone completes.', 'Fire the cut blade through the sealed zone.'],
-    pearl: 'Divide mid-ligament. Too medial bleeds from the ascending uterine branches; too lateral approaches the internal ring and the external iliac vessels.'
-  }),
-  inciseStep({
-    id: 'ant' + k, side: k, which: 'ant', phase: CAP[k] + ' side', short: CAP[k] + ' anterior leaf',
-    title: 'Open the ' + WORD[k] + ' anterior leaf', dist: 10.5, rec: { yaw: yawFor(k), pitch: -0.12, push: 0.5 }, expo: [exSide(k)],
-    text: ['Switch to the monopolar hook.', 'Hold to activate and carry the incision from the divided round ligament down the anterior leaf toward the vesicouterine fold.', 'Stay on the thin, lifted peritoneum and keep the tip off the bladder.'],
-    pearl: 'CO₂ tracks into the opened leaf and separates the loose areolar plane for you. Let it show you where to cut.'
-  }),
+// One side from the top down to the bladder: the tube off its mesosalpinx, the utero-ovarian ligament, the incision
+// carried forward to the round ligament, then the posterior leaf and the anterior leaf. All with the advanced bipolar.
+const UPPER_STEPS = k => [
   mesoStep({
-    id: 'meso' + k, side: k, swing: true, phase: CAP[k] + ' side', short: CAP[k] + ' salpingectomy',
+    id: 'meso' + k, side: k, swing: true, phase: CAP[k] + ' side', short: CAP[k] + ' mesosalpinx',
     title: 'Free the ' + WORD[k] + ' tube: mesosalpinx', dist: 10.5, rec: { yaw: yawFor(k), pitch: 0.5, push: 0.3 }, expo: [exSide(k)],
-    text: ['With the advanced bipolar, take the mesosalpinx just under the tube in two bites, fimbrial end first.', 'Seal, then cut, each bite.', 'The tube stays attached at the cornu and comes out with the uterus.'],
+    text: ['Deviate the uterus to the patient\'s ' + OPP[k] + '. This side starts with the tube.', 'With the advanced bipolar, take the mesosalpinx just under the tube in two bites, fimbrial end first. Seal, then cut, each bite.', 'The tube stays attached at the cornu. Freed, it falls back behind the uterus and comes out with it.'],
     pearl: 'Hug the tube. The ovarian arcade runs in the mesovarium just below, and it is the conserved ovary\'s collateral supply.'
   }),
   sealStep({
@@ -2657,54 +2691,83 @@ const SIDE_STEPS = k => [
     text: ['Seal the utero-ovarian ligament between the cornu and the ovary, then cut.', 'The ovary stays on its infundibulopelvic supply and falls back to the sidewall.'],
     pearl: 'Leave a pedicle on the uterine side. A cut flush with the cornu back-bleeds briskly from the ascending uterine vessels.'
   }),
-  inciseStep({
+  roundStep({
+    id: 'round' + k, side: k, ent: 'round', uT: 0.45, phase: CAP[k] + ' side', short: CAP[k] + ' round ligament',
+    title: 'Carry the incision forward and divide the ' + WORD[k] + ' round ligament', dist: 11, rec: { yaw: yawFor(k), pitch: 0.25, push: 0.4 }, expo: [exSide(k)],
+    text: ['From the divided utero-ovarian pedicle, carry the incision forward across the top of the broad ligament: two bites of peritoneum, each held until it is sealed and cut.', 'Then grasp the mid-portion of the round ligament and hold until the seal tone completes.', 'Fire the cut blade through the sealed zone.'],
+    pearl: 'Divide mid-ligament. Too medial bleeds from the ascending uterine branches; too lateral approaches the internal ring and the external iliac vessels.'
+  }),
+  leafStep({
     id: 'post' + k, side: k, which: 'post', phase: CAP[k] + ' side', short: CAP[k] + ' posterior leaf',
     title: 'Open the ' + WORD[k] + ' posterior leaf and skeletonize the vessels', dist: 10, rec: { yaw: yawFor(k), pitch: 0.85, push: 0.4 }, expo: [exSide(k), exAnt],
-    text: ['Antevert the uterus and keep it deviated to the patient\'s ' + OPP[k] + '.', 'With the hook, open the posterior leaf from the divided pedicle down toward the uterosacral ligament.', 'The areolar tissue clears off the uterine vessels as you go. The ureter runs on the lateral side of this leaf: stay medial to it.'],
+    text: ['Antevert the uterus and keep it deviated to the patient\'s ' + OPP[k] + '.', 'With the advanced bipolar, open the posterior leaf in small bites from the divided pedicle down toward the uterosacral ligament. Hold on each mark until the bite is through.', 'The areolar tissue clears off the uterine vessels as you go. The ureter runs on the lateral side of this leaf: stay medial to it.'],
     pearl: 'Opening the posterior leaf lets the ureter fall laterally. Skeletonized vessels seal more reliably and with less thermal spread than a thick pedicle.'
+  }),
+  leafStep({
+    id: 'ant' + k, side: k, which: 'ant', phase: CAP[k] + ' side', short: CAP[k] + ' anterior leaf',
+    title: 'Open the ' + WORD[k] + ' anterior leaf to the vesicouterine fold', dist: 10.5, rec: { yaw: yawFor(k) * 0.8, pitch: -0.12, push: 0.6 }, expo: [exSide(k)],
+    text: ['Tip the uterus back, still deviated to the patient\'s ' + OPP[k] + '.', 'Open the anterior leaf in small bites from the divided round ligament down toward the bladder, then carry on across this side\'s half of the vesicouterine fold, as far as the midline.', 'Stay on the thin, lifted peritoneum and keep the jaws off the bladder.'],
+    pearl: 'CO₂ tracks into the opened leaf and separates the loose areolar plane for you. Take the fold where the peritoneum lifts freely off the lower segment: where it is densely adherent you are too high.'
   })
 ];
 const VESSEL_STEPS = k => [
   sealStep({
-    id: 'ua' + k, side: k, ent: 'ua', uT: 0.14, phase: 'Uterine vessels', short: CAP[k] + ' uterine vessels',
+    id: 'ua' + k, side: k, ent: 'ua', uT: 0.14, phase: CAP[k] + ' side', short: CAP[k] + ' uterine vessels',
     title: 'Seal and divide the ' + WORD[k] + ' uterine vessels', dist: 8.5, rec: { yaw: yawFor(k) * 0.9, pitch: 0.3, push: 1 }, expo: [exPush, exSide(k)],
     text: ['Push the cup firmly cephalad and deviate the uterus to the patient\'s ' + OPP[k] + '.', 'Seal the skeletonized vessels at the level of the internal os, right against the uterus and at a right angle to them.', 'Confirm the seal, then cut.'],
     pearl: 'Cephalad pressure on the cup lifts the uterine artery away from the ureter, which crosses under it 1.5 to 2 cm lateral to the cervix. Every millimetre lateral on the pedicle is a millimetre closer.'
   }),
   sealStep({
-    id: 'card' + k, side: k, ent: 'card', uT: 0.17, phase: 'Uterine vessels', short: CAP[k] + ' cardinal ligament',
+    id: 'card' + k, side: k, ent: 'card', uT: 0.17, phase: CAP[k] + ' side', short: CAP[k] + ' cardinal ligament',
     title: 'Step down the ' + WORD[k] + ' cardinal ligament', dist: 8, rec: { yaw: yawFor(k) * 0.9, pitch: 0.3, push: 1 }, expo: [exPush, exSide(k)],
-    text: ['Stay inside the sealed uterine pedicle.', 'Seal and cut the cardinal ligament along the cervix, down to the cup rim.'],
+    text: ['Stay inside the sealed uterine pedicle.', 'Seal and cut the cardinal ligament along the cervix, down to the cup rim.', 'That finishes this side.'],
     pearl: 'Working medial to the pedicle lateralizes the uterine stump and the ureter together, away from the colpotomy.'
   })
 ];
 
-// Sweep the bladder off the cervix and vagina: N sweeps take it from `from` to `full` of the way down (1: clear of a colpotomy).
+// Take the bladder down off the cervix and vagina, from `from` to `full` of the way (1: clear of a colpotomy). A closed
+// bipolar, a grasper or the suction tip held at the bladder's edge, at each of the places in `us` in turn, does it: no
+// press is needed. Held there for a moment, the instrument makes the sweep itself and the bladder comes down a step.
+// Nothing is done by pointing alone unless the step's exposure is set, and an instrument that is already resting at the
+// edge when the step begins has to stay there twice as long, so that the first sweep is not a surprise.
+const FLAP = { HOLD: 0.6, SWEEP: 1.0, SIDE: 0.6, N: 2 }; // seconds held, seconds the sweeping takes, and the brushing: how far to each side along the bladder's edge, and how many times
 const flapStep = o => Object.assign({
-  id: 'flap', kind: 'flap', tool: 'hook', alt: 'suction', phase: 'Bladder', short: 'Develop bladder flap', title: 'Develop the bladder flap', dist: 9, acc: 0, cnt: 0, N: 6, from: 0, full: 1,
+  id: 'flap', kind: 'flap', tool: 'bipolar', alt: 'grasper', snap: ['bipolar', 'grasper'], phase: 'Bladder', short: 'Take the bladder down', title: 'Take the bladder down', dist: 9, acc: 0, cnt: 0, busy: 0, from: 0, full: 1, us: [0.5, 0.22, 0.78],
   rec: { yaw: 0, pitch: -0.18, push: 1 }, expo: [exPush],
-  text: ['Push the cup cephalad: its rim marks the anterior fornix.', 'Sweep the bladder caudally off the cervix, midline first, then each side. Use short hook bursts on the cervical side or blunt pushes with the suction tip.', 'Carry on until the bladder sits 1.5 to 2 cm below the cup rim.'],
+  text: ['Push the cup cephalad: its rim marks the anterior fornix.', 'Hold the closed jaws of the bipolar, or the grasper, at the edge of the bladder. No pinch or click is needed: held there, the instrument sweeps the bladder caudally off the cervix, away from the cup.', 'Carry on until the bladder sits 1.5 to 2 cm below the cup rim.'],
   pearl: 'The right plane is white, filmy and avascular. Yellow fat belongs to the bladder. The bladder pillars laterally carry vessels, and a prior caesarean scar hides the midline plane: start lateral in those cases.',
-  at() { return [0.5, 0.22, 0.78][this.cnt % 3]; },
-  targets() { return this.cnt >= this.N ? [] : [flapEdgePt(this.at(), new V3())]; },
-  next() { return this.cnt >= this.N ? null : { p: flapEdgePt(this.at(), new V3()), act: 'push', label: 'Sweep the bladder down', prog: this.acc / 0.4 }; },
-  sweep(h, dt, T) {
-    if (this.cnt >= this.N) return true;
-    if (h.pick.ent === 'bladder') return false;
-    if (nearTarget(h, flapEdgePt(this.at(), _w2), 0.9)) { this.acc += dt; if (this.acc > T) { this.acc = 0; this.cnt++; S.flapGoal = lerp(this.from, this.full, this.cnt / this.N); S.ebl += 0.6; sfx.click(); uiDirty(); } return true; }
-    return false;
+  pt(out) { return flapEdgePt(this.us[Math.min(this.cnt, this.us.length - 1)], out); },
+  targets() { return this.cnt >= this.us.length ? [] : [this.pt(new V3())]; },
+  next() { return this.cnt >= this.us.length || this.busy > 0 ? null : { p: this.pt(new V3()), act: 'hover', label: 'Hold at the bladder\'s edge', prog: Math.max(0, this.acc) / FLAP.HOLD }; },
+  click(h) { if (h.inst !== 'bipolar' && h.inst !== 'hook') return false; hint('flapE', 'No energy here. Hold the closed jaws at the bladder\'s edge and the instrument sweeps it down.'); return true; },
+  tick(dt) {
+    if (this.busy > 0) { this.busy -= dt; return; }
+    if (this.cnt >= this.us.length) return;
+    const p = this.pt(_w2), h = HANDS.find(h => h.ptr.on && h.exch <= 0 && !h.firing && !(h.grab && h.grab.pull) && (h.inst === 'bipolar' || h.inst === 'grasper' || h.inst === 'suction') && nearTarget(h, p, 0.9));
+    if (!h) { this.acc = Math.max(0, this.acc - 2 * dt); return; }
+    if (this.expo.some(e => !e.ok())) { this.acc = Math.min(this.acc, 0); hint('flapX', 'Set the exposure first (see the checklist on the right): the bladder\'s edge has to be on stretch for the sweep.'); return; }
+    this.acc += dt; if (this.acc < FLAP.HOLD) return;
+    const u = this.us[this.cnt]; this.acc = 0; this.cnt++; this.busy = FLAP.SWEEP;
+    sweepWith(h, out => flapEdgePt(u, out), flapEdgePt(u + 0.04, new V3()).sub(flapEdgePt(u - 0.04, _w2)), FLAP.SIDE, FLAP.SWEEP, FLAP.N); // the instrument goes with the edge as the bladder comes down, brushing along it
+    S.flapGoal = lerp(this.from, this.full, this.cnt / this.us.length); S.ebl += 0.6; S.stats.blunt += FLAP.SWEEP; sfx.click(); uiDirty();
   },
-  hook(h, dt) { return this.sweep(h, dt, 0.4); }, blunt(h, dt) { if (this.sweep(h, dt, 0.6)) S.stats.blunt += dt; },
-  done() { return this.cnt >= this.N && S.flap > lerp(this.from, this.full, 0.93); }, progress() { return 'Bladder mobilized ' + Math.round(S.flap * 100) + '%'; }, frac() { return this.cnt / this.N; },
-  focus(o) { return flapEdgePt(0.5, o); },
-  force() { this.cnt = this.N; S.flapGoal = this.full; }
+  enter() { this.acc = -FLAP.HOLD; }, reset() { this.busy = 0; },
+  done() { return this.cnt >= this.us.length && S.flap > lerp(this.from, this.full, 0.93); }, progress() { return 'Bladder mobilized ' + Math.round(S.flap * 100) + '%'; }, frac() { return this.cnt / this.us.length; },
+  focus(o) { return flapEdgePt(this.us[0], o); },
+  force() { this.cnt = this.us.length; S.flapGoal = this.full; }
 }, o);
+// The bladder, a side at a time: `from` to `full` on side k, from near the midline out to the bladder pillar.
+const bladderStep = (k, from, full, o) => flapStep(Object.assign({
+  id: 'blad' + k, side: k, from, full, us: k === 'R' ? [0.6, 0.76, 0.9] : [0.4, 0.24, 0.1], phase: CAP[k] + ' side', short: CAP[k] + ' bladder', title: 'Take the bladder down on the ' + WORD[k],
+  rec: { yaw: yawFor(k) * 0.5, pitch: -0.18, push: 1 },
+  text: ['Push the cup cephalad: its rim marks the anterior fornix.', 'Hold the closed jaws of the bipolar, or the grasper, at the edge of the bladder on this side. No pinch or click is needed: held there, the instrument sweeps the bladder caudally off the cervix, away from the cup.', 'Work from near the midline out to the bladder pillar, until this side sits 1.5 to 2 cm below the cup rim.']
+}, o));
 
 const TLH_STEPS = [
   {
     id: 'survey', kind: 'survey', tool: 'any', phase: 'Survey', short: 'Identify both ureters', title: 'Survey the pelvis and identify both ureters', dist: 17,
     rec: { yaw: 0, pitch: 0.6, push: 0.3 }, expo: [],
-    text: ['Before any energy is used, find each ureter through the peritoneum.', 'It crosses the pelvic brim and runs down the sidewall below the infundibulopelvic ligament. Look for peristalsis.', 'Hold an instrument tip beside each ureter for a moment to mark it. No pinch or click is needed.'],
+    text: ['Before any energy is used, find each ureter through the peritoneum.', 'It crosses the pelvic brim and runs down the sidewall below the infundibulopelvic ligament. Look for peristalsis.', 'Hold an instrument tip at the sidewall beside each ureter for a moment to mark it. The instrument lifts the ovary off the sidewall and more of the ureter comes into view. No pinch or click is needed.'],
     pearl: 'Deviating and anteverting the uterus opens each sidewall. At the cervix the ureter passes under the uterine artery about 1.5 to 2 cm lateral.',
     // no energy during the survey: a press that misses the ureter must not fire a bipolar or hook beside it
     click(h) { if (clickUreter(h)) return true; if (h.inst !== 'bipolar' && h.inst !== 'hook') return false; hint('surveyE', 'No energy yet. Hold the tip beside a ureter for a moment to mark it.'); return true; },
@@ -2713,29 +2776,11 @@ const TLH_STEPS = [
     done() { return S.ureterID.R && S.ureterID.L; }, progress() { return (S.ureterID.R ? 1 : 0) + (S.ureterID.L ? 1 : 0) + ' of 2 identified'; },
     frac() { return ((S.ureterID.R ? 1 : 0) + (S.ureterID.L ? 1 : 0)) / 2; }, focus(o) { return o.set(0, -1.6, 0); }
   },
-  ...SIDE_STEPS('R'), ...SIDE_STEPS('L'),
-  {
-    id: 'vuf', kind: 'incise', tool: 'hook', phase: 'Bladder', short: 'Incise vesicouterine fold', title: 'Incise the vesicouterine peritoneum', dist: 9.5, acc: 0,
-    rec: { yaw: 0, pitch: -0.18, push: 0.7 }, expo: [exMid],
-    text: ['Bring the uterus to the midline and tip it back to tent the vesicouterine fold.', 'With the hook, join the two anterior-leaf incisions across the midline, from the patient\'s right to left.', 'Cut the loose, mobile peritoneum just above the bladder reflection.'],
-    pearl: 'Incise where the peritoneum lifts freely off the lower segment. Where it is densely adherent you are too high.',
-    cp(i, out) { return vufPt(0.9 - i * 0.2, out); }, n() { return Math.round(S.vufGoal * 5); },
-    next() { const n = this.n(); return n >= 5 ? null : { p: this.cp(n, new V3()), act: 'trace', label: n === 0 ? 'Start here: hold to cut' : 'Trace' }; },
-    path() { const a = []; for (let i = this.n(); i < 5; i++) a.push(this.cp(i, new V3())); return a; },
-    targets() { const n = this.n(), a = []; for (let i = n; i < Math.min(5, n + 2); i++) a.push(this.cp(i, new V3())); return a; },
-    hook(h, dt) {
-      const n = this.n(); if (n >= 5) return true;
-      if (nearTarget(h, this.cp(n, _w2), 0.8) && h.pick.ent !== 'bladder') { this.acc += dt; if (this.acc > 0.11) { this.acc = 0; S.vufGoal = (n + 1) / 5; S.ebl += 0.4; sfx.click(); uiDirty(); } return true; }
-      return h.pick.ent === 'vuf';
-    },
-    done() { return this.n() >= 5; }, progress() { return 'Incision ' + this.n() + ' / 5'; }, frac() { return this.n() / 5; }, focus(o) { return vufPt(0.5, o); }
-  },
-  flapStep({}),
-  ...VESSEL_STEPS('R'), ...VESSEL_STEPS('L'),
+  ...['R', 'L'].flatMap(k => [...UPPER_STEPS(k), bladderStep(k, k === 'R' ? 0 : 0.5, k === 'R' ? 0.5 : 1), ...VESSEL_STEPS(k)]),
   {
     id: 'colp', kind: 'colp', tool: 'hook', phase: 'Colpotomy and closure', short: 'Colpotomy', title: 'Circumferential colpotomy on the cup', dist: 9.5,
     rec: { yaw: 0, pitch: -0.1, push: 1 }, expo: [exPush],
-    text: ['Push the cup cephalad to stretch the fornices over its rim.', 'With the hook, cut down onto the rim. Start anteriorly and work around each side.', 'Antevert the uterus to finish the posterior fornix between the uterosacral ligaments.'],
+    text: ['Push the cup cephalad to stretch the fornices over its rim.', 'Take the monopolar hook: this is the one step that uses it. Cut down onto the rim, starting anteriorly and working around each side.', 'Antevert the uterus to finish the posterior fornix between the uterosacral ligaments.'],
     pearl: 'Stay on the cup: the rim keeps the bladder, ureters and rectum off your cut. Use the least energy that does the job, because a devitalized vaginal edge is a risk factor for cuff dehiscence.',
     vis: [], visT: 0,
     refresh() { if (S.t < this.visT) return; this.visT = S.t + 0.18; for (let k = 0; k < 16; k++) this.vis[k] = S.colp[k] >= 1 ? false : visibleAt(colpPt(k, _w2), 0.7); },
@@ -2867,22 +2912,23 @@ function tlhSutures() {
   return { st, from: c.pending ? at(c.pending.x, 'ant', c.pending.da) : st.length ? st[st.length - 1][2] : null, on: STEPS[S.step].id === 'cuff' && !c.done };
 }
 // ---------- hooks for automated checks ----------
-function tlhForce(st) { // complete the step in hand
+function tlhForce(st) { // complete the step in hand, for the steps that cannot do it themselves
   const k = st.side, sd = k && S.side[k];
   if (st.id === 'survey') S.ureterID.R = S.ureterID.L = true;
-  else if (st.seal && st.kind !== 'meso') { const e = sd[st.ent]; e.seals.push({ u: st.uT, w: SEALSPEC[st.ent].w }); e.cut = true; e.uc = st.uT; if (st.ent === 'uo') sd.roofCut = true; if (st.ent === 'ua' || st.ent === 'card') startRelease(AN.side[k], st.ent); }
+  else if (st.seal && st.kind !== 'meso') {
+    const e = sd[st.ent]; e.seals.push({ u: st.uT, w: SEALSPEC[st.ent].w }); e.cut = true; e.uc = st.uT;
+    if (st.ent === 'round') sd.roofGoal = 1; if (sd.uo.cut && sd.round.cut) sd.roofCut = true;
+    if (st.ent === 'ua' || st.ent === 'card') startRelease(AN.side[k], st.ent);
+  }
   else if (st.kind === 'meso') { S.mesoBite[k] = 2; sd.meso.pGoal = 1; sd.tubeGoal = 1; }
-  else if (st.which === 'ant') sd.antGoal = 1;
-  else if (st.which === 'post') { sd.postGoal = 1; startRelease(AN.side[k], 'upper'); }
-  else if (st.id === 'vuf') S.vufGoal = 1;
   else if (st.id === 'colp') { S.colp.fill(1); S.colpDone = true; VG.dirty = true; }
   else if (st.id === 'deliver') deliverSpecimen();
   else if (st.id === 'cuff') { for (const x of [1.5, 0.9, 0.3, -0.3, -0.9, -1.5]) S.cuff.stitches.push({ x, da: 0.8, dp: 0.8 }); S.cuff.frontGoal = -2.8; S.cuff.done = true; }
   else if (st.id === 'final') { S.lowP = true; S.ureterOK.R = S.ureterOK.L = true; endCase(); }
 }
 function tlhWant(st, n) { // what a scripted hand should find under its tip at this target
-  const um = /(right|left) ureter/.exec(n.label || '');
-  return st.seal ? { ents: st.seal.ent === 'meso' ? ['meso', 'tube'] : [st.seal.ent], side: st.seal.side } : um ? { ents: ['ureter'], side: um[1] === 'right' ? 'R' : 'L' } : n.act === 'bite' ? { cuff: { edge: S.cuff.pending ? 'post' : 'ant', x: S.cuff.pending ? S.cuff.pending.x : st.nextX() } } : null;
+  const um = /(right|left) ureter/.exec(n.label || ''), seal = (n.act === 'seal' || n.act === 'cut') && st.seal;
+  return seal ? { ents: seal.ent === 'meso' ? ['meso', 'tube'] : [seal.ent], side: seal.side } : um ? { ents: ['ureter'], side: um[1] === 'right' ? 'R' : 'L' } : n.act === 'bite' ? { cuff: { edge: S.cuff.pending ? 'post' : 'ant', x: S.cuff.pending ? S.cuff.pending.x : st.nextX() } } : null;
 }
 const TLH = {
   id: 'tlh', name: 'Total laparoscopic hysterectomy', tag: ', bilateral salpingectomy', blurb: 'With both tubes; ovaries conserved. 21 steps.',
@@ -3959,7 +4005,7 @@ const CYS = {
 };
 
 // ---------- case: laparoscopic supracervical hysterectomy ----------
-// The hysterectomy as far as the uterine vessels, then the body of the uterus is cut off its cervix. The cervix, with its
+// The hysterectomy's steps on each side as far as the uterine vessels, then the body of the uterus is cut off its cervix. The cervix, with its
 // cardinal and uterosacral ligaments, stays. The sacrocolpopexy (next file) starts from where this ends.
 const LS = { YA: 2.6, N: 12, CONE: 0.45 }; // YA: the level of the cut, at the internal os; N: segments round it; CONE: how far the cut dips toward the canal
 
@@ -4027,14 +4073,15 @@ const lsVessel = k => Object.assign(VESSEL_STEPS(k)[0], {
   pearl: 'This is the ascending branch, taken where it meets the uterus. The ureter passes under the uterine artery 1.5 to 2 cm lateral to here, so stay on the uterus. Once both sides are sealed the body of the uterus blanches.'
 });
 const TLH_FINAL = TLH_STEPS.find(s => s.id === 'final');
+// the bladder on one side, only as far as the amputation needs
+const lsBladder = (k, from, full) => bladderStep(k, from, full, {
+  us: k === 'R' ? [0.62, 0.84] : [0.38, 0.16], title: 'Mobilize the bladder on the ' + WORD[k], expo: [exPushU],
+  text: ['Push the uterus cephalad.', 'Hold the closed jaws of the bipolar, or the grasper, at the edge of the bladder on this side. No pinch or click is needed: held there, the instrument sweeps the bladder caudally off the lower uterine segment.', 'Stop when the bladder is clear of the internal os. There will be no colpotomy, so it need go no lower.'],
+  pearl: 'A supracervical hysterectomy needs the bladder only just below the level of the amputation. If mesh is to be laid on the anterior vaginal wall afterwards, that dissection is carried further at that stage, with the vagina on a probe.'
+});
 const LSH_STEPS = [
-  TLH_STEPS.find(s => s.id === 'survey'), ...SIDE_STEPS('R'), ...SIDE_STEPS('L'), TLH_STEPS.find(s => s.id === 'vuf'),
-  flapStep({
-    N: 3, full: 0.5, short: 'Mobilize the bladder', title: 'Mobilize the bladder off the lower segment', expo: [exPushU],
-    text: ['Push the uterus cephalad.', 'Sweep the bladder caudally off the lower uterine segment, midline first, then each side. Use short hook bursts on the uterine side or blunt pushes with the suction tip.', 'Stop when the bladder is clear of the internal os. There will be no colpotomy, so it need go no lower.'],
-    pearl: 'A supracervical hysterectomy needs the bladder only just below the level of the amputation. If mesh is to be laid on the anterior vaginal wall afterwards, that dissection is carried further at that stage, with the vagina on a probe.'
-  }),
-  lsVessel('R'), lsVessel('L'),
+  TLH_STEPS.find(s => s.id === 'survey'),
+  ...['R', 'L'].flatMap(k => [...UPPER_STEPS(k), lsBladder(k, k === 'R' ? 0 : 0.25, k === 'R' ? 0.25 : 0.5), lsVessel(k)]),
   {
     id: 'amp', kind: 'colp', tool: 'hook', phase: 'Amputation', short: 'Amputate the uterus', title: 'Amputate the body of the uterus from the cervix', dist: 9.5,
     rec: { yaw: 0, pitch: -0.1, push: 1 }, expo: [exPushU],
@@ -4385,8 +4432,8 @@ const SCP_STEPS = [
     force() { this.cnt = 4; S.scp.rv = 1; }
   },
   flapStep({
-    id: 'ant', from: 0.5, N: 3, full: 1, phase: 'Dissection', short: 'Anterior dissection', title: 'Dissect the bladder off the anterior vaginal wall', rec: { yaw: 0, pitch: -0.2, push: 1 }, expo: [exVault, exBack],
-    text: ['Have the vault pushed cephalad and tipped back on the probe.', 'Carry the bladder flap from the hysterectomy further down the anterior vaginal wall: midline first, then each side.', 'Stop a few centimetres down the wall, short of the bladder neck.'],
+    id: 'ant', from: 0.5, full: 1, us: [0.5, 0.25, 0.75], phase: 'Dissection', short: 'Anterior dissection', title: 'Dissect the bladder off the anterior vaginal wall', rec: { yaw: 0, pitch: -0.2, push: 1 }, expo: [exVault, exBack],
+    text: ['Have the vault pushed cephalad and tipped back on the probe.', 'Hold the closed jaws of the bipolar, or the grasper, at the edge of the bladder: held there, the instrument sweeps it further down the anterior vaginal wall. Midline first, then each side.', 'Stop a few centimetres down the wall, short of the bladder neck.'],
     pearl: 'The probe shows you the vaginal wall. The bladder is the thicker, fatty, mobile layer. Filling the bladder a little helps if the plane is unclear. Thin vaginal wall under mesh is where exposures happen, so leave the fascia on the vagina.'
   }),
   scFix({
@@ -4495,11 +4542,11 @@ const SCP = {
     for (const k of ['R', 'L']) {
       const sd = s.side[k];
       for (const e of ['round', 'uo', 'ua']) { sd[e].cut = true; sd[e].gk = 1; sd[e].seals.push({ u: sd[e].uc, w: SEALSPEC[e].w }); }
-      sd.roofCut = true; sd.roofGk = 1; sd.antGoal = sd.antP = sd.postGoal = sd.postP = 1; sd.meso.pGoal = sd.meso.p = 1; sd.tubeGoal = sd.tubeFree = 1; s.mesoBite[k] = 2;
+      sd.roofCut = true; sd.roofGk = 1; sd.antGoal = sd.antP = sd.postGoal = sd.postP = sd.vufGoal = sd.vufP = 1; sd.meso.pGoal = sd.meso.p = 1; sd.tubeGoal = sd.tubeFree = 1; s.mesoBite[k] = 2;
       for (const g of ['upper', 'ua']) { startRelease(AN.side[k], g); sd.rel[g].t = 1; }
     }
     lsHold();
-    s.vufGoal = s.vufP = s.vufGk = 1; s.flap = s.flapGoal = 0.5; s.specimen = 'out'; s.lift = 1; s.ureterID.R = s.ureterID.L = true;
+    s.vufGk = 1; s.flap = s.flapGoal = 0.5; s.specimen = 'out'; s.lift = 1; s.ureterID.R = s.ureterID.L = true;
     s.pose.push = s.poseGoal.push = 0.3;
     s.scp = { sig: 0, sigP: 0, seen: { P: false, U: false, V: false }, cut: 0, cutGoal: 0, clear: 0, clearP: 0, rv: 0, rvP: 0, fix: [], sac: [], tension: null, per: 0, shut: 0, shutGoal: 0, msv: false, msvT: 0, civ: false };
     SC.rkey = '';
@@ -4517,7 +4564,7 @@ const SCP = {
 // ---------- the cases ----------
 // A case is its steps (each with its own targets, checks and teaching text), the instruments on its tray, how its
 // pelvis differs from the model's, and how it is scored. Everything else is shared.
-const BUILD = 'Build 0.8';
+const BUILD = 'Build 0.9';
 const CASES = { tlh: TLH, myo: MYO, ect: ECT, cyst: CYS, lsh: LSH, scp: SCP };
 
 // ---------- step engine (every case) ----------

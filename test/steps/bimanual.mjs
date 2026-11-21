@@ -23,7 +23,7 @@ export default async function (page) {
   });
   check('both pointers move together: L goes left, R goes right, both up', r.on[0] && r.on[1] && r.dL[0] < -25 && r.dR[0] > 25 && r.dL[1] < -25 && r.dR[1] < -25, r);
 
-  // 2. skip to the right round ligament; left hand grasps the right tube and pulls, right hand seals at the same time
+  // 2. the first operative step, the right mesosalpinx: left hand grasps the right tube and pulls, right hand seals at the same time
   r = await ev(() => {
     const d = window.__drv, S = window.__sim;
     S.forceStep(); d.step(40); S.setPoseGoal(S.STEPS[S.S.step].rec); d.step(50);
@@ -37,9 +37,9 @@ export default async function (page) {
     const pull = S.S.pulls.length ? S.S.pulls[0].off.length() : 0;
     const n = S.next(); const m3 = d.moveTo('R', n.x, n.y); d.step(15);
     d.hands.R.ap = 0.14; let frames = 0; while (frames < 120 && S.next() && S.next().act === 'seal') { d.step(1); frames++; }
-    const sealed = S.S.side.R.round.seals.length, stillHolding = !!(S.HAND.L.grab && S.HAND.L.grab.pull);
+    const sealed = S.S.side.R.meso.seals.length, stillHolding = !!(S.HAND.L.grab && S.HAND.L.grab.pull);
     d.hands.R.ap = 0.62; d.step(14); d.hands.R.ap = 0.14; d.step(5); d.hands.R.ap = 0.62; d.step(10);
-    return { m1, m2, m3, entL, grabbed, pull: +pull.toFixed(2), sealed, stillHolding, cut: S.S.side.R.round.cut, tipMoved: +S.HAND.L.tip.distanceTo(new S.THREE.Vector3(...tipBefore)).toFixed(2), traction: S.S.stats.traction, unsealed: S.S.stats.unsealedCuts };
+    return { m1, m2, m3, entL, grabbed, pull: +pull.toFixed(2), sealed, stillHolding, cut: S.S.mesoBite.R === 1, tipMoved: +S.HAND.L.tip.distanceTo(new S.THREE.Vector3(...tipBefore)).toFixed(2), traction: S.S.stats.traction, unsealed: S.S.stats.unsealedCuts };
   });
   check('left hand grasps the tube and holds traction', r.grabbed && r.pull > 0.5 && r.entL === 'tube', r);
   check('right hand seals while the left keeps holding', r.sealed === 1 && r.stillHolding, { sealed: r.sealed, holding: r.stillHolding });

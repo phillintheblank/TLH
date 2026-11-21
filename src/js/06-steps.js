@@ -53,7 +53,7 @@ function mesoStep(o) {
   const pt = (w, out) => { const G = curG(k); return sampleArr(G.ridge, 0.6 * w, out).lerp(sampleArr(G.tubeAtt, w, _w), 0.82); };
   return Object.assign({
     kind: 'meso', tool: 'bipolar', seal: { ent: 'meso', side: k },
-    onCut() { if (o.swing && S.mesoBite[k] >= 2) S.side[k].tubeGoal = 1; }, // swing: the tube, still on the uterus, falls forward out of the way
+    onCut() { if (o.swing && S.mesoBite[k] >= 2) S.side[k].tubeGoal = 1; }, // swing: the tube, still on the uterus, falls back behind it
     next() {
       const b = S.mesoBite[k]; if (b >= 2) return null;
       const e = S.side[k].meso, w = b === 0 ? 0.78 : 0.3;

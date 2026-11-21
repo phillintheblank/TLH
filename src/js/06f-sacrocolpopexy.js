@@ -272,8 +272,8 @@ const SCP_STEPS = [
     force() { this.cnt = 4; S.scp.rv = 1; }
   },
   flapStep({
-    id: 'ant', from: 0.5, N: 3, full: 1, phase: 'Dissection', short: 'Anterior dissection', title: 'Dissect the bladder off the anterior vaginal wall', rec: { yaw: 0, pitch: -0.2, push: 1 }, expo: [exVault, exBack],
-    text: ['Have the vault pushed cephalad and tipped back on the probe.', 'Carry the bladder flap from the hysterectomy further down the anterior vaginal wall: midline first, then each side.', 'Stop a few centimetres down the wall, short of the bladder neck.'],
+    id: 'ant', from: 0.5, full: 1, us: [0.5, 0.25, 0.75], phase: 'Dissection', short: 'Anterior dissection', title: 'Dissect the bladder off the anterior vaginal wall', rec: { yaw: 0, pitch: -0.2, push: 1 }, expo: [exVault, exBack],
+    text: ['Have the vault pushed cephalad and tipped back on the probe.', 'Hold the closed jaws of the bipolar, or the grasper, at the edge of the bladder: held there, the instrument sweeps it further down the anterior vaginal wall. Midline first, then each side.', 'Stop a few centimetres down the wall, short of the bladder neck.'],
     pearl: 'The probe shows you the vaginal wall. The bladder is the thicker, fatty, mobile layer. Filling the bladder a little helps if the plane is unclear. Thin vaginal wall under mesh is where exposures happen, so leave the fascia on the vagina.'
   }),
   scFix({
@@ -382,11 +382,11 @@ const SCP = {
     for (const k of ['R', 'L']) {
       const sd = s.side[k];
       for (const e of ['round', 'uo', 'ua']) { sd[e].cut = true; sd[e].gk = 1; sd[e].seals.push({ u: sd[e].uc, w: SEALSPEC[e].w }); }
-      sd.roofCut = true; sd.roofGk = 1; sd.antGoal = sd.antP = sd.postGoal = sd.postP = 1; sd.meso.pGoal = sd.meso.p = 1; sd.tubeGoal = sd.tubeFree = 1; s.mesoBite[k] = 2;
+      sd.roofCut = true; sd.roofGk = 1; sd.antGoal = sd.antP = sd.postGoal = sd.postP = sd.vufGoal = sd.vufP = 1; sd.meso.pGoal = sd.meso.p = 1; sd.tubeGoal = sd.tubeFree = 1; s.mesoBite[k] = 2;
       for (const g of ['upper', 'ua']) { startRelease(AN.side[k], g); sd.rel[g].t = 1; }
     }
     lsHold();
-    s.vufGoal = s.vufP = s.vufGk = 1; s.flap = s.flapGoal = 0.5; s.specimen = 'out'; s.lift = 1; s.ureterID.R = s.ureterID.L = true;
+    s.vufGk = 1; s.flap = s.flapGoal = 0.5; s.specimen = 'out'; s.lift = 1; s.ureterID.R = s.ureterID.L = true;
     s.pose.push = s.poseGoal.push = 0.3;
     s.scp = { sig: 0, sigP: 0, seen: { P: false, U: false, V: false }, cut: 0, cutGoal: 0, clear: 0, clearP: 0, rv: 0, rvP: 0, fix: [], sac: [], tension: null, per: 0, shut: 0, shutGoal: 0, msv: false, msvT: 0, civ: false };
     SC.rkey = '';

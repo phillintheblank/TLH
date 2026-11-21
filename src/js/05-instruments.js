@@ -16,6 +16,7 @@ const IM = {
   shaft: new THREE.MeshStandardMaterial({ color: 0x0d0e10, metalness: 0, roughness: 0.5, envMap: ENV, envMapIntensity: 0.6 }),
   dark: new THREE.MeshStandardMaterial({ color: 0x070809, metalness: 0.3, roughness: 0.7, envMap: ENV, envMapIntensity: 0.2 }),
   ceramic: new THREE.MeshStandardMaterial({ color: 0xf0ece0, roughness: 0.34, envMap: ENV, envMapIntensity: 0.5 }),
+  plate: new THREE.MeshStandardMaterial({ color: 0x8e99a3, metalness: 0.65, roughness: 0.42, envMap: ENV, envMapIntensity: 0.9, side: THREE.DoubleSide }),
   blue: new THREE.MeshStandardMaterial({ color: 0x2a6db5, roughness: 0.36, metalness: 0.1, envMap: ENV, envMapIntensity: 0.5 }),
   thread: new THREE.MeshStandardMaterial({ color: 0x4b2e83, roughness: 0.55 })
 };
@@ -37,6 +38,20 @@ function jawGeo(w, h, len, taper, sg, teeth) {
   }
   g.computeVertexNormals(); return g;
 }
+// A jaw of the advanced bipolar: straight-sided and blunt, a half circle at the nose and rounded across its back.
+// plate: instead of the coated body, the bare sealing plate on the face that meets the other jaw (side sg), set in
+// from the edge so that the coating shows as a rim round it, and ridged across.
+function bluntGeo(R, H, len, sg, plate) {
+  const nose = (d, r) => (d <= 0 ? 0 : d < r ? Math.sqrt(1 - Math.pow(1 - d / r, 2)) : 1);
+  if (plate) return paramSurface(5, 60, (u, v, p) => {
+    const d = (1 - v) * len - 0.09, k = nose(d, R) * sstep(0.07, 0.11, v);
+    p.set(lerp(-R, R, u) * k * lerp(1, 0.9, v), -sg * (0.014 + 0.011 * Math.abs(((v * 30) % 1) - 0.5)), -v * len);
+  }, {});
+  return paramSurface(20, 34, (u, v, p) => {
+    const a = u * TAU, vv = 1 - Math.pow(1 - v, 1.6), d = (1 - vv) * len, k = nose(d, R), sn = Math.sin(a); // rows gather toward the nose
+    p.set(R * Math.cos(a) * k * lerp(1, 0.9, vv), sg * (sn > 0 ? H * Math.pow(sn, 0.75) * lerp(0.72, 1, sstep(0, 2.2 * R, d)) * Math.pow(k, 0.45) : 0.012 * sn), -vv * len);
+  }, { closedU: true, flip: sg > 0 });
+}
 function buildInst(type) {
   const g = new THREE.Group(), o = { g, jaws: [], needle: null };
   const addJaws = (w, h, len, taper, mat, teeth) => {
@@ -56,11 +71,11 @@ function buildInst(type) {
     for (const piv of o.jaws) { const w = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.014, 0.85), IM.dark); w.position.set(0, piv.userData.sg * 0.108, -0.95); piv.add(w); } // fenestration
     yoke(1.9, 0.4); g.add(zCyl(0.2, 0.25, 0.3, 2.5, IM.steel, 24)); shaft(ribs(2.8, 4, IM.steel));
   } else if (type === 'bipolar') {
-    addJaws(0.5, 0.17, 2.1, 0.3, IM.steel, 0.012);
-    for (const piv of o.jaws) {
-      const sg = piv.userData.sg;
-      const e = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.03, 1.7), IM.ceramic); e.position.set(0, sg * 0.02, -0.95); piv.add(e);
-      const slot = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.034, 1.5), IM.dark); slot.position.set(0, sg * 0.02, -0.9); piv.add(slot); // blade track
+    for (const sg of [1, -1]) { // blunt-tipped jaws: a coated body, and on the face that meets the other jaw a bare sealing plate with the blade's track down it
+      const piv = new THREE.Group(); piv.position.set(0, 0, 2.1); piv.userData.sg = sg;
+      piv.add(new THREE.Mesh(bluntGeo(0.25, 0.17, 2.1, sg, false), IM.ceramic), new THREE.Mesh(bluntGeo(0.18, 0, 2.1, sg, true), IM.plate));
+      const slot = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.02, 1.45), IM.dark); slot.position.set(0, -sg * 0.024, -1.02); piv.add(slot);
+      g.add(piv); o.jaws.push(piv);
     }
     yoke(2.1, 0.52); g.add(zCyl(0.27, 0.27, 1.1, 2.7, IM.blue, 24)); shaft(ribs(3.8, 3, IM.ceramic));
   } else if (type === 'hook') {
@@ -93,7 +108,7 @@ const HAND = {};
 for (const [k, sx, inst] of [['L', -1, 'grasper'], ['R', 1, 'bipolar']]) {
   const h = {
     key: k, inst, port: V(8.5 * sx, 3.5, 13.5), tip: V(3.4 * sx, -0.4, 4.6), goal: V(3.4 * sx, -0.4, 4.6), grp: new THREE.Group(), sub: {},
-    open: 0.7, openGoal: 0.7, grab: null, exch: 0, exchTo: null, firing: false, depth: 12, roll: 0, near: false, surf: new V3(),
+    open: 0.7, openGoal: 0.7, grab: null, exch: 0, exchTo: null, firing: false, depth: 12, roll: 0, sweep: null, near: false, surf: new V3(),
     // each hand has its own pointer, view ray and pick so both instruments can work at once
     ptr: { x: 0, y: 0, on: false, ndc: new THREE.Vector2() }, ray: new THREE.Ray(), pick: newPick(), nearFlag: false, lastUp: -9,
     // pose about the port: direction, commanded insertion, the length actually reached, and contact with tissue
@@ -162,12 +177,13 @@ function doPick(h) { // auto depth: what lies under this hand's pointer
   fillPick(h, hit);
 }
 // When a pointer is over a working point of the current step (an incision line, the cup rim), the tip rides that
-// point rather than dropping through the opened tissue onto whatever lies behind it. Auto depth only.
+// point rather than dropping through the opened tissue onto whatever lies behind it. Auto depth only. The hook and
+// the suction tip always do; a step says which other instruments do at its own working points (snap).
 const _sp = new V3();
 function snapPick(h) {
   if (!S.running || !h.ptr.on) return;
   const st = STEPS[S.step], inst = h.inst, P = h.pick;
-  if (!st.targets || (inst !== 'hook' && inst !== 'suction')) return;
+  if (!st.targets || (inst !== 'hook' && inst !== 'suction' && !(st.snap && st.snap.includes(inst)))) return;
   let bd = 0.2, bz = 0, found = false;
   for (const p of st.targets()) {
     const d2 = h.ray.distanceSqToPoint(p);
@@ -350,13 +366,19 @@ function updateHands(dt) {
     }
     _g.copy(h.port).sub(h.tip).normalize();
     h.grp.position.copy(h.tip).addScaledVector(_g, retract);
+    if (h.sweep) { const w = h.sweep; w.t += dt / w.T; if (w.t >= 1) h.sweep = null; else h.grp.position.add(w.at(_sw).sub(w.base)).addScaledVector(w.dir, w.len * Math.sin(2 * Math.PI * w.n * w.t) * Math.sin(Math.PI * w.t)); } // the brushing the instrument does by itself (see sweepWith)
     h.grp.lookAt(h.port);
-    h.open = damp(h.open, h.firing && h.inst === 'bipolar' ? 0.06 : h.openGoal, 16, dt);
+    h.open = damp(h.open, (h.firing && h.inst === 'bipolar') || h.sweep ? 0.06 : h.openGoal, 16, dt);
     const sub = h.sub[h.inst], ang = h.open * (h.inst === 'bipolar' ? 0.5 : h.inst === 'tenaculum' ? 0.6 : 0.42);
-    for (const piv of sub.jaws) piv.rotation.x = -piv.userData.sg * ang * (h.inst === 'bipolar' && piv.userData.sg < 0 ? 0.25 : 1);
+    for (const piv of sub.jaws) piv.rotation.x = piv.userData.sg * ang * (h.inst === 'bipolar' && piv.userData.sg < 0 ? 0.25 : 1); // each jaw swings away from the other, its meeting face still toward it
     if (sub.needle) { h.roll = Math.max(0, h.roll - dt / 0.45); sub.needle.rotation.z = -Math.sin(Math.PI * h.roll) * 2.2; }
   }
 }
+// The instrument in this hand works by itself for T seconds, jaws closed: it goes with the moving point `at` (the tissue
+// it is pushing) and brushes n times from side to side along dir, up to len cm each way. Display only: the tip the
+// rules see stays where the trainee holds it.
+function sweepWith(h, at, dir, len, T, n) { h.sweep = { t: 0, T, len, n, at, base: at(new V3()), dir: dir.clone().normalize() }; }
+const _sw = new V3();
 function setInst(k, type) {
   const h = HAND[k];
   if (h.inst === type || h.exch > 0 || !S.running) return;
@@ -692,7 +714,7 @@ function cutAction(hand) {
   } else {
     if (e.cut) return;
     e.cut = true; e.uc = clamp(tg.u, sp.lo, sp.hi);
-    if (tg.ent === 'uo') st.roofCut = true;
+    if (st.uo.cut && st.round.cut) st.roofCut = true; // with both pedicles divided the top of the broad ligament is open between them
     if (tg.ent === 'ua') { const pp = sampleArr(sd.cur.ua, e.uc, new V3()); S.stats['uaDist' + tg.side] = nearestUreter(pp).d; if (tg.u > 0.32) logEvent('tech', 'Uterine pedicle taken lateral to the uterine margin: closer to the ureter'); startRelease(sd, 'ua'); }
     if (tg.ent === 'card') startRelease(sd, 'card');
     if (tg.ent === 'round' && (tg.u < 0.25 || tg.u > 0.75)) logEvent('tech', tg.u < 0.25 ? 'Round ligament divided close to the cornu: expect back-bleeding from the ascending uterine branches' : 'Round ligament divided far laterally, near the internal ring and iliac vessels');

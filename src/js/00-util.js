@@ -26,20 +26,6 @@ function hashI(ix, iy, seed) {
   h ^= h >>> 16;
   return (h >>> 0) / 4294967296;
 }
-// periodic 2D value noise (tileable with period `per`)
-function pnoise(x, y, per, seed) {
-  const x0 = Math.floor(x), y0 = Math.floor(y), fx = x - x0, fy = y - y0;
-  const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
-  const X0 = ((x0 % per) + per) % per, X1 = (X0 + 1) % per;
-  const Y0 = ((y0 % per) + per) % per, Y1 = (Y0 + 1) % per;
-  const a = hashI(X0, Y0, seed), b = hashI(X1, Y0, seed), c = hashI(X0, Y1, seed), d = hashI(X1, Y1, seed);
-  return lerp(lerp(a, b, sx), lerp(c, d, sx), sy);
-}
-function pfbm(x, y, per, oct, seed) {
-  let s = 0, a = 0.5, f = 1, n = 0;
-  for (let i = 0; i < oct; i++) { s += a * pnoise(x * f, y * f, per * f, seed + i * 17); n += a; a *= 0.5; f *= 2; }
-  return s / n;
-}
 function hash3(ix, iy, iz) {
   let h = (Math.imul(ix, 374761393) + Math.imul(iy, 668265263) + Math.imul(iz, 1440662683)) | 0;
   h = Math.imul(h ^ (h >>> 13), 1274126177);

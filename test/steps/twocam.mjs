@@ -121,7 +121,7 @@ export default async function (page) {
   ok(d.id && !d.pinched && !d.grab && d.fired === 0 && d.frames < 60, 'holding a tip beside the right ureter identifies it with no pinch ' + JSON.stringify(d));
 
   // --- contact, sealing and cutting by hand, on the right round ligament
-  await ev(() => { const s = window.__sim; s.forceStep(); for (let i = 0; i < 60; i++) window.__drv.step(1); s.setPoseGoal(s.STEPS[s.S.step].rec); window.__drv.step(50); });
+  await ev(() => { const s = window.__sim; let g = 0; while (s.STEPS[s.S.step].id !== 'roundR' && g++ < 9) { s.forceStep(); for (let i = 0; i < 60; i++) window.__drv.step(1); } s.S.side.R.roofGoal = 1; s.setPoseGoal(s.STEPS[s.S.step].rec); window.__drv.step(50); }); // the round ligament step, its two bites of peritoneum already taken
   let r;
   // --- pressing on a broad surface, the body of the uterus: the tissue dents and stops the tip, which stays where
   // it is: no slide, no jump, and no slack to take up on the way back

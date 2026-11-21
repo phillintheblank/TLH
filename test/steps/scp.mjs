@@ -88,10 +88,10 @@ export default async function (page) {
   await T(1.5); m = await M();
   ok('four sweeps on the vaginal side open the rectovaginal space: the rectum falls back and the vaginal wall is bare', m.rv === 1 && m.rvs && m.rectY < y0 - 0.3 && m.step === 'ant' && !m.inj.includes('rectum'), { rv: m.rv, rectY: [y0, m.rectY], step: m.step });
   // ---- the bladder ----
-  await pose({ yaw: 0, pitch: -0.2, push: 1 });
-  for (let i = 0; i < 3; i++) { await atNext(); await hold(0.6); }
+  await pose({ yaw: 0, pitch: -0.2, push: 1 }); await inst('R', 'bipolar'); const acts0 = (await M()).acts;
+  for (let i = 0; i < 3; i++) { n = await atNext(); await T(1.7); }
   await T(1.8); m = await M();
-  ok('three more sweeps take the bladder the rest of the way down the anterior vaginal wall', m.flap > 0.93 && m.step === 'meshP' && !m.inj.includes('bladder'), { flap: m.flap, step: m.step });
+  ok('the bipolar held three times at the bladder\'s edge, with no energy, takes it the rest of the way down the anterior vaginal wall', n.act === 'hover' && m.flap > 0.93 && m.step === 'meshP' && m.acts === acts0 && !m.inj.includes('bladder'), { flap: m.flap, step: m.step, acts: m.acts - acts0 });
   // ---- the posterior leaf ----
   ok('the mesh comes in at this step: its posterior leaf first, the anterior leaf and the arm not yet', m.leafP && !m.arm && !m.leafA, { leafP: m.leafP, arm: m.arm, leafA: m.leafA });
   await pose({ yaw: 0, pitch: 0.85, push: 1 }); await inst('R', 'needle');

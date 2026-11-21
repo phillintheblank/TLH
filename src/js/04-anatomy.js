@@ -69,7 +69,7 @@ for (const s of [1, -1]) {
     uslSac: wallPt(-62, -2.0, 0.1, s)
   };
 }
-const NS = 33;
+const NS = 33, OVLIFT = V(1.5, 1.0, -0.2); // how far an ovary is lifted off the sidewall: toward the midline, anteriorly, cephalad
 class SideGeom {
   constructor(s) {
     this.s = s; this.M = new THREE.Matrix4();
@@ -87,6 +87,7 @@ class SideGeom {
     spline([cR, c.r1, c.r2, K.ring], this.round);
     const ax = c.ax.subVectors(K.ip, cU);
     const ovR = c.ovR.copy(cU).addScaledVector(ax, 0.38); ovR.x += 0.5 * s; ovR.y -= 0.4; ovR.z -= 0.4;
+    if (st && st.ovLift > 0) { const lf = easeIO(st.ovLift); ovR.x -= OVLIFT.x * s * lf; ovR.y += OVLIFT.y * lf; ovR.z += OVLIFT.z * lf; } // lifted off the sidewall, toward the uterus, by an instrument looking for the ureter under it
     const a = this.ovA.copy(ax).normalize(); a.x += 0.25 * s; a.normalize();
     const ovMed = c.ovMed.copy(ovR).addScaledVector(a, -1.2), ovLat = c.ovLat.copy(ovR).addScaledVector(a, 1.2);
     const ovTop = c.ovTop.copy(ovR); ovTop.y += 0.3;
@@ -100,7 +101,7 @@ class SideGeom {
     if (st && st.spec) { for (let i = 0; i < NS; i++) this.tube[i].copy(st.spec.pts[i]).add(st.spec.off); this.tubeCur = this.tube; }
     else if (st && st.tubeFree > 0) {
       const k = easeIO(st.tubeFree);
-      t1.lerp(this.L(c.f1, 3.3 * s, 7.4, -0.35), k); t2.lerp(this.L(c.f2, 3.65 * s, 6.7, -1.1), k); fim.lerp(this.L(c.f3, 3.2 * s, 5.5, -1.55), k);
+      t1.lerp(this.L(c.f1, 2.6 * s, 7.3, 0.7), k); t2.lerp(this.L(c.f2, 2.2 * s, 6.4, 1.25), k); fim.lerp(this.L(c.f3, 1.6 * s, 5.3, 1.45), k); // freed of its mesosalpinx it falls back behind the uterus, on its cornu
       spline([cT, t1, t2, fim], this.tube); this.tubeCur = this.tube;
     } else this.tubeCur = this.tubeAtt;
     spline([this.L(c.a0, 1.21 * s, 3.3, -0.6), K.fa1, K.wallAnt], this.floorA);
@@ -131,7 +132,8 @@ function newSide(s, name) {
   return {
     s, name, round: ent(0.45), uo: ent(0.1), ua: ent(0.14), card: ent(0.2), isth: ent(0.12), // isth: the tube's isthmus, by distance along the tube
     meso: { p: 0, pGoal: 0, seals: [], act: null, cut: false, uc: 0, gk: 0 },
-    antP: 0, antGoal: 0, postP: 0, postGoal: 0, roofGk: 0, roofCut: false, tubeFree: 0, tubeGoal: 0,
+    antP: 0, antGoal: 0, postP: 0, postGoal: 0, roofP: 0, roofGoal: 0, roofGk: 0, roofCut: false, tubeFree: 0, tubeGoal: 0,
+    vufP: 0, vufGoal: 0, ovLift: 0, ovGoal: 0, // vuf: how much of this side's half of the vesicouterine fold is cut, from the side toward the midline; ov: the ovary lifted off the sidewall
     rel: { upper: null, ua: null, card: null },
     spec: null // a tube cut free of the uterus: { pts: its shape, off: how far it has been carried, gone: taken out }
   };
@@ -140,7 +142,7 @@ function freshState() { // what every case has; a case adds its own (CASE.state)
   return {
     t: 0, running: false, ended: false, guided: true, labels: false,
     pose: { yaw: 0, pitch: PITCH0, push: 0 }, poseGoal: { yaw: 0, pitch: PITCH0, push: 0 }, manipOut: false,
-    flap: 0, flapGoal: 0, vufP: 0, vufGoal: 0, vufGk: 0,
+    flap: 0, flapGoal: 0, vufGk: 0,
     side: { R: newSide(1, 'R'), L: newSide(-1, 'L') },
     colp: new Array(16).fill(0), colpDone: false, lift: 0, deliv: 0, carry: null, specimen: 'in', // carry: how far a freed specimen has been taken off in its bag
     cuff: { stitches: [], pending: null, front: 2.4, frontGoal: 2.4, done: false },
@@ -205,10 +207,6 @@ const BL = { c0: V(0, 0.9, -5.2), c: V(0, 0.9, -5.2), r: V(3.4, 1.6, 2.6) };
   }, { closedU: true, su: 3, sv: 2 });
   AN.bladder = reg(new THREE.Mesh(g, MAT.bladder), 'bladder'); scene.add(AN.bladder);
 })();
-function bladderDist(p) {
-  const dx = (p.x - BL.c.x) / BL.r.x, dy = (p.y - BL.c.y) / BL.r.y, dz = (p.z - BL.c.z) / (BL.r.z - 0.6 * S.flap), q = Math.sqrt(dx * dx + dy * dy + dz * dz);
-  return p.distanceTo(BL.c) * (1 - 1 / Math.max(q, 0.01));
-}
 function bladderPt(psi, out) { // fold line on the cephalad-posterior dome
   const dx = Math.sin(psi), dy = 0.25, dz = Math.cos(psi) * 0.8 + 0.3, l = Math.hypot(dx, dy, dz);
   return out.set(BL.c.x + (dx / l) * BL.r.x, BL.c.y + (dy / l) * BL.r.y, BL.c.z + (dz / l) * (BL.r.z - 0.6 * S.flap));
@@ -409,8 +407,8 @@ function updateSide(sd, time) {
   for (const g of ['upper', 'ua', 'card']) {
     const r = st.rel[g]; if (!r) continue;
     if (r.stay) { r.ref.compute(VG.M, st, null); continue; } // held by what is left behind when the body of the uterus is taken off its cervix: it does not go with the specimen
-    if (!r.settled) {
-      const e = easeIO(r.t);
+    if (!r.settled || r.ov !== st.ovLift) { // settled, it is worked out again only while an ovary is being lifted
+      const e = easeIO(r.t); r.ov = st.ovLift;
       r.ref.compute(poseMat(lerpPose(r.from, NEUTRAL, e, _tp), _m4), st, null);
       r.lat.compute(poseMat(lerpPose(r.from, relaxedPose(s), e, _tp2), _m4), st, null);
       if (r.t >= 1) r.settled = true;
@@ -458,7 +456,7 @@ function updateSide(sd, time) {
   p.antL.update((sx, v, o, c) => { const m = antMask(v), ucv = 0.03 + (uR - 0.03) * v, u = lerp(ucv + antG * m, 1, sx); stripPt(Ul.floorA, u, Ul.round, u, v, 0.22, o); edgeCol(c, m, 1 - sx); });
   p.antM.map = (sx, v) => [sx * (0.03 + (uR - 0.03) * v), v]; p.antL.map = (sx, v) => [lerp(0.03 + (uR - 0.03) * v, 1, sx), v];
   // roof (round ligament to utero-ovarian/IP ridge)
-  const roofMask = v => Math.max(st.roofGk, rd.gk * sstep(0.28, 0, v), uo.gk * sstep(0.72, 1, v));
+  const roofMask = v => Math.max(st.roofGk, rd.gk * sstep(0.28, 0, v), uo.gk * sstep(0.72, 1, v), st.roofP > 0 ? sstep(1 - st.roofP - 0.12, 1 - st.roofP + 0.02, v) : 0);
   p.roofM.update((sx, v, o, c) => { const m = roofMask(v), ucv = uR + (uU - uR) * v, u = sx * Math.max(0, ucv - 0.07 * m); stripPt(Um.round, u, Um.ridge, u, v, 0.3, o); edgeCol(c, m, sx); }); setM(p.roofM.mesh, UT_);
   p.roofL.update((sx, v, o, c) => { const m = roofMask(v), ucv = uR + (uU - uR) * v, u = lerp(ucv + 0.07 * m, 1, sx); stripPt(Ul.round, u, Ul.ridge, u, v, 0.3, o); edgeCol(c, m, 1 - sx); });
   // posterior leaf
@@ -506,8 +504,7 @@ function updateAnatomy(dt, time) {
   UT.g.visible = S.specimen !== 'out';
   // eased state
   S.flap = damp(S.flap, S.flapGoal, 3.5, dt);
-  S.vufP = damp(S.vufP, S.vufGoal, 9, dt);
-  S.vufGk = damp(S.vufGk, S.vufGoal >= 1 ? 1 : 0, 4, dt);
+  S.vufGk = damp(S.vufGk, S.side.R.vufGoal >= 1 || S.side.L.vufGoal >= 1 ? 1 : 0, 4, dt);
   S.cuff.front = damp(S.cuff.front, S.cuff.frontGoal, 8, dt);
   if (S.colpDone && S.specimen === 'in') S.lift = damp(S.lift, 1, 3, dt);
   if (S.specimen === 'delivering') { S.deliv = Math.min(1, S.deliv + dt / 1.6); if (S.deliv >= 1) { S.specimen = 'out'; S.manipOut = true; onSpecimenOut(); } }
@@ -516,7 +513,8 @@ function updateAnatomy(dt, time) {
     for (const e of ['round', 'uo', 'ua', 'card', 'isth']) st[e].gk = damp(st[e].gk, st[e].cut ? 1 : 0, 7, dt);
     st.antP = damp(st.antP, st.antGoal, 9, dt); st.postP = damp(st.postP, st.postGoal, 9, dt);
     st.meso.p = damp(st.meso.p, st.meso.pGoal, 6, dt);
-    st.roofGk = damp(st.roofGk, st.roofCut ? 1 : 0, 5, dt);
+    st.roofGk = damp(st.roofGk, st.roofCut ? 1 : 0, 5, dt); st.roofP = damp(st.roofP, st.roofGoal, 9, dt); st.vufP = damp(st.vufP, st.vufGoal, 9, dt);
+    st.ovLift = damp(st.ovLift, st.ovGoal, 5, dt); st.ovGoal = 0; // whatever lifts an ovary asks again each frame
     st.tubeFree = Math.min(1, st.tubeFree + (st.tubeGoal > st.tubeFree ? dt / 1.1 : 0));
     for (const g of ['upper', 'ua', 'card']) { const r = st.rel[g]; if (r && r.t < 1) r.t = Math.min(1, r.t + dt / 0.9); }
   }
@@ -536,7 +534,8 @@ function updateAnatomy(dt, time) {
     I.ta.set(I.aA, 0, 1, () => 0.47 * pl, (u, c) => { c[0] = COL.iliacA[0]; c[1] = COL.iliacA[1]; c[2] = COL.iliacA[2]; });
   }
   // vesicouterine peritoneum
-  const gk = S.vufGk, cutMask = u => (S.vufP > 0 ? sstep(1 - S.vufP - 0.1, 1 - S.vufP + 0.02, u) : 0);
+  // each side's half is cut from that side toward the midline; where it is cut, the bladder's edge hangs free
+  const pR = S.side.R.vufP, pL = S.side.L.vufP, cutMask = u => Math.max(pR > 0 ? sstep(1 - 0.5 * pR - 0.1, 1 - 0.5 * pR + 0.02, u) : 0, pL > 0 ? 1 - sstep(0.5 * pL - 0.02, 0.5 * pL + 0.1, u) : 0);
   for (let i = 0; i < 13; i++) {
     const u = i / 12; // anterior surface, patient's left -> right as u goes 0 -> 1
     utSurf(180 - lerp(-60, 60, u), 3.3, 0.03, VUF.e0[i]).applyMatrix4(UT.M);
@@ -547,13 +546,13 @@ function updateAnatomy(dt, time) {
   const VC = 0.35;
   VUF.up.mesh.visible = S.specimen !== 'out';
   VUF.up.update((sx, t, o, c) => {
-    const m = cutMask(sx), v = t * (VC - 0.1 * m);
+    const m = cutMask(sx), v = t * (VC - 0.1 * m), gk = S.vufGk * m;
     sampleArr(VUF.e0, sx, _a); sampleArr(VUF.e1, sx, _b); o.lerpVectors(_a, _b, v);
     if (gk > 0) { sampleArr(VUF.e0b, sx, _b); _b.lerpVectors(_a, _b, t); o.lerp(_b, gk); }
     edgeCol(c, m, t);
   });
   VUF.lo.update((sx, t, o, c) => {
-    const m = cutMask(sx), v = lerp(VC + 0.1 * m, 1, t);
+    const m = cutMask(sx), v = lerp(VC + 0.1 * m, 1, t), gk = S.vufGk * m;
     sampleArr(VUF.e0, sx, _a); sampleArr(VUF.e1, sx, _b); o.lerpVectors(_a, _b, v);
     if (gk > 0) { sampleArr(VUF.q, sx, _a); _a.lerpVectors(_a, _b, t); o.lerp(_a, gk); }
     edgeCol(c, m, 1 - t);

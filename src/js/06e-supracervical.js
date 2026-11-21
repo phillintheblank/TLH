@@ -1,5 +1,5 @@
 // ---------- case: laparoscopic supracervical hysterectomy ----------
-// The hysterectomy as far as the uterine vessels, then the body of the uterus is cut off its cervix. The cervix, with its
+// The hysterectomy's steps on each side as far as the uterine vessels, then the body of the uterus is cut off its cervix. The cervix, with its
 // cardinal and uterosacral ligaments, stays. The sacrocolpopexy (next file) starts from where this ends.
 const LS = { YA: 2.6, N: 12, CONE: 0.45 }; // YA: the level of the cut, at the internal os; N: segments round it; CONE: how far the cut dips toward the canal
 
@@ -67,14 +67,15 @@ const lsVessel = k => Object.assign(VESSEL_STEPS(k)[0], {
   pearl: 'This is the ascending branch, taken where it meets the uterus. The ureter passes under the uterine artery 1.5 to 2 cm lateral to here, so stay on the uterus. Once both sides are sealed the body of the uterus blanches.'
 });
 const TLH_FINAL = TLH_STEPS.find(s => s.id === 'final');
+// the bladder on one side, only as far as the amputation needs
+const lsBladder = (k, from, full) => bladderStep(k, from, full, {
+  us: k === 'R' ? [0.62, 0.84] : [0.38, 0.16], title: 'Mobilize the bladder on the ' + WORD[k], expo: [exPushU],
+  text: ['Push the uterus cephalad.', 'Hold the closed jaws of the bipolar, or the grasper, at the edge of the bladder on this side. No pinch or click is needed: held there, the instrument sweeps the bladder caudally off the lower uterine segment.', 'Stop when the bladder is clear of the internal os. There will be no colpotomy, so it need go no lower.'],
+  pearl: 'A supracervical hysterectomy needs the bladder only just below the level of the amputation. If mesh is to be laid on the anterior vaginal wall afterwards, that dissection is carried further at that stage, with the vagina on a probe.'
+});
 const LSH_STEPS = [
-  TLH_STEPS.find(s => s.id === 'survey'), ...SIDE_STEPS('R'), ...SIDE_STEPS('L'), TLH_STEPS.find(s => s.id === 'vuf'),
-  flapStep({
-    N: 3, full: 0.5, short: 'Mobilize the bladder', title: 'Mobilize the bladder off the lower segment', expo: [exPushU],
-    text: ['Push the uterus cephalad.', 'Sweep the bladder caudally off the lower uterine segment, midline first, then each side. Use short hook bursts on the uterine side or blunt pushes with the suction tip.', 'Stop when the bladder is clear of the internal os. There will be no colpotomy, so it need go no lower.'],
-    pearl: 'A supracervical hysterectomy needs the bladder only just below the level of the amputation. If mesh is to be laid on the anterior vaginal wall afterwards, that dissection is carried further at that stage, with the vagina on a probe.'
-  }),
-  lsVessel('R'), lsVessel('L'),
+  TLH_STEPS.find(s => s.id === 'survey'),
+  ...['R', 'L'].flatMap(k => [...UPPER_STEPS(k), lsBladder(k, k === 'R' ? 0 : 0.25, k === 'R' ? 0.25 : 0.5), lsVessel(k)]),
   {
     id: 'amp', kind: 'colp', tool: 'hook', phase: 'Amputation', short: 'Amputate the uterus', title: 'Amputate the body of the uterus from the cervix', dist: 9.5,
     rec: { yaw: 0, pitch: -0.1, push: 1 }, expo: [exPushU],

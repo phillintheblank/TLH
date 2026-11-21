@@ -158,6 +158,7 @@ export default async function (page) {
     else if (n.act === 'seal' || n.act === 'inject') { await D.down(); for (let k = 0; k < 40; k++) { await T(0.2); const m = await next(); if (!m || m.act !== n.act || m.label !== n.label) break; } await D.up(); await T(0.2); }
     else if (n.act === 'trace' || n.act === 'push') { await D.down(); await T(n.act === 'push' ? 0.75 : 0.25); await D.up(); await T(0.15); }
     else if (n.act === 'suction') { await D.down(); await T(2.5); await D.up(); }
+    if (VERBOSE && n.act === 'trace' && n.p) say('      after: ' + JSON.stringify(await ev(p => { const s = window.__sim, v = new s.THREE.Vector3().fromArray(p); return { d: ['L', 'R'].map(k => +s.HAND[k].tip.distanceTo(v).toFixed(2)), touch: ['L', 'R'].map(k => !!s.HAND[k].touch), active: s.active, acts: s.S.stats.activations, colp: s.S.colp ? s.S.colp.map(c => c >= 1 ? 1 : c > 0 ? '.' : 0).join('') : '' }; }, n.p)));
     const J = await info(), m = await next();
     const after = JSON.stringify([J.prog, m && m.act, m && m.label]);
     if (J.i === I.i && after === before) { if (++stuck > 5) { say('NO PROGRESS at ' + I.id + ' act=' + n.act + ' label=' + n.label + ' pick=' + JSON.stringify(J.pick) + ' near=' + J.near + ' on=' + J.on + ' inst=' + J.inst + ' prog=' + J.prog); await shot('stuck-' + I.id); break; } } else stuck = 0;

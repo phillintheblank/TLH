@@ -8,7 +8,7 @@ export default async function (page) {
   const T = dt => ev(n => { for (let i = 0; i < n; i++) window.__sim.tick(0.033); }, Math.ceil(dt / 0.033));
   const skip = id => ev(id => { const s = window.__sim; let g = 0; while (s.STEPS[s.S.step].id !== id && g++ < 40) { s.forceStep(); for (let i = 0; i < 90; i++) s.tick(0.033); } }, id);
   const pose = async () => { await ev(() => { const s = window.__sim, r = s.STEPS[s.S.step].rec; if (r) s.setPoseGoal(r); }); await T(1.6); };
-  const want = (process.env.VIEWS || 'survey,roundR,mesoR,vuf,uaR,colp').split(',');
+  const want = (process.env.VIEWS || 'survey,mesoR,roundR,antR,bladR,uaR,colp').split(',');
   for (const id of want) {
     await skip(id); await pose();
     const n = await ev(() => window.__sim.next());
