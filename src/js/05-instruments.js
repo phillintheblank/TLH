@@ -53,7 +53,7 @@ function bluntGeo(R, H, len, sg, plate) {
   }, { closedU: true, flip: sg > 0 });
 }
 function buildInst(type) {
-  const g = new THREE.Group(), o = { g, jaws: [], needle: null };
+  const g = new THREE.Group(), o = { g, jaws: [], needle: null, swage: null };
   const addJaws = (w, h, len, taper, mat, teeth) => {
     for (const sg of [1, -1]) {
       const piv = new THREE.Group(); piv.position.set(0, 0, len);
@@ -91,9 +91,18 @@ function buildInst(type) {
   } else if (type === 'needle') {
     addJaws(0.32, 0.13, 1.3, 0.35, IM.steel, 0.01);
     yoke(1.3, 0.36); g.add(zCyl(0.2, 0.25, 0.3, 1.9, IM.steel, 24)); shaft(ribs(2.2, 4, IM.steel));
-    const ng = new THREE.Group(), arc = Math.PI * 0.9;
-    const nd = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.035, 8, 30, arc), IM.steel);
-    nd.rotation.z = Math.PI - 0.3 * arc; nd.position.set(0.6, 0, 0); ng.add(nd); ng.position.z = 0.2; g.add(ng); o.needle = ng;
+    // A half-circle needle as it is loaded for laparoscopic suturing: held two thirds of the way back from its point,
+    // its wire lying across the jaws and angled 45 degrees forward of them, its curve turning down toward the tissue.
+    // The needle's point is the working tip of this instrument: the driver itself rides above the tissue.
+    const ng = new THREE.Group(), R = 0.85, tx = Math.SQRT1_2, tz = -Math.SQRT1_2, A0 = -Math.PI / 3, A1 = 2 * Math.PI / 3; // radius; the wire's direction in the jaws; the arc, from the swage to the point, with the jaws at angle 0
+    const arcPt = (a, out) => out.set(R * Math.sin(a) * tx, -R * (1 - Math.cos(a)), R * Math.sin(a) * tz);
+    ng.add(new THREE.Mesh(paramSurface(10, 40, (u, v, p) => {
+      const a = lerp(A0, A1, v), r = 0.05 * (v > 0.8 ? lerp(1, 0.06, sstep(0.8, 1, v)) : 1), ca = Math.cos(u * TAU) * r, sa = Math.sin(u * TAU) * r; // tapering to the point
+      arcPt(a, p); p.x += ca * Math.sin(a) * tx - sa * tz; p.y += ca * Math.cos(a); p.z += ca * Math.sin(a) * tz + sa * tx;
+    }, { closedU: true }), IM.steel));
+    o.swage = new THREE.Object3D(); arcPt(A0, o.swage.position); ng.add(o.swage); // where the suture leaves the needle
+    ng.position.z = 0.28; g.add(ng); o.needle = ng;
+    arcPt(A1, g.position).add(ng.position).negate(); // the whole instrument set back, so that the needle's point is where this hand's tip is
   } else if (type === 'tenaculum') { // two slim curved arms, each ending in a tooth that points at the other
     addJaws(0.2, 0.1, 1.9, 0.55, IM.steel, 0);
     for (const piv of o.jaws) { const sg = piv.userData.sg, t = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.42, 10), IM.steel); t.rotation.x = sg > 0 ? Math.PI : 0; t.position.set(0, -sg * 0.1, -1.8); piv.add(t); }
@@ -369,7 +378,7 @@ function updateHands(dt) {
     if (h.sweep) { const w = h.sweep; w.t += dt / w.T; if (w.t >= 1) h.sweep = null; else h.grp.position.add(w.at(_sw).sub(w.base)).addScaledVector(w.dir, w.len * Math.sin(2 * Math.PI * w.n * w.t) * Math.sin(Math.PI * w.t)); } // the brushing the instrument does by itself (see sweepWith)
     h.grp.lookAt(h.port);
     h.open = damp(h.open, (h.firing && h.inst === 'bipolar') || h.sweep ? 0.06 : h.openGoal, 16, dt);
-    const sub = h.sub[h.inst], ang = h.open * (h.inst === 'bipolar' ? 0.5 : h.inst === 'tenaculum' ? 0.6 : 0.42);
+    const sub = h.sub[h.inst], ang = h.open * (h.inst === 'bipolar' ? 0.5 : h.inst === 'tenaculum' ? 0.6 : h.inst === 'needle' ? 0 : 0.42); // a needle driver stays closed on its needle
     for (const piv of sub.jaws) piv.rotation.x = piv.userData.sg * ang * (h.inst === 'bipolar' && piv.userData.sg < 0 ? 0.25 : 1); // each jaw swings away from the other, its meeting face still toward it
     if (sub.needle) { h.roll = Math.max(0, h.roll - dt / 0.45); sub.needle.rotation.z = -Math.sin(Math.PI * h.roll) * 2.2; }
   }
@@ -636,7 +645,7 @@ function controlBleeders(h, dt) {
 const SEALSPEC = {
   round: { w: 0.09, T: 1.9, lo: 0.2, hi: 0.8, flow: 18, base: 2, label: 'round ligament' },
   uo: { w: 0.04, T: 2.1, lo: 0.04, hi: 0.17, flow: 80, base: 4, label: 'utero-ovarian pedicle' },
-  ua: { w: 0.07, T: 2.5, lo: 0.05, hi: 0.4, flow: 300, base: 6, arterial: true, label: 'uterine vessels' },
+  ua: { w: 0.03, T: 2.0, lo: 0.05, hi: 0.4, flow: 300, base: 6, arterial: true, label: 'uterine vessels' }, // a jaw's width: these are sealed three times, side by side
   card: { w: 0.1, T: 2.0, lo: 0.1, hi: 0.4, flow: 55, base: 4, label: 'cardinal ligament' },
   meso: { w: 0.26, T: 1.7, lo: 0, hi: 1, flow: 28, base: 2, label: 'mesosalpinx' },
   isth: { w: 0.045, T: 1.8, lo: 0.03, hi: 0.33, flow: 45, base: 2, label: 'tubal isthmus' }
@@ -650,7 +659,8 @@ function sealTarget(h) {
   if (want && (want.ent === 'meso' || want.ent === 'isth') && ent === 'tube' && side === want.side) ent = want.ent; // the tube stands for its mesosalpinx, or for its own isthmus
   if (!SEALSPEC[ent]) return null;
   if (!want || want.ent !== ent || want.side !== side) return { wrong: true, ent, side };
-  return { ent, side, u: P.u, v: P.v, e: S.side[side][ent], spec: SEALSPEC[ent] };
+  const st = STEPS[S.step];
+  return { ent, side, u: st.sealU ? st.sealU(P) : P.u, v: P.v, e: S.side[side][ent], spec: SEALSPEC[ent] }; // sealU: a step that is particular about where along its pedicle the jaws are
 }
 const PRESERVE = { wall: 1, bladder: 1, rectum: 1, ovary: 1, iliac: 1, ureter: 1, ip: 1, usl: 1 };
 const covered = (e, u) => e.seals.some(z => Math.abs(u - z.u) <= z.w);
@@ -682,8 +692,8 @@ function bipolarTick(h, dt) {
   sustain('bip', 440 + 190 * e.act.p, 'sine', 0.07);
   if (e.act.p >= 1) {
     e.seals.push({ u: e.act.u, w: e.act.w }); e.act = null; sfx.sealDone();
-    toast(CTRL.mode === 'hands' ? 'Seal complete. Relax, then pinch again on the sealed zone to fire the cut blade.' : 'Seal complete. Fire the cut blade (right-click or C) through the sealed zone.', 'ok');
-    STEPS[S.step].onSeal && STEPS[S.step].onSeal(tg);
+    toast((st.sealMsg && st.sealMsg()) || (CTRL.mode === 'hands' ? 'Seal complete. Relax, then pinch again on the sealed zone to fire the cut blade.' : 'Seal complete. Fire the cut blade (right-click or C) through the sealed zone.'), 'ok');
+    st.onSeal && st.onSeal(tg);
   }
 }
 // hand: fire that hand's blade. No argument: the cut key or button, which looks for a bipolar with tissue in its jaws.

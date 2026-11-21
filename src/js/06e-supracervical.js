@@ -63,7 +63,7 @@ function lsUpdate(dt) {
 const exPushU = { label: 'Uterus pushed cephalad', ok: exPush.ok };
 const lsVessel = k => Object.assign(VESSEL_STEPS(k)[0], {
   expo: [exPushU, exSide(k)],
-  text: ['Push the uterus cephalad and deviate it to the patient\'s ' + OPP[k] + '.', 'Seal the skeletonized uterine vessels at the level of the internal os, right against the uterus and at a right angle to them.', 'Confirm the seal, then cut. Go no lower: the cardinal and uterosacral ligaments stay with the cervix.'],
+  text: ['Push the uterus cephalad and deviate it to the patient\'s ' + OPP[k] + '.', 'Seal the skeletonized uterine vessels at the level of the internal os, at a right angle to them, three times: against the uterus, beside that burn, then between the two.', 'Cut through the middle burn. Go no lower: the cardinal and uterosacral ligaments stay with the cervix.'],
   pearl: 'This is the ascending branch, taken where it meets the uterus. The ureter passes under the uterine artery 1.5 to 2 cm lateral to here, so stay on the uterus. Once both sides are sealed the body of the uterus blanches.'
 });
 const TLH_FINAL = TLH_STEPS.find(s => s.id === 'final');

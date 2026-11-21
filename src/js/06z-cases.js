@@ -1,7 +1,7 @@
 // ---------- the cases ----------
 // A case is its steps (each with its own targets, checks and teaching text), the instruments on its tray, how its
 // pelvis differs from the model's, and how it is scored. Everything else is shared.
-const BUILD = 'Build 0.9';
+const BUILD = 'Build 0.10';
 const CASES = { tlh: TLH, myo: MYO, ect: ECT, cyst: CYS, lsh: LSH, scp: SCP };
 
 // ---------- step engine (every case) ----------

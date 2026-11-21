@@ -72,6 +72,17 @@ function nearestOnArr(A, p) { // returns {u, d}
   for (let i = 0; i < A.length; i++) { const d = A[i].distanceToSquared(p); if (d < best) { best = d; bi = i; } }
   return { u: bi / (A.length - 1), d: Math.sqrt(best) };
 }
+// the same, to a place between the points of the curve: how far along it (0..1) the point nearest to p lies
+function nearestUOnArr(A, p) {
+  const n = A.length - 1, i = Math.round(nearestOnArr(A, p).u * n); let bu = i / n, bd = A[i].distanceToSquared(p);
+  for (const j of [i - 1, i]) if (j >= 0 && j < n) {
+    const ax = A[j + 1].x - A[j].x, ay = A[j + 1].y - A[j].y, az = A[j + 1].z - A[j].z;
+    const t = clamp(((p.x - A[j].x) * ax + (p.y - A[j].y) * ay + (p.z - A[j].z) * az) / (ax * ax + ay * ay + az * az || 1), 0, 1);
+    const dx = A[j].x + ax * t - p.x, dy = A[j].y + ay * t - p.y, dz = A[j].z + az * t - p.z, d = dx * dx + dy * dy + dz * dz;
+    if (d < bd) { bd = d; bu = (j + t) / n; }
+  }
+  return bu;
+}
 const BIG_SPHERE = () => new THREE.Sphere(new V3(), 1e4);
 
 class Tube {

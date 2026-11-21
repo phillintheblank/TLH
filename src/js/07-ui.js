@@ -179,6 +179,7 @@ function drawHandPointers(c) {
 }
 
 // ---------- suture ----------
+const _sw2 = new V3();
 const SUT = { st: [], tail: new Tube(14, 5, IM.thread), arr: vecArr(9), tarr: vecArr(14) };
 for (let i = 0; i < 14; i++) { const t = new Tube(9, 5, IM.thread); t.mesh.visible = false; scene.add(t.mesh); SUT.st.push(t); }
 SUT.tail.mesh.visible = false; scene.add(SUT.tail.mesh);
@@ -191,8 +192,8 @@ function updateSuture() {
   let nh = null; for (const x of HANDS) if (x.inst === 'needle' && x.exch <= 0 && (!nh || x.ptr.on)) nh = x;
   SUT.tail.mesh.visible = !!(L.on && nh);
   if (L.on && nh) { // the running suture, from where it last left the tissue to the needle
-    const a = L.from || _w.copy(nh.tip).add(_w2.set(1.6, 1.2, 1.8)), m = _w2.lerpVectors(a, nh.tip, 0.5); m.y -= 0.5; m.z += 0.5;
-    spline([a, m, nh.tip], SUT.tarr); SUT.tail.set(SUT.tarr, 0, 1, () => 0.03, null);
+    const e = nh.sub.needle.swage.getWorldPosition(_sw2), a = L.from || _w.copy(e).add(_w2.set(1.6, 1.2, 1.8)), m = _w2.lerpVectors(a, e, 0.5); m.y -= 0.5; m.z += 0.5; // the suture is swaged to the back end of the needle
+    spline([a, m, e], SUT.tarr); SUT.tail.set(SUT.tarr, 0, 1, () => 0.03, null);
   }
 }
 

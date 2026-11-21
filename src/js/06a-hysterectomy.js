@@ -2,70 +2,122 @@
 const exPush = { label: 'Cup pushed cephalad', ok: () => S.pose.push > 0.7 };
 const exAnt = { label: 'Uterus anteverted', ok: () => S.pose.pitch > 0.5 };
 const TRACK_URETER = () => ['ua', 'card', 'colp'].includes(STEPS[S.step].kind);
-const KI = 6, KF = 3, BITE = 0.22; // marks down a leaf of the broad ligament and across half the vesicouterine fold; seconds the bipolar is held for each bite
+const KP = 4, KA = 3, KF = 2, KR = 2, BITE = 0.22; // bites down the posterior leaf, down the anterior leaf, across half the vesicouterine fold, and from the utero-ovarian pedicle forward to the round ligament; seconds of energy that seal a bite of peritoneum (thin tissue: far less than a pedicle)
 
 // Is everything that holds the top of the uterus on this side divided? Then that side of it comes free.
 function upperFree(k) {
   const st = S.side[k];
   if (st.round.cut && st.uo.cut && st.antGoal >= 1 && st.postGoal >= 1 && !st.rel.upper) { dropGrabsOnSide(k); startRelease(AN.side[k], 'upper'); }
 }
-// Open a leaf of the broad ligament with the advanced bipolar, in small bites down a marked line: held on each mark
-// until that bite of peritoneum is sealed and cut. The anterior leaf carries on across its side's half of the
-// vesicouterine fold, as far as the midline.
+// A bite of peritoneum with the advanced bipolar, taken where the step's mark is. It is sealed by a short hold and then
+// cut with the blade (right-click, the cut key, or a second pinch), as a pedicle is.
+// B: { p: the mark, sealed: is this bite sealed, seal(): record that, take(): divide it, at(out): where it is }
+function biteBurn(stp, h, dt, B) { // energy on the jaws: true if it went into this bite
+  if (!nearTarget(h, B.p, 0.8)) return false;
+  if (B.sealed) { sustain('bip', 640, 'sine', 0.035); return true; }
+  stp.acc += dt; sustain('bip', 440 + 190 * stp.acc / BITE, 'sine', 0.07);
+  if (stp.acc >= BITE) { stp.acc = 0; B.seal(); sfx.sealDone(); hint('bitecut', CTRL.mode === 'hands' ? 'Sealed. Relax, then pinch again there to fire the cut blade.' : 'Sealed. Fire the cut blade (right-click or C) to divide it.'); uiDirty(); }
+  return true;
+}
+const biteReady = (h, B) => h.inst === 'bipolar' && h.exch <= 0 && B.sealed && nearTarget(h, B.p, 0.8); // are these jaws on a sealed bite, ready for the blade?
+function biteBlade(stp, hand, B) { // the blade: true if it divided this bite
+  const order = hand ? [hand] : CTRL.mode === 'mouse' ? [activeHand()] : [activeHand(), otherHand(activeHand())];
+  const h = order.find(c => c.inst === 'bipolar' && c.exch <= 0 && (nearTarget(c, B.p, 0.8) || (B.sealed && !c.ptr.on))); // off the tissue, the jaws are still closed on the bite they sealed
+  if (!h) return false;
+  sfx.cut(); h.open = 0; stp.acc = 0; S.ebl += 0.4;
+  if (!B.sealed) { addBleeder(B.at, 12, false, 'peritoneal edge'); logEvent('tech', 'Peritoneum cut before it was sealed: it bleeds. Seal each bite, then cut.'); sfx.warn(); }
+  B.take(); uiDirty(); return true;
+}
+// Open a leaf of the broad ligament with the advanced bipolar, in bites down a marked line. The anterior leaf carries
+// on across its side's half of the vesicouterine fold, as far as the midline.
 function leafStep(o) {
-  const k = o.side, which = o.which, NF = which === 'ant' ? KF : 0;
+  const k = o.side, which = o.which, N = which === 'ant' ? KA : KP, NF = which === 'ant' ? KF : 0;
   const cp = (i, out) => {
     const G = curG(k), st = S.side[k], uR = st.round.uc, uU = st.uo.uc;
-    if (i >= KI) { const f = 0.9 - (i - KI) * 0.16; return vufPt(k === 'R' ? f : 1 - f, out); }
-    if (which === 'ant') { const v = 0.94 - i * 0.18, u = 0.03 + (uR - 0.03) * v; return stripPt(G.floorA, u, G.round, u, v, 0.22, out); }
-    const v = 0.06 + i * 0.18, u = uU - (uU - 0.03) * v; return stripPt(G.ridge, u, G.floorP, u, v, 0.3, out);
+    if (i >= N) { const f = 1 - 0.5 * (i - N + 0.5) / NF; return vufPt(k === 'R' ? f : 1 - f, out); }
+    if (which === 'ant') { const v = 1 - (i + 0.5) / N, u = 0.03 + (uR - 0.03) * v; return antLeafPt(k, G, u, v, out); }
+    const v = (i + 0.5) / N, u = uU - (uU - 0.03) * v; return stripPt(G.ridge, u, G.floorP, u, v, 0.3, out);
   };
-  const count = () => { const st = S.side[k]; return Math.round((which === 'ant' ? st.antGoal : st.postGoal) * KI) + Math.round(NF * st.vufGoal); };
+  const line = i => (i >= N ? ['vufS', 'vufGoal', i - N + 1, NF] : which === 'ant' ? ['antS', 'antGoal', i + 1, N] : ['postS', 'postGoal', i + 1, N]); // [sealed so far, cut so far, this bite's number on its line, bites on the line]
+  const count = () => { const st = S.side[k]; return Math.round((which === 'ant' ? st.antGoal : st.postGoal) * N) + Math.round(NF * st.vufGoal); };
+  const bite = i => { const st = S.side[k], [fs, fg, j, n] = line(i); return { p: cp(i, _w2), sealed: st[fs] >= j / n - 1e-6, seal() { st[fs] = j / n; }, take() { st[fs] = st[fg] = j / n; upperFree(k); }, at: out => cp(i, out) }; };
   return Object.assign({
     kind: 'incise', tool: 'bipolar', snap: ['bipolar'], acc: 0,
-    next() { const n = count(); return n >= KI + NF ? null : { p: cp(n, new V3()), act: 'trace', label: n === 0 ? 'Start here: hold to seal and cut' : n === KI ? 'Carry on across the fold' : 'Next bite', prog: this.acc / BITE }; },
-    path() { const a = []; for (let i = count(); i < KI + NF; i++) a.push(cp(i, new V3())); return a; },
-    targets() { const n = count(), a = []; for (let i = n; i < Math.min(KI + NF, n + 2); i++) a.push(cp(i, new V3())); return a; },
+    next() {
+      const n = count(); if (n >= N + NF) return null;
+      const sl = bite(n).sealed;
+      return { p: cp(n, new V3()), act: sl ? 'cut' : 'seal', bite: true, label: sl ? cutLabel() : n === 0 ? 'Seal the first bite' : n === N ? 'Seal: on across the fold' : 'Seal the next bite', prog: sl ? 1 : this.acc / BITE };
+    },
+    path() { const a = []; for (let i = count(); i < N + NF; i++) a.push(cp(i, new V3())); return a; },
+    targets() { const n = count(); return n < N + NF ? [cp(n, new V3())] : []; },
     bipolar(h, dt) {
-      const n = count(), st = S.side[k]; if (n >= KI + NF) return true;
-      if (nearTarget(h, cp(n, _w2), 0.8) && h.pick.ent !== 'bladder') {
-        this.acc += dt; sustain('bip', 440 + 190 * this.acc / BITE, 'sine', 0.07);
-        if (this.acc > BITE) {
-          this.acc = 0; S.ebl += 0.4; sfx.cut(); uiDirty();
-          if (n >= KI) st.vufGoal = (n - KI + 1) / NF; else if (which === 'ant') st.antGoal = (n + 1) / KI; else st.postGoal = (n + 1) / KI;
-          upperFree(k);
-        }
-        return true;
-      }
-      if (h.pick.hit && (h.pick.ent === which || h.pick.ent === 'roof' || h.pick.ent === 'areolar' || h.pick.ent === 'vuf')) { if (S.guided) hint('line', 'Follow the marked line from the divided pedicle'); return true; }
+      const n = count(); if (n >= N + NF) return true;
+      if (h.pick.ent !== 'bladder' && biteBurn(this, h, dt, bite(n))) return true;
+      if (h.pick.hit && (h.pick.ent === which || h.pick.ent === 'roof' || h.pick.ent === 'areolar' || h.pick.ent === 'vuf')) { if (S.guided) hint('line', 'Take the bite at the mark, on the line from the divided pedicle'); return true; }
       return false;
     },
-    done() { return count() >= KI + NF; },
-    progress() { return 'Bite ' + count() + ' / ' + (KI + NF); },
-    frac() { return count() / (KI + NF); },
-    focus(out) { return cp(2, out); },
-    force() { const st = S.side[k]; if (which === 'ant') { st.antGoal = 1; st.vufGoal = 1; } else st.postGoal = 1; upperFree(k); }
+    cut(hand) { const n = count(); return n < N + NF && biteBlade(this, hand, bite(n)); },
+    canCut(h) { const n = count(); return n < N + NF && biteReady(h, bite(n)); },
+    done() { return count() >= N + NF; },
+    progress() { const n = count(); return 'Bite ' + n + ' / ' + (N + NF) + (n < N + NF && bite(n).sealed ? ': sealed, cut it' : ''); },
+    frac() { const n = count(); return (n + (n < N + NF && bite(n).sealed ? 0.5 : 0)) / (N + NF); },
+    focus(out) { return cp(1, out); },
+    force() { const st = S.side[k]; if (which === 'ant') { st.antS = st.antGoal = 1; st.vufS = st.vufGoal = 1; } else st.postS = st.postGoal = 1; upperFree(k); }
   }, o);
 }
 // Divide the round ligament, first carrying the incision to it across the top of the broad ligament from the
 // utero-ovarian pedicle: two bites of peritoneum, taken like a leaf's.
 function roundStep(o) {
   const k = o.side, base = sealStep(o), sealNext = base.next, sealProg = base.progress;
-  const rp = (i, out) => { const G = curG(k), st = S.side[k], v = 0.72 - 0.36 * i, u = st.round.uc + (st.uo.uc - st.round.uc) * v; return stripPt(G.round, u, G.ridge, u, v, 0.3, out); };
-  const left = () => { const st = S.side[k], e = st.round; return e.cut || e.seals.length || e.act ? 0 : 2 - Math.round(st.roofGoal * 2); }; // roof bites still to take; none once the ligament itself is in the jaws
+  const rp = (i, out) => { const G = curG(k), st = S.side[k], v = 1 - (i + 0.5) / KR, u = st.round.uc + (st.uo.uc - st.round.uc) * v; return stripPt(G.round, u, G.ridge, u, v, 0.3, out); };
+  const left = () => { const st = S.side[k], e = st.round; return e.cut || e.seals.length || e.act ? 0 : KR - Math.round(st.roofGoal * KR); }; // roof bites still to take; none once the ligament itself is in the jaws
+  const bite = () => { const st = S.side[k], i = KR - left(); return { p: rp(i, _w2), sealed: st.roofS >= (i + 1) / KR - 1e-6, seal() { st.roofS = (i + 1) / KR; }, take() { st.roofS = st.roofGoal = (i + 1) / KR; }, at: out => rp(i, out) }; };
   return Object.assign(base, {
     acc: 0, snap: ['bipolar'],
-    targets() { const n = left(); return n ? [rp(2 - n, new V3())] : []; },
-    next() { const n = left(); return n ? { p: rp(2 - n, new V3()), act: 'trace', label: n === 2 ? 'Carry the incision forward: hold to seal and cut' : 'Next bite, up to the round ligament', prog: this.acc / BITE } : sealNext.call(this); },
-    path() { const n = left(), a = []; for (let i = 2 - n; i < 2 && n; i++) a.push(rp(i, new V3())); if (n) a.push(sampleArr(curG(k).round, o.uT, new V3())); return a; },
-    bipolar(h, dt) {
-      const n = left(); if (!n || !nearTarget(h, rp(2 - n, _w2), 0.8) || h.pick.ent === 'round') return false;
-      this.acc += dt; sustain('bip', 440 + 190 * this.acc / BITE, 'sine', 0.07);
-      if (this.acc > BITE) { this.acc = 0; S.side[k].roofGoal = (3 - n) / 2; S.ebl += 0.4; sfx.cut(); uiDirty(); }
-      return true;
+    targets() { return left() ? [rp(KR - left(), new V3())] : []; },
+    next() {
+      const n = left(); if (!n) return sealNext.call(this);
+      const sl = bite().sealed;
+      return { p: rp(KR - n, new V3()), act: sl ? 'cut' : 'seal', bite: true, label: sl ? cutLabel() : n === KR ? 'Seal: carry the incision forward' : 'Seal the next bite, up to the round ligament', prog: sl ? 1 : this.acc / BITE };
     },
-    progress() { const n = left(); return n ? 'Incision ' + (2 - n) + ' / 2, then the ligament' : sealProg.call(this); },
+    path() { const n = left(), a = []; for (let i = KR - n; i < KR && n; i++) a.push(rp(i, new V3())); if (n) a.push(sampleArr(curG(k).round, o.uT, new V3())); return a; },
+    bipolar(h, dt) { return !!left() && h.pick.ent !== 'round' && biteBurn(this, h, dt, bite()); },
+    cut(hand) { return !!left() && biteBlade(this, hand, bite()); },
+    canCut(h) { return (!!left() && biteReady(h, bite())) || canCleanCut(h); },
+    progress() { const n = left(); return n ? 'Incision ' + (KR - n) + ' / ' + KR + (bite().sealed ? ': sealed, cut it' : '') + ', then the ligament' : sealProg.call(this); },
     frac() { const e = S.side[k].round; return e.cut ? 1 : 0.3 * S.side[k].roofGoal + 0.7 * (e.seals.length ? 0.66 : e.act ? e.act.p * 0.6 : 0); }
+  });
+}
+// The uterine vessels are sealed three times before they are cut: against the uterus, beside that burn, and then
+// between the two. The blade goes through the middle burn, so a seal is left on each side of the cut.
+const UA3 = { d: 0.045, at: [-1, 1, 0], name: ['first burn, against the uterus', 'second burn, beside the first', 'third burn, between the two'] };
+function vesselStep(o) {
+  const k = o.side, base = sealStep(o);
+  const pt = (u, out) => { const G = curG(k); return sampleArr(G.ua, u, out).lerp(sampleArr(G.uv, u, _w), 0.4); };
+  const todo = () => { const e = S.side[k].ua; for (let i = 0; i < 3; i++) if (!covered(e, o.uT + UA3.at[i] * UA3.d)) return i; return 3; }; // which burn is next
+  return Object.assign(base, {
+    sealU(P) { // where along the vessels the jaws are: on one of the three burns when they are within half a burn of it
+      const u = nearestUOnArr(curG(k).ua, P.point), i = todo(), g = o.uT + (i < 3 ? UA3.at[i] : 0) * UA3.d; // g: the burn the step is asking for, or the middle one once all three are made
+      if (Math.abs(u - g) <= UA3.d * (freeDepth() ? 1.5 : 0.5)) return g; // in free depth a tip is not placed to the millimetre: near the burn asked for counts as on it
+      for (const a of UA3.at) { const t = o.uT + a * UA3.d; if (Math.abs(u - t) <= UA3.d / 2) return t; }
+      return u;
+    },
+    next() {
+      const e = S.side[k].ua; if (e.cut) return null;
+      const i = todo(); if (i === 3) return { p: pt(o.uT, new V3()), act: 'cut', label: cutLabel() + ', through the middle burn' };
+      const u = o.uT + UA3.at[i] * UA3.d;
+      return { p: pt(u, new V3()), act: 'seal', label: 'Seal: ' + UA3.name[i], prog: e.act && Math.abs(e.act.u - u) <= e.act.w ? e.act.p : 0 };
+    },
+    sealMsg() { const i = todo(); return i < 3 ? 'Burn ' + i + ' of 3. Now the ' + UA3.name[i] + '.' : CTRL.mode === 'hands' ? 'Three burns. Relax, then pinch again on the middle one to fire the cut blade.' : 'Three burns. Fire the cut blade (right-click or C) through the middle one.'; },
+    progress() { const e = S.side[k].ua, i = todo(); return e.cut ? 'Divided' : i === 3 ? 'Three burns. Cut through the middle one.' : e.act ? 'Burn ' + (i + 1) + ' of 3: ' + Math.round(e.act.p * 100) + '%' : i + ' of 3 burns'; },
+    frac() { const e = S.side[k].ua; return e.cut ? 1 : (todo() + (e.act ? e.act.p * 0.9 : 0)) / 4; },
+    onCut() { // a clean cut has sealed vessel on both sides of it
+      const e = S.side[k].ua;
+      if (!covered(e, e.uc) || (covered(e, e.uc - UA3.d) && covered(e, e.uc + UA3.d))) return;
+      const med = !covered(e, e.uc - UA3.d);
+      logEvent('tech', 'Uterine vessels cut at the edge of the seal, with none on the ' + (med ? 'uterine' : 'pelvic') + ' side: burn three times, the third between the first two, and cut through that one');
+      addBleeder(out => { const st = S.side[k], G = st.rel.ua ? st.rel.ua.lat : AN.side[k].cur; return sampleArr(G.ua, e.uc + 0.06, out); }, 45, false, 'uterine pedicle'); sfx.warn();
+    }
   });
 }
 function markUreter(k) {
@@ -150,11 +202,11 @@ const UPPER_STEPS = k => [
   })
 ];
 const VESSEL_STEPS = k => [
-  sealStep({
-    id: 'ua' + k, side: k, ent: 'ua', uT: 0.14, phase: CAP[k] + ' side', short: CAP[k] + ' uterine vessels',
+  vesselStep({
+    id: 'ua' + k, side: k, ent: 'ua', uT: 0.12, phase: CAP[k] + ' side', short: CAP[k] + ' uterine vessels',
     title: 'Seal and divide the ' + WORD[k] + ' uterine vessels', dist: 8.5, rec: { yaw: yawFor(k) * 0.9, pitch: 0.3, push: 1 }, expo: [exPush, exSide(k)],
-    text: ['Push the cup firmly cephalad and deviate the uterus to the patient\'s ' + OPP[k] + '.', 'Seal the skeletonized vessels at the level of the internal os, right against the uterus and at a right angle to them.', 'Confirm the seal, then cut.'],
-    pearl: 'Cephalad pressure on the cup lifts the uterine artery away from the ureter, which crosses under it 1.5 to 2 cm lateral to the cervix. Every millimetre lateral on the pedicle is a millimetre closer.'
+    text: ['Push the cup firmly cephalad and deviate the uterus to the patient\'s ' + OPP[k] + '.', 'Seal the skeletonized vessels at the cervicouterine junction, at a right angle to them, three times: against the uterus, beside that burn, then between the two.', 'Cut through the middle burn.'],
+    pearl: 'Three burns side by side, cut through the middle one: sealed vessel is left on both sides of the cut, the uterine side against back-bleeding and the pelvic side as the pedicle. Cephalad pressure on the cup lifts the uterine artery away from the ureter, which crosses under it 1.5 to 2 cm lateral to the cervix.'
   }),
   sealStep({
     id: 'card' + k, side: k, ent: 'card', uT: 0.17, phase: CAP[k] + ' side', short: CAP[k] + ' cardinal ligament',
@@ -255,13 +307,17 @@ const TLH_STEPS = [
   },
   {
     id: 'cuff', kind: 'cuff', tool: 'needle', phase: 'Colpotomy and closure', short: 'Close the vaginal cuff', title: 'Close the vaginal cuff', dist: 6.3, rec: null, expo: [],
-    text: ['Take the needle driver. Run a barbed suture from the patient\'s right angle to the left.', 'For each stitch click or pinch on the anterior edge, then the posterior edge.', 'Take full-thickness bites about 1 cm from the cut edge and about 1 cm apart, with mucosa in every bite. Secure both angles.'],
-    pearl: 'Shallow bites and missed mucosa are how cuffs dehisce. A deep anterior bite risks the bladder; lateral to the angle lies the ureter.',
-    nextX() { const c = S.cuff; return c.stitches.length ? Math.max(-1.3, c.stitches[c.stitches.length - 1].x - 0.62) : 1.3; },
+    text: ['Take the needle driver. Run a barbed suture from the patient\'s right angle to the left, then run the same suture back to the right as a second layer.', 'For each stitch click or pinch on the anterior edge, then the posterior edge.', 'Take full-thickness bites about 1 cm from the cut edge and about 1 cm apart, with mucosa in every bite of the first layer. Secure both angles.'],
+    pearl: 'Shallow bites and missed mucosa are how cuffs dehisce. The second layer, run back over the first, buries it and takes the tension off it. A deep anterior bite risks the bladder; lateral to the angle lies the ureter.',
+    nextX() { // where the next stitch goes: right to left for the first layer, then back between those stitches
+      const c = S.cuff, last = c.stitches.length ? c.stitches[c.stitches.length - 1] : null;
+      if (c.layer === 1) return last ? Math.max(-1.3, last.x - 0.62) : 1.3;
+      return last.layer === 1 ? last.x + 0.31 : Math.min(1.3, last.x + 0.62);
+    },
     next() {
       const c = S.cuff; if (c.done) return null;
-      if (c.pending) return { p: cuffPtIn(c.pending.x, 0.75, new V3()), act: 'bite', label: 'Posterior bite' };
-      return { p: cuffPt(this.nextX(), 'ant', 0.75, new V3()), act: 'bite', label: 'Anterior bite' };
+      if (c.pending) return { p: c.layer === 2 ? cuffPt(c.pending.x, 'post', 0.75, new V3()) : cuffPtIn(c.pending.x, 0.75, new V3()), act: 'bite', label: 'Posterior bite' }; // first layer: the posterior edge is seen from inside the open cuff; second: the closed cuff's posterior wall
+      return { p: cuffPt(this.nextX(), 'ant', 0.75, new V3()), act: 'bite', label: c.layer === 2 ? 'Second layer: anterior bite' : 'Anterior bite' };
     },
     click(h) {
       if (h.inst !== 'needle') return false;
@@ -270,25 +326,28 @@ const TLH_STEPS = [
       const lp = _w.copy(h.pick.point).applyMatrix4(_m4.copy(VG.M).invert()), x = lp.x, edge = lp.z < 0 ? 'ant' : 'post', depth = Math.max(0, -lp.y);
       if (!c.pending) {
         if (edge !== 'ant') { hint('cuffant', 'Anterior edge first, then the posterior'); return true; }
-        const last = c.stitches.length ? c.stitches[c.stitches.length - 1].x : null;
+        const prev = c.stitches.length ? c.stitches[c.stitches.length - 1] : null, last = prev && prev.x, dir = c.layer === 2 ? 1 : -1; // the second layer runs back, left to right
         if (last === null && x < 0.95) { hint('cuffstart', 'Start at the right angle of the cuff'); return true; }
-        if (last !== null && x > last - 0.3) { hint('cuffclose', 'Too close to the last stitch: advance toward the left angle'); return true; }
-        if (last !== null && x < last - 1.3) { hint('cuffgap', 'That leaves a gap. Bites should be about 1 cm apart.'); return true; }
+        if (prev && prev.layer !== c.layer) { if (x > last + 0.8) { hint('cuffback', 'Start the second layer at the left angle, where the first ended'); return true; } }
+        else if (last !== null && (x - last) * dir < 0.3) { hint('cuffclose', 'Too close to the last stitch: advance toward the ' + (dir > 0 ? 'right' : 'left') + ' angle'); return true; }
+        if (last !== null && (x - last) * dir > 1.3) { hint('cuffgap', 'That leaves a gap. Bites should be about 1 cm apart.'); return true; }
         c.pending = { x, da: depth };
       } else {
         if (edge !== 'post') { hint('cuffpost', 'Now the posterior edge, opposite the anterior bite'); return true; }
         if (Math.abs(x - c.pending.x) > 0.6) { hint('cuffmatch', 'Match the posterior bite to the anterior one'); return true; }
-        const s = { x: c.pending.x, da: c.pending.da, dp: depth }; c.stitches.push(s); c.pending = null;
-        c.frontGoal = s.x - 0.4; S.ebl += 0.5;
-        if (s.x <= -1.05) { c.frontGoal = -2.8; c.done = true; toast('Cuff closed. Suture cut.', 'ok'); }
+        const s = { x: c.pending.x, da: c.pending.da, dp: depth, layer: c.layer }; c.stitches.push(s); c.pending = null;
+        S.ebl += 0.5;
+        if (c.layer === 1) { c.frontGoal = s.x - 0.4; if (s.x <= -1.05) { c.frontGoal = -2.8; c.layer = 2; toast('First layer done. Run the same suture back to the right as a second layer.', 'ok'); } }
+        else if (s.x >= 0.85) { c.done = true; logEvent('info', 'Cuff closed in two layers. Suture cut.'); }
       }
       h.roll = 1; sfx.bite();
       if (depth < 0.4) logEvent('tech', 'Shallow bite (' + Math.round(depth * 10) + ' mm from the edge): risk of pull-through');
       else if (depth > 1.5) logEvent('tech', 'Deep ' + (edge === 'ant' ? 'anterior bite: the bladder is close' : 'posterior bite: the rectum is close'));
       uiDirty(); return true;
     },
-    done() { return S.cuff.done && S.cuff.front < -2.2; }, progress() { return S.cuff.stitches.length + ' stitches' + (S.cuff.pending ? ' + anterior bite placed' : ''); },
-    frac() { const c = S.cuff; return c.done ? 1 : clamp((1.9 - (c.stitches.length ? c.stitches[c.stitches.length - 1].x : 1.9)) / 3.4, 0, 0.95); },
+    done() { return S.cuff.done && S.cuff.front < -2.2; },
+    progress() { const c = S.cuff, n = c.stitches.filter(s => s.layer === c.layer).length; return (c.layer === 2 ? 'Second layer: ' : 'First layer: ') + n + ' stitch' + (n === 1 ? '' : 'es') + (c.pending ? ' + anterior bite placed' : ''); },
+    frac() { const c = S.cuff, x = c.stitches.length ? c.stitches[c.stitches.length - 1].x : 1.9; return c.done ? 1 : c.layer === 1 ? clamp((1.9 - x) / 3.4, 0, 1) * 0.55 : 0.55 + clamp((x + 1.3) / 2.6, 0, 0.95) * 0.45; },
     focus(o) { return o.set(0, -0.1, 0).applyMatrix4(VG.M); }
   },
   {
@@ -337,17 +396,17 @@ function tlhScore() {
 function tlhDebrief(row) {
   const s = S.stats, c = S.cuff.stitches, inj = Object.keys(S.injuries).length;
   const depths = c.flatMap(b => [b.da, b.dp]), mean = depths.length ? depths.reduce((a, b) => a + b, 0) / depths.length : 0;
-  const gaps = c.slice(1).map((b, i) => c[i].x - b.x), gmean = gaps.length ? gaps.reduce((a, b) => a + b, 0) / gaps.length : 0;
+  const gaps = c.slice(1).map((b, i) => (b.layer === c[i].layer ? Math.abs(c[i].x - b.x) : null)).filter(g => g !== null), gmean = gaps.length ? gaps.reduce((a, b) => a + b, 0) / gaps.length : 0; // stitch to stitch within a layer
   const uad = k => (s['uaDist' + k] != null ? s['uaDist' + k].toFixed(1) + ' cm' : 'n/a'), minU = Math.min(s.minUreter.R, s.minUreter.L);
   return [
     row('Organ or vessel injuries', inj, inj ? 'crit' : 'ok') + row('Near misses at the ureter', s.nearMiss, s.nearMiss ? 'warn' : 'ok') + row('Pedicles cut without a full seal', s.unsealedCuts, s.unsealedCuts ? 'warn' : 'ok') + row('Seal to ureter, right uterine pedicle', uad('R')) + row('Seal to ureter, left uterine pedicle', uad('L')) + row('Closest energy to a ureter', minU < 90 ? minU.toFixed(1) + ' cm' : 'n/a'),
-    row('Cuff stitches', c.length) + row('Mean bite depth', depths.length ? Math.round(mean * 10) + ' mm' : 'n/a') + row('Mean stitch spacing', gaps.length ? Math.round(gmean * 10) + ' mm' : 'n/a') + row('Steps started without exposure set', s.expoMiss, s.expoMiss ? 'warn' : 'ok') + row('Left-hand traction used', s.traction + ' time' + (s.traction === 1 ? '' : 's'))
+    row('Cuff stitches, two layers', c.filter(b => b.layer !== 2).length + ' + ' + c.filter(b => b.layer === 2).length) + row('Mean bite depth', depths.length ? Math.round(mean * 10) + ' mm' : 'n/a') + row('Mean stitch spacing', gaps.length ? Math.round(gmean * 10) + ' mm' : 'n/a') + row('Steps started without exposure set', s.expoMiss, s.expoMiss ? 'warn' : 'ok') + row('Left-hand traction used', s.traction + ' time' + (s.traction === 1 ? '' : 's'))
   ];
 }
 // the threads to draw: each stitch as [from, over, to], where the running suture leaves the tissue, and whether it is in use
 function tlhSutures() {
   const c = S.cuff, at = (x, edge, d) => cuffPt(x, edge, Math.min(d, 0.82), new V3());
-  const st = c.stitches.map(s => [at(s.x, 'ant', s.da), new V3(s.x - 0.06, 0.24, 0).applyMatrix4(VG.M), at(s.x - 0.12, 'post', s.dp)]);
+  const st = c.stitches.map(s => { const d = s.layer === 2 ? 1 : -1; return [at(s.x, 'ant', s.da), new V3(s.x + 0.06 * d, s.layer === 2 ? 0.3 : 0.24, 0).applyMatrix4(VG.M), at(s.x + 0.12 * d, 'post', s.dp)]; }); // the second layer lies over the first and leans the other way
   return { st, from: c.pending ? at(c.pending.x, 'ant', c.pending.da) : st.length ? st[st.length - 1][2] : null, on: STEPS[S.step].id === 'cuff' && !c.done };
 }
 // ---------- hooks for automated checks ----------
@@ -355,18 +414,18 @@ function tlhForce(st) { // complete the step in hand, for the steps that cannot 
   const k = st.side, sd = k && S.side[k];
   if (st.id === 'survey') S.ureterID.R = S.ureterID.L = true;
   else if (st.seal && st.kind !== 'meso') {
-    const e = sd[st.ent]; e.seals.push({ u: st.uT, w: SEALSPEC[st.ent].w }); e.cut = true; e.uc = st.uT;
-    if (st.ent === 'round') sd.roofGoal = 1; if (sd.uo.cut && sd.round.cut) sd.roofCut = true;
+    const e = sd[st.ent]; for (const d of st.ent === 'ua' ? UA3.at : [0]) e.seals.push({ u: st.uT + d * UA3.d, w: SEALSPEC[st.ent].w }); e.cut = true; e.uc = st.uT;
+    if (st.ent === 'round') sd.roofS = sd.roofGoal = 1; if (sd.uo.cut && sd.round.cut) sd.roofCut = true;
     if (st.ent === 'ua' || st.ent === 'card') startRelease(AN.side[k], st.ent);
   }
   else if (st.kind === 'meso') { S.mesoBite[k] = 2; sd.meso.pGoal = 1; sd.tubeGoal = 1; }
   else if (st.id === 'colp') { S.colp.fill(1); S.colpDone = true; VG.dirty = true; }
   else if (st.id === 'deliver') deliverSpecimen();
-  else if (st.id === 'cuff') { for (const x of [1.5, 0.9, 0.3, -0.3, -0.9, -1.5]) S.cuff.stitches.push({ x, da: 0.8, dp: 0.8 }); S.cuff.frontGoal = -2.8; S.cuff.done = true; }
+  else if (st.id === 'cuff') { for (const x of [1.3, 0.68, 0.06, -0.56, -1.18]) S.cuff.stitches.push({ x, da: 0.8, dp: 0.8, layer: 1 }); for (const x of [-0.87, -0.25, 0.37, 0.99]) S.cuff.stitches.push({ x, da: 0.8, dp: 0.8, layer: 2 }); S.cuff.layer = 2; S.cuff.frontGoal = -2.8; S.cuff.done = true; }
   else if (st.id === 'final') { S.lowP = true; S.ureterOK.R = S.ureterOK.L = true; endCase(); }
 }
 function tlhWant(st, n) { // what a scripted hand should find under its tip at this target
-  const um = /(right|left) ureter/.exec(n.label || ''), seal = (n.act === 'seal' || n.act === 'cut') && st.seal;
+  const um = /(right|left) ureter/.exec(n.label || ''), seal = !n.bite && (n.act === 'seal' || n.act === 'cut') && st.seal; // a bite of peritoneum is at its mark, not on the step's pedicle
   return seal ? { ents: seal.ent === 'meso' ? ['meso', 'tube'] : [seal.ent], side: seal.side } : um ? { ents: ['ureter'], side: um[1] === 'right' ? 'R' : 'L' } : n.act === 'bite' ? { cuff: { edge: S.cuff.pending ? 'post' : 'ant', x: S.cuff.pending ? S.cuff.pending.x : st.nextX() } } : null;
 }
 const TLH = {
