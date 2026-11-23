@@ -391,7 +391,7 @@ To publish a round: `npm run build`, copy everything in `dist/laparoscape/` into
 and push. `dist/` is not kept in this repository.
 
 The review site's page is 273 KB against this site's 472 KB. Adding it took 90 lines of source (43 of them its own
-two files, the rest its welcome sheet in the template) and a test of 55 lines.
+two files, the rest its welcome sheet in the template) and a test of 44 lines.
 
 ## Hand control
 
