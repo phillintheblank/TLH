@@ -147,7 +147,7 @@ function freshState() { // what every case has; a case adds its own (CASE.state)
     colp: new Array(16).fill(0), colpDone: false, lift: 0, deliv: 0, carry: null, specimen: 'in', // carry: how far a freed specimen has been taken off in its bag
     cuff: { stitches: [], pending: null, layer: 1, front: 2.4, frontGoal: 2.4, done: false }, // layer: the running suture goes right to left (1), then back over it (2)
     ebl: 0, pool: 0, bleeders: [], events: [], heat: {}, injuries: {}, pulls: [],
-    stats: { activations: 0, energyTime: 0, nonTarget: 0, exchanges: 0, unsealedCuts: 0, nearMiss: 0, minUreter: { R: 99, L: 99 }, expoMiss: 0, traction: 0, blunt: 0 },
+    stats: { activations: 0, energyTime: 0, nonTarget: 0, exchanges: 0, unsealedCuts: 0, nearMiss: 0, minUreter: { R: 99, L: 99 }, expoMiss: 0, traction: 0, blunt: 0, autoT: 0 }, stepAt: [], // autoT: seconds played with the mouse's Auto depth on
     pressure: 15, pressureGoal: 15, lowP: false, oozeDone: false, ureterOK: { R: false, L: false }, ureterID: { R: false, L: false },
     step: 0, haze: 0, flapPush: 0, mesoBite: { R: 0, L: 0 }
   };

@@ -1,9 +1,9 @@
-// Serve docs/ on localhost, load it in headless Chrome (with a fake camera, or CAMS=2 of them), run an optional script, screenshot.
+// Serve docs/ on localhost (or the review site, with ROOT=dist/laparoscape), load it in headless Chrome (with a fake camera, or CAMS=2 of them), run an optional script, screenshot.
 import { chromium } from '/opt/npm-tools/node_modules/playwright/index.mjs';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
-const root = path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'docs');
+const root = process.env.ROOT ? path.resolve(process.env.ROOT) : path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'docs');
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.wasm': 'application/wasm', '.task': 'application/octet-stream' };
 const server = http.createServer((req, res) => {
   const f = path.join(root, decodeURIComponent(req.url.split('?')[0]).replace(/\/$/, '/index.html'));

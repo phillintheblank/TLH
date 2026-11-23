@@ -367,6 +367,7 @@ setTimeout(function () { if (!window.__simBooted) { var n = document.getElementB
 </script>
 <script type="module">
 import * as THREE from './vendor/three.module.min.js';
+const SITE = null;
 // ---------- utilities ----------
 const TAU = Math.PI * 2, DEG = Math.PI / 180;
 const V3 = THREE.Vector3;
@@ -1261,7 +1262,7 @@ function freshState() { // what every case has; a case adds its own (CASE.state)
     colp: new Array(16).fill(0), colpDone: false, lift: 0, deliv: 0, carry: null, specimen: 'in', // carry: how far a freed specimen has been taken off in its bag
     cuff: { stitches: [], pending: null, layer: 1, front: 2.4, frontGoal: 2.4, done: false }, // layer: the running suture goes right to left (1), then back over it (2)
     ebl: 0, pool: 0, bleeders: [], events: [], heat: {}, injuries: {}, pulls: [],
-    stats: { activations: 0, energyTime: 0, nonTarget: 0, exchanges: 0, unsealedCuts: 0, nearMiss: 0, minUreter: { R: 99, L: 99 }, expoMiss: 0, traction: 0, blunt: 0 },
+    stats: { activations: 0, energyTime: 0, nonTarget: 0, exchanges: 0, unsealedCuts: 0, nearMiss: 0, minUreter: { R: 99, L: 99 }, expoMiss: 0, traction: 0, blunt: 0, autoT: 0 }, stepAt: [], // autoT: seconds played with the mouse's Auto depth on
     pressure: 15, pressureGoal: 15, lowP: false, oozeDone: false, ureterOK: { R: false, L: false }, ureterID: { R: false, L: false },
     step: 0, haze: 0, flapPush: 0, mesoBite: { R: 0, L: 0 }
   };
@@ -4737,12 +4738,12 @@ const SCP = {
 // A case is its steps (each with its own targets, checks and teaching text), the instruments on its tray, how its
 // pelvis differs from the model's, and how it is scored. Everything else is shared.
 const BUILD = 'Build 1.0';
-const CASES = { tlh: TLH, myo: MYO, ect: ECT, cyst: CYS, lsh: LSH, scp: SCP };
+const CASES = SITE ? { tlh: TLH } : { tlh: TLH, myo: MYO, ect: ECT, cyst: CYS, lsh: LSH, scp: SCP }; // the review site carries the hysterectomy alone: the other cases' files are not in its page
 
 // ---------- step engine (every case) ----------
 let stepExpoChecked = false, stepPressed = false;
 function enterStep(i) {
-  S.step = i; stepExpoChecked = false; stepPressed = false;
+  S.step = i; stepExpoChecked = false; stepPressed = false; S.stepAt[i] = S.t; // when each step was begun, for the results
   const st = STEPS[i];
   if (st.acc != null) st.acc = 0;
   if (st.enter && S.running) st.enter();
@@ -4756,7 +4757,7 @@ function checkExposure() {
 }
 function updateSteps(dt) {
   if (!S.running || S.ended) return;
-  S.t += dt;
+  S.t += dt; if (DEPTH.auto && CTRL.mode === 'mouse') S.stats.autoT += dt;
   S.pressure = damp(S.pressure, S.pressureGoal, 1.2, dt);
   const st = STEPS[S.step];
   if (st.tick) st.tick(dt);
@@ -4987,14 +4988,14 @@ function buildCaseUI() {
     if (s.phase !== phase) { phase = s.phase; list.appendChild(el('h4', null, phase)); ol = el('ol'); list.appendChild(ol); }
     const li = el('li', null, '<i></i><span>' + s.short + '</span>'); li.id = 'cl-' + i; ol.appendChild(li);
   });
-  const pick = $('caseList'); pick.innerHTML = '';
+  const pick = $('caseList'); pick.innerHTML = ''; pick.hidden = Object.keys(CASES).length < 2; // nothing to choose between
   for (const id in CASES) {
     const b = el('button', 'case' + (CASES[id] === CASE ? ' on' : ''), '<b>' + CASES[id].name + '</b><span>' + CASES[id].blurb + '</span>');
     b.type = 'button'; b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', CASES[id] === CASE ? 'true' : 'false'); b.addEventListener('click', () => setCase(id)); pick.appendChild(b);
   }
   $('caseTitle').textContent = CASE.name; $('caseSub').textContent = CASE.sub;
   $('caseBrief').innerHTML = CASE.brief.map(t => '<p>' + t + '</p>').join('');
-  $('brandSub').textContent = BUILD + ' \u00b7 ' + CASE.name.toLowerCase() + CASE.tag;
+  $('brandSub').textContent = (SITE ? SITE.label : BUILD) + ' \u00b7 ' + CASE.name.toLowerCase() + CASE.tag;
   $('keyNums').textContent = '1 to ' + CASE.insts.length;
 }
 function renderStepCard() {
@@ -5762,7 +5763,7 @@ function wire() {
   $('handL').addEventListener('click', () => setActive('L')); $('handR').addEventListener('click', () => setActive('R'));
   $('btnCut').addEventListener('click', () => cutAction());
   $('btnSwitch').addEventListener('click', () => setActive(ACTIVE === 'L' ? 'R' : 'L'));
-  $('btnBegin').addEventListener('click', () => startCase(false)); $('btnBeginHands').addEventListener('click', () => startCase(true));
+  $('btnBegin').addEventListener('click', () => startCase(false)); if (!SITE) $('btnBeginHands').addEventListener('click', () => startCase(true));
   const toStart = () => { resetWorld(false); $('startCard').hidden = false; };
   $('btnRestart').addEventListener('click', toStart); $('dbRestart').addEventListener('click', toStart);
   $('dbClose').addEventListener('click', () => { $('debrief').hidden = true; });
@@ -5844,7 +5845,7 @@ function frame(now) {
   drawOverlay(simTime); renderUI(dt); htRenderUI(dt, simTime);
 }
 CASE = CASES.tlh; STEPS = CASE.steps; S = freshState();
-wire(); htWire();
+wire(); htWire(); if (SITE) reviewWire();
 // everything lit throws and takes shadows from the scope light, except flat marks painted on a surface and the blood pool
 scene.traverse(o => { if (o.isMesh && !o.material.isMeshBasicMaterial) { o.castShadow = o !== POOL; o.receiveShadow = true; if (o.material.userData.depth) o.customDepthMaterial = o.material.userData.depth; } });
 (function () {
@@ -5878,8 +5879,8 @@ function fakeHand(o) {
   return { lm, wl };
 }
 window.__sim = {
-  forceStep, visibleAt, colpPt, SEALSPEC, URETER, VG, UT, BL, HT, HANDS, CTRL, fakeHand, htIngest, htEnable, htDisable, calibFinish, calBuild, camFillPickers,
-  get S() { return S; }, get STEPS() { return STEPS; }, get CASE() { return CASE; }, CASES, setCase, FB, fbSero, EC, CY, cySurf, cyBed, LS, lsAmpPt, lsCanal, SC, scPath, scWall, scFloor, POOL, BAG, HAND, CAM, AN, INP, tick, setPoseGoal, setInst, setActive, cutAction, cutReady, startCase,
+  forceStep, visibleAt, colpPt, SEALSPEC, URETER, VG, UT, BL, HT, HANDS, CTRL, htEnable, htDisable,
+  get S() { return S; }, get STEPS() { return STEPS; }, get CASE() { return CASE; }, CASES, setCase, POOL, BAG, HAND, CAM, AN, INP, tick, setPoseGoal, setInst, setActive, cutAction, cutReady, startCase,
   get active() { return ACTIVE; }, get PICK() { return activeHand().pick; },
   next() { // the target the guidance is showing, as a scripted player needs it
     const st = STEPS[S.step];
@@ -5894,6 +5895,8 @@ window.__sim = {
   setQuality, QUAL, GRADE, LIGHT, MAT, POST, head, scene, camera, renderer, THREE,
   DEPTH, DENT, freeDepth, freePick, poseFromPoint, primaryDown, primaryUp, releaseGrab, nearTarget, PICKS, shown, VUF, PF
 };
+if (SITE) window.__sim.resultsText = resultsText; // the review site has no other cases and no hand control to check
+else Object.assign(window.__sim, { fakeHand, htIngest, calibFinish, calBuild, camFillPickers, FB, fbSero, EC, CY, cySurf, cyBed, LS, lsAmpPt, lsCanal, SC, scPath, scWall, scFloor });
 
 </script>
 </body>

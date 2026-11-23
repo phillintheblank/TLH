@@ -11,7 +11,7 @@ export default async function (page) {
   const ev = (fn, a) => page.evaluate(fn, a);
   const ok = (name, pass, info) => console.log((pass ? 'PASS ' : 'FAIL ') + name + (info !== undefined ? ' ' + JSON.stringify(info) : ''));
   await ev(() => { window.__simPause = true; });
-  await page.click('#caseList .case:nth-child(1)');
+  if (await page.isVisible('#caseList .case')) await page.click('#caseList .case:nth-child(1)'); // the review site has the one case and no list
   await page.click('#btnBegin'); await ev(() => { window.__sim.DEPTH.auto = true; });
   const box = await page.locator('#ov').boundingBox();
   const T = dt => ev(n => { for (let i = 0; i < n; i++) window.__sim.tick(0.033); }, Math.ceil(dt / 0.033));

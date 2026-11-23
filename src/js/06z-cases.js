@@ -2,12 +2,12 @@
 // A case is its steps (each with its own targets, checks and teaching text), the instruments on its tray, how its
 // pelvis differs from the model's, and how it is scored. Everything else is shared.
 const BUILD = 'Build 1.0';
-const CASES = { tlh: TLH, myo: MYO, ect: ECT, cyst: CYS, lsh: LSH, scp: SCP };
+const CASES = SITE ? { tlh: TLH } : { tlh: TLH, myo: MYO, ect: ECT, cyst: CYS, lsh: LSH, scp: SCP }; // the review site carries the hysterectomy alone: the other cases' files are not in its page
 
 // ---------- step engine (every case) ----------
 let stepExpoChecked = false, stepPressed = false;
 function enterStep(i) {
-  S.step = i; stepExpoChecked = false; stepPressed = false;
+  S.step = i; stepExpoChecked = false; stepPressed = false; S.stepAt[i] = S.t; // when each step was begun, for the results
   const st = STEPS[i];
   if (st.acc != null) st.acc = 0;
   if (st.enter && S.running) st.enter();
@@ -21,7 +21,7 @@ function checkExposure() {
 }
 function updateSteps(dt) {
   if (!S.running || S.ended) return;
-  S.t += dt;
+  S.t += dt; if (DEPTH.auto && CTRL.mode === 'mouse') S.stats.autoT += dt;
   S.pressure = damp(S.pressure, S.pressureGoal, 1.2, dt);
   const st = STEPS[S.step];
   if (st.tick) st.tick(dt);

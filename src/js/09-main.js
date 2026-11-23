@@ -51,7 +51,7 @@ function wire() {
   $('handL').addEventListener('click', () => setActive('L')); $('handR').addEventListener('click', () => setActive('R'));
   $('btnCut').addEventListener('click', () => cutAction());
   $('btnSwitch').addEventListener('click', () => setActive(ACTIVE === 'L' ? 'R' : 'L'));
-  $('btnBegin').addEventListener('click', () => startCase(false)); $('btnBeginHands').addEventListener('click', () => startCase(true));
+  $('btnBegin').addEventListener('click', () => startCase(false)); if (!SITE) $('btnBeginHands').addEventListener('click', () => startCase(true));
   const toStart = () => { resetWorld(false); $('startCard').hidden = false; };
   $('btnRestart').addEventListener('click', toStart); $('dbRestart').addEventListener('click', toStart);
   $('dbClose').addEventListener('click', () => { $('debrief').hidden = true; });
@@ -133,7 +133,7 @@ function frame(now) {
   drawOverlay(simTime); renderUI(dt); htRenderUI(dt, simTime);
 }
 CASE = CASES.tlh; STEPS = CASE.steps; S = freshState();
-wire(); htWire();
+wire(); htWire(); if (SITE) reviewWire();
 // everything lit throws and takes shadows from the scope light, except flat marks painted on a surface and the blood pool
 scene.traverse(o => { if (o.isMesh && !o.material.isMeshBasicMaterial) { o.castShadow = o !== POOL; o.receiveShadow = true; if (o.material.userData.depth) o.customDepthMaterial = o.material.userData.depth; } });
 (function () {
@@ -167,8 +167,8 @@ function fakeHand(o) {
   return { lm, wl };
 }
 window.__sim = {
-  forceStep, visibleAt, colpPt, SEALSPEC, URETER, VG, UT, BL, HT, HANDS, CTRL, fakeHand, htIngest, htEnable, htDisable, calibFinish, calBuild, camFillPickers,
-  get S() { return S; }, get STEPS() { return STEPS; }, get CASE() { return CASE; }, CASES, setCase, FB, fbSero, EC, CY, cySurf, cyBed, LS, lsAmpPt, lsCanal, SC, scPath, scWall, scFloor, POOL, BAG, HAND, CAM, AN, INP, tick, setPoseGoal, setInst, setActive, cutAction, cutReady, startCase,
+  forceStep, visibleAt, colpPt, SEALSPEC, URETER, VG, UT, BL, HT, HANDS, CTRL, htEnable, htDisable,
+  get S() { return S; }, get STEPS() { return STEPS; }, get CASE() { return CASE; }, CASES, setCase, POOL, BAG, HAND, CAM, AN, INP, tick, setPoseGoal, setInst, setActive, cutAction, cutReady, startCase,
   get active() { return ACTIVE; }, get PICK() { return activeHand().pick; },
   next() { // the target the guidance is showing, as a scripted player needs it
     const st = STEPS[S.step];
@@ -183,3 +183,5 @@ window.__sim = {
   setQuality, QUAL, GRADE, LIGHT, MAT, POST, head, scene, camera, renderer, THREE,
   DEPTH, DENT, freeDepth, freePick, poseFromPoint, primaryDown, primaryUp, releaseGrab, nearTarget, PICKS, shown, VUF, PF
 };
+if (SITE) window.__sim.resultsText = resultsText; // the review site has no other cases and no hand control to check
+else Object.assign(window.__sim, { fakeHand, htIngest, calibFinish, calBuild, camFillPickers, FB, fbSero, EC, CY, cySurf, cyBed, LS, lsAmpPt, lsCanal, SC, scPath, scWall, scFloor });

@@ -3,7 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MIGS Simulator</title>
+<!--@main--><title>MIGS Simulator</title><!--@/main--><!--@review--><title>laparoscape: total laparoscopic hysterectomy (review)</title>
+<meta name="robots" content="noindex, nofollow">
+<meta name="description" content="A browser rehearsal of the total laparoscopic hysterectomy, step by step. An early educational prototype shared for review."><!--@/review-->
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -177,15 +179,27 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 @media (max-width:520px){.manip-r{width:auto;flex:1}.metrics{grid-template-columns:repeat(2,1fr)}.hand{flex:1 1 124px}.hud{font-size:10.5px}#hudProx{display:none}}
 @media (prefers-reduced-motion:reduce){.toast,.prog i{transition:none}}
 </style>
-</head>
+<!--@review--><style>
+/* the review site: its own name, a welcome sheet, and a signature */
+.brand h1{text-transform:none;letter-spacing:.02em}
+.sheet .eyebrow{margin:0 0 8px}
+.sheet .lead{font-size:15.5px;max-width:62ch}
+.asks{margin:0 0 10px;padding-left:20px;display:grid;gap:5px;max-width:66ch}
+.asks li::marker{color:var(--muted)}
+.notice{border:1px solid var(--warn,#c9892b);border-radius:6px;padding:9px 12px;margin:0 0 14px;color:var(--text)}
+.sheet .by{margin:14px 0 0;text-align:right;color:var(--muted);font-size:12px;max-width:none}
+.sheet a{color:var(--accent)}
+#dbCopied{color:var(--muted);font-size:12.5px}
+</style>
+<!--@/review--></head>
 <body>
 <div id="app">
   <header class="bar">
-    <div class="brand"><h1>MIGS Simulator</h1><p id="brandSub"></p></div>
+    <div class="brand"><!--@main--><h1>MIGS Simulator</h1><!--@/main--><!--@review--><h1>__NAME__</h1><!--@/review--><p id="brandSub"></p></div>
     <div class="bar-ctl">
       <select id="selQ" class="sel" title="Picture quality. Auto starts at High and steps down if the frame rate drops." aria-label="Picture quality"><option value="auto">Quality: auto</option><option value="high">Quality: high</option><option value="medium">Quality: medium</option><option value="low">Quality: low</option></select>
-      <button type="button" id="btnHands" class="tog" title="Drive both instruments with your hands through this device's camera">Hand control</button>
-      <button type="button" id="btnGuide" class="tog" title="On-screen targets, hover names and ureter distance (G)">Guidance</button>
+<!--@main-->      <button type="button" id="btnHands" class="tog" title="Drive both instruments with your hands through this device's camera">Hand control</button>
+<!--@/main-->      <button type="button" id="btnGuide" class="tog" title="On-screen targets, hover names and ureter distance (G)">Guidance</button>
       <button type="button" id="btnLabels" class="tog" title="Name the visible anatomy (L)">Labels</button>
       <button type="button" id="btnSound" class="tog" title="Generator tones and alerts (M)">Sound</button>
       <button type="button" id="btnRestart" class="ghost">Restart case</button>
@@ -207,7 +221,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
         <div id="toast" class="toast" role="status" aria-live="polite"></div>
         <div id="nogl" hidden>This simulator needs WebGL, which is not available in this browser.</div>
         <div id="startCard" class="modal">
-          <div class="sheet">
+<!--@main-->          <div class="sheet">
             <div class="cases" id="caseList" role="radiogroup" aria-label="Choose a case"></div>
             <h2 id="caseTitle"></h2>
             <p class="sub" id="caseSub"></p>
@@ -241,8 +255,36 @@ input[type=range]{width:100%;accent-color:var(--accent)}
             </ul>
             <p class="fine">An educational rehearsal tool with simplified anatomy and tissue behaviour. It is not a validated assessment and does not replace supervised training.</p>
           </div>
-        </div>
-        <div id="calModal" class="modal" hidden>
+<!--@/main--><!--@review-->          <div class="sheet">
+            <div class="eyebrow"><span>__LABEL__</span><span>shared for colleague feedback</span></div>
+            <div class="cases" id="caseList" role="radiogroup" aria-label="Choose a case"></div>
+            <p class="notice" id="touchNote" hidden>This needs a computer with a keyboard and a mouse or trackpad. It will not work properly on a phone or a tablet.</p>
+            <h2 id="caseTitle"></h2>
+            <p class="lead">A rehearsal of the operation in your browser, step by step, built for learners. Please play it through once and tell me what you would change before it goes to them.</p>
+            <p class="sub" id="caseSub"></p>
+            <div id="caseBrief"></div>
+            <div class="cta"><button type="button" class="primary" id="btnBegin">Begin</button><span class="fine" style="margin:0">Allow about 20 minutes the first time. A mouse is recommended; a trackpad also works.</span></div>
+            <h3>Controls</h3>
+            <ul class="keys">
+              <li><b>Move</b><span>Swings the selected instrument about its port</span></li>
+              <li><b>Wheel</b><span>Slides it in and out along its shaft (two fingers on a trackpad). It works only where its tip touches tissue.</span></li>
+              <li><b>Click, hold</b><span>Grasp, seal, cut with the hook, aspirate, place a bite</span></li>
+              <li><b>Right-click or C</b><span>Fires the bipolar cut blade</span></li>
+              <li><b>Space or X</b><span>Switch hands; the other holds its position</span></li>
+              <li><b>Esc</b><span>Frees the cursor for the panels. Click the picture to take the instruments again.</span></li>
+              <li><b id="keyNums">1 to 5</b><span>Change the selected hand's instrument</span></li>
+              <li><b>W A S D, Q E</b><span>Uterine manipulator: tilt, deviate, push cephalad</span></li>
+              <li><b>+ and &minus;, arrows</b><span>Advance and aim the scope</span></li>
+              <li><b>Auto depth</b><span>A switch in the panel on the right: the tip follows the tissue and the wheel moves the scope. It starts off.</span></li>
+            </ul>
+            <h3>What I would like to know</h3>
+            <ol class="asks">__ASKS__</ol>
+            <p>Send your thoughts to <a href="mailto:__EMAIL__?subject=laparoscape%20__LABELQ__%20feedback">__EMAIL__</a>. The step number at the top of the right-hand panel (Step 8 of 21) tells me where you were. At the end of the case, <b>Copy my results</b> puts these questions and your score, timings and event log on the clipboard to paste into the email.</p>
+            <p class="fine">An early educational prototype with simplified anatomy and tissue behaviour. It has not been validated, it is not an assessment, and it is not for patient care. Nothing you do in it is recorded or sent anywhere.</p>
+            <p class="by">__BY__</p>
+          </div>
+<!--@/review-->        </div>
+<!--@main-->        <div id="calModal" class="modal" hidden>
           <div class="sheet cal" id="calSheet">
             <div class="cal-views">
               <canvas id="calCanvas" class="cal-cam"></canvas>
@@ -272,7 +314,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
           </div>
         </div>
         <video id="camVideo" class="cam-video" playsinline muted></video><video id="camVideo2" class="cam-video" playsinline muted></video>
-        <div id="debrief" class="modal" hidden>
+<!--@/main-->        <div id="debrief" class="modal" hidden>
           <div class="sheet">
             <div class="db-top"><div><h2>Case debrief</h2><p class="sub" id="dbGrade" style="margin:0"></p></div><div class="db-score"><span id="dbScore">0</span><small> / 100</small></div></div>
             <h3>Deductions</h3><ul id="dbNotes"></ul>
@@ -280,7 +322,10 @@ input[type=range]{width:100%;accent-color:var(--accent)}
             <h3>Safety</h3><div class="db-grid" id="dbB"></div>
             <h3>Technique</h3><div class="db-grid" id="dbC"></div>
             <h3>Event log</h3><ul class="log" id="dbLog"></ul>
-            <div class="cta"><button type="button" class="primary" id="dbRestart">Run the case again</button><button type="button" class="ghost" id="dbClose">Look at the field</button></div>
+            <div class="cta"><button type="button" class="primary" id="dbRestart">Run the case again</button><!--@review--><button type="button" class="ghost" id="dbCopy">Copy my results</button><!--@/review--><button type="button" class="ghost" id="dbClose">Look at the field</button><!--@review--><span id="dbCopied" role="status" aria-live="polite"></span><!--@/review--></div><!--@review-->
+            <h3>Before you go</h3>
+            <p><b>Copy my results</b> puts these questions and your score, timings and event log on the clipboard. Paste it into an email to <a href="mailto:__EMAIL__?subject=laparoscape%20__LABELQ__%20feedback">__EMAIL__</a> and answer what you can.</p>
+            <ol class="asks">__ASKS__</ol><!--@/review-->
             <p class="fine">The score is a training aid built from this simulator's own rules, not a validated competency measure.</p>
           </div>
         </div>
@@ -326,7 +371,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
       </section>
       <section class="block mousepanel">
         <h3>Depth and mouse</h3>
-        <p class="ht-status" id="msNote">Mouse: move to swing the instrument about its port, wheel to slide it in and out. Hands: with two cameras, push forward to go in; with one camera the tip follows the tissue.</p>
+        <!--@main--><p class="ht-status" id="msNote">Mouse: move to swing the instrument about its port, wheel to slide it in and out. Hands: with two cameras, push forward to go in; with one camera the tip follows the tissue.</p><!--@/main--><!--@review--><p class="ht-status" id="msNote">Move to swing the instrument about its port, wheel to slide it in and out. With Auto depth on, the tip follows the tissue under the pointer and the wheel moves the scope.</p><!--@/review-->
         <div class="btnrow">
           <button type="button" class="tog" id="btnAuto" title="Mouse only: the tip follows the tissue under the pointer and the wheel moves the scope.">Auto depth</button>
           <button type="button" class="tog" id="btnFulcrum" title="The tip moves opposite to the mouse, as it does with a real laparoscopic handle outside the abdomen. Mouse only.">Fulcrum effect</button>
@@ -334,7 +379,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
         </div>
         <div class="tune"><label for="mWheel">Wheel speed<input type="range" id="mWheel" min="30" max="300" value="100"></label></div>
       </section>
-      <section class="block handpanel">
+<!--@main-->      <section class="block handpanel">
         <h3>Hand control</h3>
         <p class="ht-status" id="htStatus">Off. The mouse controls the instruments.</p>
         <div id="htLive" hidden>
@@ -350,7 +395,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
         </div>
         <div class="btnrow"><button type="button" class="mini" id="htOn">Turn on hand control</button><button type="button" class="mini" id="htRecal" hidden>Recalibrate</button><button type="button" class="mini" id="htOff" hidden>Turn off</button></div>
       </section>
-      <section class="block">
+<!--@/main-->      <section class="block">
         <h3>Running record</h3>
         <div class="metrics">
           <div><b id="mAct">0</b><span>Energy activations</span></div><div><b id="mEnergy">0 s</b><span>Energy time</span></div>

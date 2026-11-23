@@ -212,14 +212,14 @@ function buildCaseUI() {
     if (s.phase !== phase) { phase = s.phase; list.appendChild(el('h4', null, phase)); ol = el('ol'); list.appendChild(ol); }
     const li = el('li', null, '<i></i><span>' + s.short + '</span>'); li.id = 'cl-' + i; ol.appendChild(li);
   });
-  const pick = $('caseList'); pick.innerHTML = '';
+  const pick = $('caseList'); pick.innerHTML = ''; pick.hidden = Object.keys(CASES).length < 2; // nothing to choose between
   for (const id in CASES) {
     const b = el('button', 'case' + (CASES[id] === CASE ? ' on' : ''), '<b>' + CASES[id].name + '</b><span>' + CASES[id].blurb + '</span>');
     b.type = 'button'; b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', CASES[id] === CASE ? 'true' : 'false'); b.addEventListener('click', () => setCase(id)); pick.appendChild(b);
   }
   $('caseTitle').textContent = CASE.name; $('caseSub').textContent = CASE.sub;
   $('caseBrief').innerHTML = CASE.brief.map(t => '<p>' + t + '</p>').join('');
-  $('brandSub').textContent = BUILD + ' \u00b7 ' + CASE.name.toLowerCase() + CASE.tag;
+  $('brandSub').textContent = (SITE ? SITE.label : BUILD) + ' \u00b7 ' + CASE.name.toLowerCase() + CASE.tag;
   $('keyNums').textContent = '1 to ' + CASE.insts.length;
 }
 function renderStepCard() {

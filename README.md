@@ -24,6 +24,9 @@ exposure and glare, wet translucent tissue, and sealing, smoke and bleeding that
 **Try it:** https://phillintheblank.github.io/TLH/ (Chrome or Edge on a laptop or desktop; the camera needs the
 `https` address or `localhost`).
 
+**The review site:** https://laparoscape.com/ carries the hysterectomy alone, played with the mouse, for colleagues
+to review before it goes to learners. It is built from this repository (see [The review site](#the-review-site)).
+
 It is an educational rehearsal tool with simplified anatomy and tissue behaviour. It is not a validated assessment and
 does not replace supervised training. The score comes from the simulator's own rules.
 
@@ -358,6 +361,38 @@ left the source 47 lines longer, and added a test of the new order. Build 0.10 c
 | 0.10 | 5,830 lines | 1,824 lines | 466 KB |
 | 1.0 | 5,884 lines | 1,851 lines | 471 KB |
 
+## The review site
+
+laparoscape.com is a second site built from the same source, for one purpose: to put the total hysterectomy in
+front of colleagues and collect what they would change. It lives in its own repository
+(`laparoscape/laparoscape.github.io`), so work here does not change what reviewers see until a new round is
+published.
+
+| | This site | The review site |
+|---|---|---|
+| Name on the page | MIGS Simulator, Build 1.0 | laparoscape, Review 1.0 |
+| Cases | All six | The total hysterectomy |
+| Control | Mouse or hand control | Mouse or trackpad. No hand control: no camera code, runtime or model in the site |
+| Start screen | Case list, the patient, both sets of controls | A welcome sheet: what it is, the patient, the controls, seven questions for the reviewer, where to send feedback |
+| Depth to start | Manual (the last setting is remembered) | Manual, with Auto depth offered |
+| Debrief | Score and record | The same, with **Copy my results** and the seven questions |
+| Search engines | Listed | Asked not to list it |
+
+- **Copy my results** puts plain text on the reviewer's clipboard: the seven questions with room to answer, then the
+  score, the time played in each depth mode, the deductions, the safety and technique figures, the time on each
+  step, the event log, and the browser. Nothing is sent: the reviewer pastes it into an email.
+- **The questions** are on the welcome sheet, on the debrief and at the head of the copied text. They, the review's
+  label, the feedback address and the name on the sheet are set in one place, at the top of `build.mjs`.
+- **A phone or a tablet** with no mouse or trackpad gets a notice that it needs a computer.
+- **What the page asks for:** its own two files and its typefaces from Google Fonts. It sets no cookies. Settings
+  are kept in the browser's own storage.
+
+To publish a round: `npm run build`, copy everything in `dist/laparoscape/` into the review site's repository, commit
+and push. `dist/` is not kept in this repository.
+
+The review site's page is 273 KB against this site's 472 KB. Adding it took 90 lines of source (43 of them its own
+two files, the rest its welcome sheet in the template) and a test of 55 lines.
+
 ## Hand control
 
 - **Cameras.** The setup screen has a chooser for the camera in front of you and one for a second camera. With one
@@ -516,12 +551,18 @@ If two webcams do not give steady enough depth with real hands, the fallback is 
 ```
 npm install            # three.js, the MediaPipe runtime and esbuild (dev dependencies)
 npm run fetch-model    # Google's hand landmark model, into models/
-npm run build          # writes docs/ (the published site); bundles and minifies three.js into docs/vendor
+npm run build          # writes docs/ (the published site) and dist/laparoscape/ (the review site); bundles and minifies three.js
 ```
 
 Serve `docs/` with any static web server and open it on `localhost`. Source is in `src/` (`template.html` plus the
 numbered files in `src/js/`, concatenated in order; each case is one `06…` file, beside `06-steps.js` for what they
 share). `docs/` is what GitHub Pages serves.
+
+The review site's page is built from the same files, less the other five cases (`06b` to `06f`) and hand control
+(`08-hands.js`), plus the two files in `src/review/`. In `template.html`, what is between `<!--@main-->` markers is
+only in this site's page and what is between `<!--@review-->` markers only in the review site's.
+`test/check.mjs` checks both pages' scripts, and that the review page has every element its script looks up and no
+hand-control code.
 
 Tests drive a headless Chrome through Playwright (`test/shot.mjs <screenshot> <script>`):
 
@@ -587,6 +628,10 @@ Tests drive a headless Chrome through Playwright (`test/shot.mjs <screenshot> <s
   suture on top of the first, a bite at the medial edge of the mesh, a bite at the disc, the peritoneal closure and
   what it covers, the low-pressure check, the debrief, and the pelvis put back on leaving the case.
 - `test/steps/realcam.mjs` loads the real camera and model pipeline against Chrome's fake camera (`LIVE=1 QUERY=q=low`).
+- `test/steps/review.mjs` checks the review site's page (run it, and any hysterectomy test, with
+  `ROOT=dist/laparoscape`): its name, the one case, no hand control, manual depth to start, the welcome sheet's
+  questions and address, what Copy my results puts on the clipboard, and that the page asks for nothing but its own
+  files and its typefaces.
 - `test/steps/handviews.mjs` takes screenshots of the setup screen and of hand control at work (`RIG=two|one`);
   `look.mjs` and `views.mjs` take screenshots of chosen steps for judging the picture.
 
