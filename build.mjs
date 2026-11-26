@@ -1,14 +1,17 @@
-// Builds two sites from the same source.
+// Builds two sites and a lab page from the same source.
 //   docs/              the working simulator, served by GitHub Pages from this repository: every case, mouse and
 //                      hand control, with the vendored 3D library, hand-tracking runtime and hand model
 //   dist/laparoscape/  the review site (laparoscape.com): the hysterectomy alone, mouse only. Its files are copied
 //                      into the laparoscape/laparoscape.github.io repository to publish a review round.
+//   docs/lab/          the physics lab: a free-play dissection on the same pelvis, mouse only. It is part of the working
+//                      site and shares its copy of the 3D library.
 // One page each, with the simulator script inlined. In src/template.html, <!--@main-->...<!--@/main--> is kept only in
-// the first and <!--@review-->...<!--@/review--> only in the second.
+// the first, <!--@review-->...<!--@/review--> only in the second and <!--@lab-->...<!--@/lab--> only in the lab's.
 import fs from 'node:fs';
 import path from 'node:path';
 const root = path.dirname(new URL(import.meta.url).pathname);
 const dir = path.join(root, 'src/js'), out = path.join(root, 'docs'), rdir = path.join(root, 'src/review'), rout = path.join(root, 'dist/laparoscape');
+const LAB = { name: 'MIGS Simulator', label: 'Lab 0.1' };
 const REVIEW = {
   name: 'laparoscape', label: 'Review 1.0', email: 'feedback@laparoscape.com', by: 'Phillip Connell, MD', domain: 'laparoscape.com',
   asks: [ // what the reviewers are asked: on the welcome sheet, on the debrief, and at the head of the results they copy
@@ -25,12 +28,13 @@ const LEFT_OUT = /^(06[b-f]-|08-hands\.js$)/; // the review site's page has no o
 const read = f => fs.readFileSync(f, 'utf8'), list = d => fs.readdirSync(d).filter(f => f.endsWith('.js')).map(f => path.join(d, f));
 const join = files => files.sort((a, b) => path.basename(a).localeCompare(path.basename(b))).map(read).join('\n');
 const template = read(path.join(root, 'src/template.html'));
-const only = (html, keep, drop) => html.replace(new RegExp('<!--@' + drop + '-->[\\s\\S]*?<!--@/' + drop + '-->', 'g'), '').replace(new RegExp('<!--@/?' + keep + '-->', 'g'), '');
+const SITES = ['main', 'review', 'lab'];
+const only = (html, keep) => SITES.reduce((h, v) => (v === keep ? h.replace(new RegExp('<!--@/?' + v + '-->', 'g'), '') : h.replace(new RegExp('<!--@' + v + '-->[\\s\\S]*?<!--@/' + v + '-->', 'g'), '')), html);
 const page = (html, site, js) => html.replace('/*__JS__*/', () => 'const SITE = ' + JSON.stringify(site) + ';\n' + js);
 const copy = (from, to) => { if (!fs.existsSync(from)) return false; fs.mkdirSync(path.dirname(to), { recursive: true }); fs.copyFileSync(from, to); return true; };
 
 // ---- the working simulator ----
-const html = page(only(template, 'main', 'review'), null, join(list(dir)));
+const html = page(only(template, 'main'), null, join(list(dir)));
 fs.mkdirSync(out, { recursive: true });
 fs.writeFileSync(path.join(out, 'index.html'), html);
 fs.writeFileSync(path.join(out, '.nojekyll'), '');
@@ -49,7 +53,7 @@ console.log('built docs/index.html', (html.length / 1024).toFixed(1) + ' KiB' + 
 
 // ---- the review site ----
 const fill = s => s.replaceAll('__ASKS__', REVIEW.asks.map(q => '<li>' + q + '</li>').join('')).replaceAll('__NAME__', REVIEW.name).replaceAll('__LABELQ__', encodeURIComponent(REVIEW.label)).replaceAll('__LABEL__', REVIEW.label).replaceAll('__EMAIL__', REVIEW.email).replaceAll('__BY__', REVIEW.by).replaceAll('__DOMAIN__', REVIEW.domain);
-const rhtml = page(fill(only(template, 'review', 'main')), { name: REVIEW.name, label: REVIEW.label, asks: REVIEW.asks }, join(list(dir).filter(f => !LEFT_OUT.test(path.basename(f))).concat(list(rdir))));
+const rhtml = page(fill(only(template, 'review')), { name: REVIEW.name, label: REVIEW.label, asks: REVIEW.asks }, join(list(dir).filter(f => !LEFT_OUT.test(path.basename(f))).concat(list(rdir))));
 fs.rmSync(rout, { recursive: true, force: true }); fs.mkdirSync(rout, { recursive: true });
 fs.writeFileSync(path.join(rout, 'index.html'), rhtml);
 fs.writeFileSync(path.join(rout, '.nojekyll'), '');
@@ -57,3 +61,11 @@ fs.writeFileSync(path.join(rout, 'CNAME'), REVIEW.domain + '\n');
 fs.writeFileSync(path.join(rout, 'README.md'), fill(read(path.join(rdir, 'README.md'))));
 const three = copy(path.join(out, 'vendor/three.module.min.js'), path.join(rout, 'vendor/three.module.min.js'));
 console.log('built dist/laparoscape/index.html', (rhtml.length / 1024).toFixed(1) + ' KiB' + (three ? '' : '  MISSING: vendor/three.module.min.js'));
+
+// ---- the lab ----
+// The simulator's files less the other cases and hand control, as for the review site, plus the lab's own (src/lab).
+const ldir = path.join(root, 'src/lab'), lout = path.join(out, 'lab');
+const lhtml = page(only(template, 'lab').replaceAll('__LABEL__', LAB.label), { name: LAB.name, label: LAB.label, asks: [], lab: true }, join(list(dir).filter(f => !LEFT_OUT.test(path.basename(f))).concat(list(ldir)))).replace("'./vendor/three.module.min.js'", "'../vendor/three.module.min.js'");
+fs.mkdirSync(lout, { recursive: true });
+fs.writeFileSync(path.join(lout, 'index.html'), lhtml);
+console.log('built docs/lab/index.html', (lhtml.length / 1024).toFixed(1) + ' KiB');

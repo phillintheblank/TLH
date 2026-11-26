@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!--@main--><title>MIGS Simulator</title><!--@/main--><!--@review--><title>laparoscape: total laparoscopic hysterectomy (review)</title>
 <meta name="robots" content="noindex, nofollow">
-<meta name="description" content="A browser rehearsal of the total laparoscopic hysterectomy, step by step. An early educational prototype shared for review."><!--@/review-->
+<meta name="description" content="A browser rehearsal of the total laparoscopic hysterectomy, step by step. An early educational prototype shared for review."><!--@/review--><!--@lab--><title>MIGS Simulator lab: retroperitoneal ureter dissection</title>
+<meta name="robots" content="noindex, nofollow">
+<meta name="description" content="A free-play physics lab: a right retroperitoneal ureter dissection on tissue that tents, parts and bleeds. An early educational prototype."><!--@/lab-->
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -191,11 +193,22 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 .sheet a{color:var(--accent)}
 #dbCopied{color:var(--muted);font-size:12.5px}
 </style>
-<!--@/review--></head>
+<!--@/review--><!--@lab--><style>
+/* the lab: free play. No manipulator, no guidance, no list of steps */
+.sheet .eyebrow{margin:0 0 8px}
+.sheet .lead{font-size:15.5px;max-width:62ch}
+#manip,#btnGuide,#btnAuto,#btnExpo,.checklist,.pearl,.stepcard .prog{display:none!important}
+.goals{display:grid;gap:4px;margin:0 0 4px;padding:0;list-style:none}
+.goals li{display:flex;gap:8px;align-items:baseline}
+.goals li i{flex:none;width:9px;height:9px;border-radius:50%;border:1.5px solid var(--muted);transform:translateY(1px)}
+.goals li.done i{background:var(--ok,#5fcf8e);border-color:var(--ok,#5fcf8e)}
+.goals li small{color:var(--muted)}
+</style>
+<!--@/lab--></head>
 <body>
 <div id="app">
   <header class="bar">
-    <div class="brand"><!--@main--><h1>MIGS Simulator</h1><!--@/main--><!--@review--><h1>__NAME__</h1><!--@/review--><p id="brandSub"></p></div>
+    <div class="brand"><!--@main--><h1>MIGS Simulator</h1><!--@/main--><!--@review--><h1>__NAME__</h1><!--@/review--><!--@lab--><h1>MIGS Simulator</h1><!--@/lab--><p id="brandSub"></p></div>
     <div class="bar-ctl">
       <select id="selQ" class="sel" title="Picture quality. Auto starts at High and steps down if the frame rate drops." aria-label="Picture quality"><option value="auto">Quality: auto</option><option value="high">Quality: high</option><option value="medium">Quality: medium</option><option value="low">Quality: low</option></select>
 <!--@main-->      <button type="button" id="btnHands" class="tog" title="Drive both instruments with your hands through this device's camera">Hand control</button>
@@ -283,7 +296,33 @@ input[type=range]{width:100%;accent-color:var(--accent)}
             <p class="fine">An early educational prototype with simplified anatomy and tissue behaviour. It has not been validated, it is not an assessment, and it is not for patient care. Nothing you do in it is recorded or sent anywhere.</p>
             <p class="by">__BY__</p>
           </div>
-<!--@/review-->        </div>
+<!--@/review--><!--@lab-->          <div class="sheet">
+            <div class="eyebrow"><span>__LABEL__</span><span>physics lab, free play</span></div>
+            <div class="cases" id="caseList" role="radiogroup" aria-label="Choose a case"></div>
+            <h2 id="caseTitle"></h2>
+            <p class="lead">A free dissection on tissue that tents, parts, tears and bleeds. There are no steps and no prompts: you choose where to open and how to dissect, and the debrief reports what you did.</p>
+            <p class="sub" id="caseSub"></p>
+            <div id="caseBrief"></div>
+            <div class="cta"><button type="button" class="primary" id="btnBegin">Begin</button><span class="fine" style="margin:0">A mouse with a wheel is recommended. End the dissection with the button in the panel on the right.</span></div>
+            <h3>Instruments</h3>
+            <ul class="keys" style="grid-template-columns:1fr">
+              <li><b>Maryland dissector</b><span>A click closes the jaws and a second click opens them. Closed on tissue, it holds. Opened inside loose tissue, it spreads.</span></li>
+              <li><b>Advanced bipolar</b><span>A quick click closes or opens the jaws with no energy, so it dissects bluntly. Hold the click to coagulate what is in the jaws. Right-click or C fires the blade through closed jaws.</span></li>
+              <li><b>Suction</b><span>Hold to aspirate blood. The tip also dissects bluntly.</span></li>
+            </ul>
+            <h3>Controls</h3>
+            <ul class="keys">
+              <li><b>Move</b><span>Swings the selected instrument about its port</span></li>
+              <li><b>Wheel</b><span>Slides it in and out along its shaft (two fingers on a trackpad)</span></li>
+              <li><b>Space or X</b><span>Switch hands. The other hand holds its position and keeps what it has grasped.</span></li>
+              <li><b>Esc</b><span>Frees the cursor for the panels. Click the picture to take the instruments again.</span></li>
+              <li><b id="keyNums">1 to 3</b><span>Change the selected hand's instrument</span></li>
+              <li><b>+ and &minus;, arrows</b><span>Advance and aim the scope</span></li>
+              <li><b>L</b><span>Anatomy labels. A structure under the peritoneum is named once you have uncovered it.</span></li>
+            </ul>
+            <p class="fine">An early educational prototype with simplified anatomy and tissue behaviour. It has not been validated, it is not an assessment, and it is not for patient care. Nothing you do in it is recorded or sent anywhere.</p>
+          </div>
+<!--@/lab-->        </div>
 <!--@main-->        <div id="calModal" class="modal" hidden>
           <div class="sheet cal" id="calSheet">
             <div class="cal-views">
@@ -371,7 +410,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
       </section>
       <section class="block mousepanel">
         <h3>Depth and mouse</h3>
-        <!--@main--><p class="ht-status" id="msNote">Mouse: move to swing the instrument about its port, wheel to slide it in and out. Hands: with two cameras, push forward to go in; with one camera the tip follows the tissue.</p><!--@/main--><!--@review--><p class="ht-status" id="msNote">Move to swing the instrument about its port, wheel to slide it in and out. With Auto depth on, the tip follows the tissue under the pointer and the wheel moves the scope.</p><!--@/review-->
+        <!--@main--><p class="ht-status" id="msNote">Mouse: move to swing the instrument about its port, wheel to slide it in and out. Hands: with two cameras, push forward to go in; with one camera the tip follows the tissue.</p><!--@/main--><!--@review--><p class="ht-status" id="msNote">Move to swing the instrument about its port, wheel to slide it in and out. With Auto depth on, the tip follows the tissue under the pointer and the wheel moves the scope.</p><!--@/review--><!--@lab--><p class="ht-status" id="msNote">Move to swing the instrument about its port, wheel to slide it in and out.</p><!--@/lab-->
         <div class="btnrow">
           <button type="button" class="tog" id="btnAuto" title="Mouse only: the tip follows the tissue under the pointer and the wheel moves the scope.">Auto depth</button>
           <button type="button" class="tog" id="btnFulcrum" title="The tip moves opposite to the mouse, as it does with a real laparoscopic handle outside the abdomen. Mouse only.">Fulcrum effect</button>
