@@ -33,4 +33,4 @@ function resultsText() { // the debrief as plain text
   return [SITE.name + ' ' + SITE.label + ': ' + CASE.name.toLowerCase(), 'Score: ' + sc.pts + ' / 100 (' + sc.grade + ')', 'Time: ' + fmtT(S.t) + '. Estimated blood loss: ' + Math.round(S.ebl) + ' mL', '', 'Deductions'].concat(sc.notes.length ? sc.notes.map(n => '- ' + n.replace(/<[^>]+>/g, '').replace(/&minus;/g, '-')) : ['None'], ['', 'Safety', rows[0].trim(), '', 'Technique', rows[1].trim(), '', 'Event log'], S.events.map(e => fmtT(e.t) + '  ' + e.text)).join('\n');
 }
 // for the automated checks
-window.__lab = { PX, LB, LU, LF, LS, LV, LH, LR, LK, lbId, lbU, lbRest, lbTri, lbTriC, lbReindex, lbMetrics, lbMid, lbClose, lbOpen, lbInjury, labCut, shaftShown, inBowl, get goal() { return S.lab.goal; }, get lab() { return S.lab; } };
+window.__lab = { PX, LB, LU, LW, LS, LV, LH, LR, LK, lbPart, lbBeat, lbId, lbU, lbRest, lbTri, lbTriC, lbReindex, lbMetrics, lbMid, lbClose, lbOpen, lbInjury, labCut, shaftShown, inBowl, get goal() { return S.lab.goal; }, get lab() { return S.lab; } };

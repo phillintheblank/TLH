@@ -1,8 +1,8 @@
 // The lab played through by script: a right retroperitoneal ureter dissection the way it is meant to go, through
 // the simulator's own mouse drive. The Maryland in the left hand tents the peritoneum lateral to the IP ligament; the
 // bipolar in the right coagulates the fold and cuts it; the Maryland takes the medial edge and draws it medially; the
-// opening is carried down toward the round ligament; the bipolar then goes in with its jaws closed and opens them
-// beside the ureter, place by place, down to the uterine artery. It ends the dissection and reads the debrief.
+// opening is carried down toward the round ligament; the bipolar then goes in with its jaws closed and sweeps them
+// down the side of the ureter to the uterine artery, and along the artery. It ends the dissection and reads the debrief.
 // SHOTS=1 writes pictures to test/out/. Run with PAGE=lab/.
 import { install } from './labdriver.mjs';
 const OUT = new URL('../out/', import.meta.url).pathname;
@@ -47,28 +47,24 @@ export default async function (page) {
     const V3 = s.THREE.Vector3, p = new V3(), nn = new V3();
     // a place beside the ureter, on its side away from the leaf it lies on
     const beside = (q, k) => { L.PX.get(U.i0 + q, p); let b = 0, bd = 1e9; for (let i = 0; i < B.NS; i++) { const d = L.PX.get(i, nn).distanceToSquared(p); if (d < bd) { bd = d; b = i; } } nn.set(B.nin[b * 3], B.nin[b * 3 + 1], B.nin[b * 3 + 2]); return p.addScaledVector(nn, k).toArray(); };
-    const state = () => { L.lbMetrics(); const G = L.goal; return ['ureter ' + G.ureterCm.toFixed(1) + ' cm', 'to UA ' + G.toUA, 'UA ' + G.ua, 'strip ' + G.stripCm.toFixed(1), 'EBL ' + Math.round(s.S.ebl)]; };
-    // 4. in through the opening with the jaws closed, then open them beside the ureter, working down it
+    const state = () => { L.lbMetrics(); const G = L.goal; return ['ureter ' + G.ureterCm.toFixed(1) + ' cm', 'to UA ' + G.toUA, 'UA ' + G.ua, 'pararectal ' + G.prCm.toFixed(1) + ' cm', 'strip ' + G.stripCm.toFixed(1), 'EBL ' + Math.round(s.S.ebl)]; };
+    // 4. in through the opening with the jaws closed, and the closed jaws swept down the side of the ureter that faces
+    // away from its leaf: the web parts in front of them
     if (s.HAND.R.openGoal > 0.3) D.press('R', 0.05);
     const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
-    for (const q of [34, 30, 26, 22, 18, 38, 42, U.kx - 1]) {
-      const r = D.to('R', beside(q, 0.7), { tol: 0.25 }); D.press('R', 0.05); D.tick(12); D.press('R', 0.05); D.tick(6); // open the jaws there, and close them
-      const t0 = s.HAND.R.tip.toArray(); D.nudge('R', sub(beside(q + 2, 0.6), t0), 25); D.nudge('R', sub(beside(q - 2, 0.6), s.HAND.R.tip.toArray()), 40); // and sweep the closed jaws up and down beside it
-      log('beside ureter q' + q, [r.d, 'in ' + r.in, r.lim ? 'LIMIT' : '', r.on].concat(state()));
-    }
-    // 5. and round the uterine artery where it crosses
-    for (const i of [1, 3, 5]) { const a = L.LV.ua.arr[i].toArray(), r = D.to('R', [a[0] + 0.2, a[1] + 0.55, a[2] + 0.45], { tol: 0.25 }); D.press('R', 0.05); D.tick(12); D.press('R', 0.05); D.nudge('R', [0.5, 0, 0.2], 20); D.nudge('R', [-0.9, 0, -0.3], 30); log('by the uterine artery ' + i, [r.d, 'in ' + r.in, r.on].concat(state())); }
-    // 6. a second pass closer to the ureter with the jaws closed, pushing off what fat is left on it
-    for (const q of [16, 20, 24, 28, 32]) { D.to('R', beside(q - 2, 0.5), { tol: 0.2 }); D.nudge('R', sub(beside(q + 2, 0.5), s.HAND.R.tip.toArray()), 40); }
-    for (const q of [24, 27, 30, 20]) { D.to('R', beside(q, 0.55), { tol: 0.2 }); D.press('R', 0.05); D.tick(12); D.press('R', 0.05); D.tick(6); } // and the jaws opened once more where fat still holds on
-    log('after the second pass', state());
+    const sweep = (q0, q1, k) => { const r = D.to('R', beside(q0, k), { tol: 0.25 }); for (let q = q0; q < q1; q += 2) D.nudge('R', sub(beside(Math.min(q + 2, q1), k), s.HAND.R.tip.toArray()), 14); return r; };
+    for (const [q0, q1, k] of [[14, 26, 0.6], [24, 36, 0.6], [34, U.kx, 0.6], [14, U.kx, 0.45]]) { const r = sweep(q0, q1, k); log('swept beside the ureter, q' + q0 + ' to q' + q1 + ', ' + k + ' cm off it', [r.d, 'in ' + r.in, r.lim ? 'LIMIT' : '', r.on].concat(state())); }
+    // 5. the jaws opened once beside it, as a blunt spread, and closed again
+    { const r = D.to('R', beside(28, 0.7), { tol: 0.25 }); D.press('R', 0.05); D.tick(12); D.press('R', 0.05); D.tick(6); log('jaws opened beside the ureter at q28', [r.d, 'spreads ' + s.S.stats.blunt].concat(state())); }
+    // 6. and the same sweep along the uterine artery, from where it crosses the ureter out toward the internal iliac
+    { const A = L.LV.ua.arr, off = i => [A[i].x + 0.15, A[i].y + 0.5, A[i].z + 0.35], r = D.to('R', off(0), { tol: 0.25 }); for (let i = 1; i <= 7; i++) D.nudge('R', sub(off(i), s.HAND.R.tip.toArray()), 14); log('swept along the uterine artery', [r.d, 'in ' + r.in, r.on].concat(state())); }
     // 7. blood that has welled up is aspirated
     s.setInst('R', 'suction'); D.tick(60);
     for (let pass = 0; pass < 3; pass++) for (const w of B.wells) if (w.v > 0.2) { D.to('R', w.p.toArray(), { tol: 0.4 }); s.setActive('R'); s.INP.down = true; s.primaryDown(s.HAND.R); let g = 0; while (w.v > 0.05 && g++ < 240) D.tick(1); s.INP.down = false; s.primaryUp(s.HAND.R); }
     log('after suction', state().concat(['blood left under the peritoneum ' + B.wells.reduce((a, w) => a + w.v, 0).toFixed(1) + ' mL']));
     const map = k => L.LR.by[k].map(x => (x.rev ? 'R' : x.seen ? 's' : '.')).join('');
     log('ureter, brim to artery (R uncovered, s reached but covered, . not reached)', map('ureter')); log('uterine artery, from the crossing out', map('ua')); log('internal iliac artery', map('iia'));
-    if (window.__dbg) for (const q of [16, 20, 24, 28]) { const c = []; L.PX.get(U.i0 + q, p); for (let e = 0; e < L.LF.n; e++) { const d = L.PX.get(L.LF.i0 + e, nn).distanceTo(p); if (d < 0.25 + L.LF.r[e] * 0.6 && !L.LF.free[e]) c.push([L.LF.kind[e], +L.LF.pushed[e].toFixed(2), +d.toFixed(2), +L.LF.r[e].toFixed(2)]); } log('covering q' + q + ' [kind, pushed, dist, r]', c); const tp = s.HAND.R.tip; log(' widened', s.S.lab.widened); }
+    if (window.__dbg) log('ureter: threads left on each place of those that lay on it', L.LR.by.ureter.map(x => x.cov.filter(q => L.PX.cf[L.LS.c[q]] & 1).length + '/' + x.cov.length).join(' '));
     log('found', Object.keys(L.goal.found).filter(k => L.goal.found[k])); log('events', s.S.events.map(e => e.text));
     return out;
   });
