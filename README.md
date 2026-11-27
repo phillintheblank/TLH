@@ -326,7 +326,8 @@ the jaws and energy needs contact. There are three ways to drive it.
 
 | Build | Added | Removed | Play it |
 |---|---|---|---|
-| Lab 0.2 | The lab's tissue reworked after it was first played. Under the peritoneum there is loose areolar tissue and nothing else: a web of 5,774 fine threads, with 5,244 finer fibrils drawn between them, from the peritoneum to the wall and over every vessel, every nerve and the ureter. It parts very easily: any instrument moved under the peritoneum parts what is within 5.5 mm of its tip and 3.5 mm of its jaws, and jaws opened in it clear a wider space. 16 of the threads are small vessels, which stand until they are met squarely. The peritoneum is taut: it tents round the jaws that lift it, lies back within a tenth of a second without swinging, and left alone is exactly still. What moves it is an instrument, the pulse of the arteries under it (0.5 mm) and the ureter's peristalsis (0.8 mm), and nothing else. The sidewall's peritoneum has no fat showing through it. The pararectal space's measure is now played by the scripted dissection. A correction: the blade fired with the closed jaws against the ureter divides it, where in Lab 0.1 it could miss by a millimetre | All the fat: about 550 lobules, the rules that kept them under the peritoneum and off the ureter, and the working loose of each. The 346 areolar strands of Lab 0.1. Weight: nothing in the lab's solver has any now, and the sheet no longer sags or drifts at rest. The deduction for strands torn by traction, and its line in the debrief. A lobule of fat that showed outside the peritoneum in Lab 0.1 | https://phillintheblank.github.io/TLH/lab/ |
+| Lab 0.3 | The lab corrected by a surgeon after playing 0.2. **Peritoneum** stretches and does not tear: a shaft pushed against the edge of an opening stretches the edge aside, and the opening is made longer only by cutting, a bite at a time, coagulated first or cold. It resists stretch and not compression, so it gathers where 0.2's buckled. **The adnexa move:** the medial edge of the opening held in the Maryland and drawn medially takes the IP ligament, the ovary and the tube with it and opens the space. **The round ligament** can be coagulated and divided where the trainee chooses; its stumps draw apart and the peritoneum along it hangs free. **Anatomy:** the internal iliac artery divides into a posterior and an anterior division; the umbilical artery is the anterior division's first branch, open as far as two superior vesical arteries and then the obliterated cord, which runs beside the bladder a centimetre off the wall and climbs the anterior wall as the medial umbilical fold to the umbilicus, with the left fold and the median fold; an obturator artery and vein under the nerve. **Spaces:** web laid across the lateral pararectal space and the lateral and medial paravesical spaces, each measured. **Names:** with labels on every structure and space is named, 41 names, grey until uncovered, kept off one another. The web is about a third denser (7,487 threads, 7,904 fibrils). The scope goes in to 2 cm | Tearing: an opening no longer widens when an instrument is pushed through its edge, and blunt widening is no longer counted. The deduction for peritoneum cut without coagulating it, and most of its bleeding. The pin that held the ovary and its ligament still. The rule that named a structure only once it was uncovered. The single internal iliac artery that ended at the uterine artery, and the obliterated umbilical artery that ran along the wall from there | https://phillintheblank.github.io/TLH/lab/ |
+| Lab 0.2 | The lab's tissue reworked after it was first played. Under the peritoneum there is loose areolar tissue and nothing else: a web of 5,774 fine threads, with 5,244 finer fibrils drawn between them, from the peritoneum to the wall and over every vessel, every nerve and the ureter. It parts very easily: any instrument moved under the peritoneum parts what is within 5.5 mm of its tip and 3.5 mm of its jaws, and jaws opened in it clear a wider space. 16 of the threads are small vessels, which stand until they are met squarely. The peritoneum is taut: it tents round the jaws that lift it, lies back within a tenth of a second without swinging, and left alone is exactly still. What moves it is an instrument, the pulse of the arteries under it (0.5 mm) and the ureter's peristalsis (0.8 mm), and nothing else. The sidewall's peritoneum has no fat showing through it. The pararectal space's measure is now played by the scripted dissection. A correction: the blade fired with the closed jaws against the ureter divides it, where in Lab 0.1 it could miss by a millimetre | All the fat: about 550 lobules, the rules that kept them under the peritoneum and off the ureter, and the working loose of each. The 346 areolar strands of Lab 0.1. Weight: nothing in the lab's solver has any now, and the sheet no longer sags or drifts at rest. The deduction for strands torn by traction, and its line in the debrief. A lobule of fat that showed outside the peritoneum in Lab 0.1 | https://phillintheblank.github.io/TLH/lab/v0.2/ |
 | Lab 0.1 | A physics lab on its own page, beside the simulator and not part of it. One free-play model: a right retroperitoneal ureter dissection. Peritoneum that tents, is coagulated and cut, and gives way at the edge of an opening; areolar strands that part and tear, a few of them carrying a small vessel; fat that is worked loose and pushed aside; a soft ureter with peristalsis and a sheath; the iliac, uterine and obliterated umbilical vessels and two nerves under the peritoneum; blood that wells up where it is lost. A Maryland dissector. An advanced bipolar whose jaws close and open on a click with no energy and coagulate on a held click. No steps and no prompts: two goals, and a debrief of what was done | Nothing: the simulator's page is unchanged, byte for byte. Build 1.0 is now also kept at `docs/v1.0/` | https://phillintheblank.github.io/TLH/lab/v0.1/ |
 | 1.0 | The hysterectomy as it goes to colleagues for review. At the low-pressure check the right uterine pedicle oozes and the blood collects in the posterior cul-de-sac until the bleeding is controlled, to be aspirated from there: the pool's height is worked out from the volume and the shape of the pelvic floor, so a few millilitres show. The cuff's second layer is run back in single bites through both edges. In auto depth the bipolar's tip rides a bleeding point it is pointed at, and the energy stops when the bleeding does | The venous ooze at the cuff angle; in the hysterectomy, a pool that showed only past 20 mL and at the near edge of the picture, and a suction step with nothing to aspirate; the second layer's separate anterior and posterior bites; energy that carried on behind a bleeding point once it was controlled | https://phillintheblank.github.io/TLH/ |
 | 0.10 | The hysterectomy corrected by a surgeon after playing 0.9. At the ureter survey the ovary lifts anteriorly, not toward the midline, and shows more than twice as much of the ureter. Peritoneum is sealed by a short burn and then cut with the blade, like a pedicle, in fewer and larger bites: four to the posterior leaf, three to the anterior, two to each half of the fold. The uterine vessels take three burns side by side, the third between the first two, and are cut through the middle one. The dissected bladder flap is one sheet with the anterior leaf on each side. The cuff is closed in two layers, the same suture run back left to right over the closed cuff. The needle driver holds a half-circle needle two thirds back from its point, angled 45 degrees forward, and the needle's point is its working tip | Peritoneum that cut itself once the bipolar was held on it; the single wide burn on the uterine vessels; the free side edges of the bladder flap; the single-layer cuff; the small needle held square across open jaws; the ovary's lift toward the uterus | https://phillintheblank.github.io/TLH/v0.10/ |
@@ -346,7 +347,7 @@ Each build's source is kept on a `checkpoint/…` branch (`checkpoint/v0.1-hands
 `checkpoint/v0.3a-depth`, `checkpoint/v0.3b-handdepth`, `checkpoint/v0.3c-assist`, `checkpoint/v0.4-twocam`,
 `checkpoint/v0.5-myomectomy`, `checkpoint/v0.6-ectopic`, `checkpoint/v0.7-cystectomy`,
 `checkpoint/v0.8-sacrocolpopexy`, `checkpoint/v0.9-tlh-order`, `checkpoint/v0.10-tlh-corrections`, `checkpoint/v1.0-tlh-review`,
-`checkpoint/lab-0.1-ureter`, `checkpoint/lab-0.2-web`), and the built page of each earlier build stays in `docs/` under its version number
+`checkpoint/lab-0.1-ureter`, `checkpoint/lab-0.2-web`, `checkpoint/lab-0.3-anatomy`), and the built page of each earlier build stays in `docs/` under its version number
 (the lab's under `docs/lab/`). Build 1.0 is frozen at `docs/v1.0/` as well as being the page at the top of the site.
 
 Each build removes what it replaces. Size is tracked, with no target. Builds 0.5 to 0.7 each grew by a whole case
@@ -369,12 +370,13 @@ left the source 47 lines longer, and added a test of the new order. Build 0.10 c
 | 1.0 | 5,884 lines | 1,851 lines | 471 KB |
 
 The lab is counted apart, since it adds a page and takes nothing from the simulator's. Lab 0.2 took out the fat and
-put in the web, and is the longer for it:
+put in the web, and is the longer for it; Lab 0.3 added anatomy, spaces and names:
 
 | Lab | Source (`src/lab/`) | Tests | Built page |
 |---|---|---|---|
 | 0.1 | 861 lines | 264 lines | 345 KB |
-| 0.2 | 955 lines (the solver 71, the sidewall model 418, the instruments, findings and score 430, its page hooks 36) | 300 lines | 352 KB |
+| 0.2 | 955 lines | 300 lines | 352 KB |
+| 0.3 | 1,159 lines (the solver 71, the sidewall model 510, the instruments, findings and score 485, its page hooks and names 93) | 347 lines | 375 KB |
 
 Its start sheet and styles are another 47 lines of the template. Its page is the simulator's shared code less the
 other five cases and hand control, plus the lab.
@@ -416,7 +418,8 @@ two files, the rest its welcome sheet in the template) and a test of 44 lines.
 https://phillintheblank.github.io/TLH/lab/ is a page of its own for tissue simulated as tissue, where the simulator's
 guided cases draw theirs by rule. It reuses the simulator's pelvis, scope, picture, instruments, ports and mouse
 control. It is mouse only, is not linked from the simulator's start screen, and asks search engines not to list it.
-Its label is Lab 0.2. Lab 0.1 is kept at https://phillintheblank.github.io/TLH/lab/v0.1/.
+Its label is Lab 0.3. Earlier labs are kept at https://phillintheblank.github.io/TLH/lab/v0.1/ and
+https://phillintheblank.github.io/TLH/lab/v0.2/.
 
 **The model: a right retroperitoneal ureter dissection, free play.** Normal anatomy. The uterus is held to the
 patient's left and stays there. Nothing is asked for in any order and nothing prompts: the trainee opens the
@@ -428,6 +431,8 @@ peritoneum where they choose and dissects as they choose. The dissection ends wh
 | Advanced bipolar (right hand to start) | A quick click closes or opens the jaws with no energy, so it dissects bluntly. A click held 0.28 s or longer coagulates what is in the jaws, and letting go leaves them closed. Right-click or `C` fires the blade through closed jaws |
 | Suction | Hold to aspirate. Its tip also dissects bluntly |
 | Any of the three, under the peritoneum | Moved through the areolar tissue, it sweeps it away |
+| `+` and `-` | The scope goes in to 2 cm from what it looks at, where the simulator stops at about 8 cm |
+| `L` | Names every structure and space: grey while it is still under peritoneum or web, white once uncovered, a space in teal |
 
 Moving, depth, switching hands, the number keys, the scope and labels are as in the simulator. Auto depth, guidance
 and the uterine manipulator are not in the lab.
@@ -438,23 +443,36 @@ and the uterine manipulator are not in the lab.
   down the medial leaf, and laterally over the external iliac vessels to the psoas and the brim. It is taut. Every
   place on it is tethered where it lies, as the tissue under it holds it to the wall, and motion is damped as it is
   in wet tissue. Lifted 1.2 cm in the Maryland it tents: 3 cm away it has lifted 1 mm. Let go, it lies back flat
-  within a tenth of a second and does not swing past. Round the jaws that hold it and along the edge of an opening
-  the tether is six times weaker, so a fold lifts and an edge can be drawn aside. It pulls out of the jaws when it
-  is stretched to 2.6 times its length: about 1.8 cm of lift beside its lateral attachment, 3 cm in the open sheet,
-  1.8 cm for an edge drawn medially. Coagulated it turns tan and dry. The blade cuts out what the closed jaws hold:
-  coagulated first it parts dry, cut cold its edge bleeds. Closing jaws gather a strip of it under their line, so a
-  bite is about a centimetre and a half.
+  within a tenth of a second and does not swing past. It resists stretch and not compression: pressed together along
+  its own surface it gathers, where a sheet that could not shorten buckles into ripples. Round the jaws that hold it
+  and along the edge of an opening the tether is six times weaker, so a fold lifts and an edge can be drawn aside.
+  It pulls out of the jaws when it is stretched to 2.6 times its length. Coagulated it turns tan and dry. The blade
+  cuts out what the closed jaws hold: coagulated first it parts dry; cut cold its edge oozes a little (6 mL a
+  minute for up to 20 s), which is counted and not penalized. Closing jaws gather a strip of it under their line, so
+  a bite is about a centimetre and a half.
+- **It stretches and does not tear.** An instrument does not pass through unopened peritoneum, tip or shaft: it goes
+  in through the opening. Within two triangles of an opening the edge gives: a shaft pushed against it there
+  stretches it aside, about a centimetre, and it lies back when the shaft is taken out. Further than that from the
+  opening the peritoneum stops the instrument. An opening is made longer by cutting it longer.
+- **The adnexa move.** The ridge of the sheet from the ovary to the brim carries the ovary and the IP ligament, and
+  is held no more firmly than the rest. While the Maryland holds peritoneum within 4 cm of it, the ridge goes the way
+  the jaws go: fully where it is nearest the fold, less over about 3 cm to either side, up to 2.4 cm at the ovary's
+  lateral pole and nothing at the uterus or the brim, and no further than the peritoneum still attached lets it. The
+  medial edge of a short opening drawn 2 cm medially takes the IP ligament 12 mm with it. The simulator's ovary,
+  tube, utero-ovarian ligament and mesosalpinx follow the ridge.
+- **The round ligament** is the lab's own from 45% of its length to the internal ring, where the sheet's first row
+  is pinned along it. Held in the bipolar for about a second it is coagulated; the blade through closed jaws divides
+  it there. Its stumps draw apart, the peritoneum along it hangs free from them, and the opening in the peritoneum
+  runs through the cut. Divided without coagulating it bleeds 40 mL a minute for up to 30 s.
 - **What moves it.** Left alone, the peritoneum does not move. Three things move it: an instrument; each beat of
   the external iliac, internal iliac and uterine arteries, which lifts the peritoneum lying over them by up to
   0.5 mm; and each wave of peristalsis, which lifts the leaf over the ureter by up to 0.8 mm as it passes. Between
   beats, with no wave on the ureter, every place on it is exactly where it rests. Nothing in the lab has weight.
-- **An instrument does not pass through unopened peritoneum**, tip or shaft: it goes in through the opening, and the
-  opening has to be long enough for the shaft to work in. Within two triangles of an opening the edge gives way: a tip
-  or shaft pushed through it there tears the opening wider, which is counted (blunt widening), not penalized.
-- **Areolar tissue** is all there is between the peritoneum and the wall: there is no fat. It is a web of 5,774 fine
+- **Areolar tissue** is all there is between the peritoneum and the wall: there is no fat. It is a web of 7,487 fine
   threads: a light node a few millimetres under every other place on the peritoneum, which goes where that place
   goes; a second, deeper, where there is room; a thread on to the wall; threads from each node to those beside it;
-  and a net over each vessel, each nerve and the ureter. Between the threads 5,244 finer fibrils are drawn. It is
+  a net over each vessel, each nerve and the ureter; and threads across each of the spaces below. Between the threads
+  7,904 finer fibrils are drawn. It is
   seen through an opening, not through the peritoneum. It parts very easily:
   - any instrument's tip moved under the peritoneum parts every thread within 5.5 mm of it, and every thread within
     3.5 mm of the line of the jaws behind it;
@@ -468,9 +486,27 @@ and the uterine manipulator are not in the lab.
 - **Ureter:** a soft tube of 60 particles with peristalsis, tied to the inner face of the medial leaf from the brim
   down, then across the floor and under the uterine artery. It shows faintly through the peritoneum at the brim only. It is
   left on its leaf, which brings its blood supply: the dissection is on its other side.
-- **Vessels and nerves on the wall:** the external iliac artery and vein (the simulator's own), the internal iliac
-  artery and vein, the uterine artery from its origin, the obliterated umbilical artery, the obturator and
-  genitofemoral nerves, on a bed of psoas and obturator fascia. The ovarian vessels are in the IP ligament.
+- **Vessels and nerves on the wall,** on a bed of psoas and obturator internus:
+  - the external iliac artery and vein (the simulator's own), the vein behind and below the artery, and the
+    genitofemoral nerve on the psoas beside the artery;
+  - the internal iliac artery from the brim, which divides after about 5 cm into a posterior division that turns
+    back toward the greater sciatic foramen and an anterior division that goes on down the wall, with the internal
+    iliac vein behind it;
+  - from the anterior division, in order: the umbilical artery, the obturator artery, the uterine artery; it leaves
+    the pelvis below them;
+  - the umbilical artery, forward and down along the wall, open as far as two superior vesical arteries that cross
+    to the bladder; just beyond them the obliterated umbilical artery (medial umbilical ligament), a pale cord with
+    no pulse that runs on beside the bladder a centimetre off the wall and climbs the anterior wall as the medial
+    umbilical fold to the umbilicus, where the left fold and the median fold (urachus) meet it;
+  - the obturator nerve on the wall under the external iliac vein, with the obturator artery and then the vein
+    under it, to the obturator canal;
+  - the uterine artery from the anterior division, over the ureter. The ovarian vessels are in the IP ligament.
+- **Spaces.** The web is laid across three of them and how much of each has been swept open is measured: the
+  lateral pararectal space (Latzko) between the ureter and the internal iliac artery; the lateral paravesical space
+  between the obliterated umbilical artery and the wall, where the obturator nerve and vessels lie; and the medial
+  paravesical space between that cord and the bladder. The uterine artery lies between the pararectal and the
+  paravesical. The medial pararectal space (Okabayashi), between the ureter and its leaf, is named and not opened:
+  here the ureter is left on its leaf.
 - **Blood** lost under the peritoneum wells up where it is lost and hides what it covers until it is aspirated.
 - **Heat:** seconds of energy with the jaws within 5 mm of the ureter are counted. Within 2 mm, for about a third of
   a second, is a thermal injury.
@@ -478,7 +514,7 @@ and the uterine manipulator are not in the lab.
 **What is asked, and how it is judged**
 
 1. *The retroperitoneum entered in the right place with nothing injured.* The first opening is lateral to the IP
-   ligament and at least 1.25 cm from the external iliac vessels, and the ureter, the IP ligament and the iliac
+   ligament and at least 1.25 cm from the external iliac vessels, or is made at the round ligament, and the ureter, the IP ligament and the iliac
    vessels are uninjured up to 20 s after it. The debrief also says whether the first bite was tented (the
    peritoneum lifted at least 4.5 mm where it was cut) and coagulated.
 2. *The ureter followed to the uterine artery, and the artery uncovered.* A place on a structure is uncovered when
@@ -488,8 +524,9 @@ and the uterine manipulator are not in the lab.
    pelvis. One sweep of closed jaws 6 mm off the ureter uncovers it as it goes. The goal needs an unbroken 6 cm of
    ureter ending at the artery (a tag of web under a centimetre does not break it) and three of the first seven
    places on the artery out from the crossing.
-3. *The pararectal space* between the ureter and the internal iliac artery is measured and reported, not required:
-   the length of ureter along which three quarters of the web between the two has been parted.
+3. *The spaces* are measured and reported, not required: for the lateral pararectal space, the length of ureter
+   along which three quarters of the web between it and the internal iliac artery has been parted; for each
+   paravesical space, the same along the obliterated umbilical artery.
 
 The debrief gives the goals, what was uncovered, a score and its deductions:
 
@@ -498,13 +535,15 @@ The debrief gives the goals, what was uncovered, a score and its deductions:
 | Retroperitoneum not opened | 30 |
 | Opened elsewhere (on or medial to the IP ligament, over the iliac vessels, on the round ligament, beside the adnexa) | 12 |
 | First bite not tented | 6 |
-| Peritoneum cut uncoagulated | 3 each, to 9 |
+| Round ligament divided without coagulating it | 3 |
 | Ureter divided / burned / crushed in the jaws / pulled off its leaf | 40 / 30 / 12 / 12 |
 | Ureteric sheath stripped over 1 cm / over 2.5 cm | 5 / 10 |
 | Energy within 5 mm of the ureter for 2 s or more, without a burn | 4 |
 | IP ligament divided / coagulated | 20 / 15 |
 | External or internal iliac artery or vein injured | 35 each |
 | Uterine artery divided / coagulated | 15 / 8 |
+| Umbilical artery / obturator artery / obturator vein injured | 12 each |
+| Superior vesical artery injured | 5 |
 | Obturator nerve / genitofemoral nerve / obliterated umbilical artery | 12 / 6 / 5 |
 | Blood loss over 50 mL / over 150 mL | 5 / 10 |
 | Peritoneum pulled out of the jaws twice or more | 2 |
@@ -519,16 +558,26 @@ heavy damping and no gravity: left alone, the tissue is at rest exactly. `06y-la
 ovary and wall and draws it. `06zz-lab.js` is the instruments, what is found and injured, and the score: the lab is
 one more case to the simulator's step engine, with a single step that never completes and that takes the mouse
 button, the blade and the suction for itself. `08-lab.js` is its read-outs. The tissue physics takes about 3 ms a
-frame at 60 frames a second in the test machine's browser (3,658 particles, 12,383 constraints). The lab keeps its
+frame at 60 frames a second in the test machine's browser (4,370 particles, 14,096 constraints). The lab keeps its
 settings under its own names in the browser's storage, so it and the simulator do not change each other's.
 
-### Limits of Lab 0.2
+### Limits of Lab 0.3
 
 - It has been played by script only. How it feels in the hand, and its frame rate on a real graphics card, are not
   yet known.
 - **How the web looks** has been seen only in the test machine's software renderer. Its threads are lines one pixel
   wide, so how fine and how bright they are depends on the screen. It is threads only: there are no films between
   them and no gas bubbles in it.
+- **The adnexa are carried by rule.** The ridge follows the jaws that hold peritoneum beside it; it is not pushed by
+  the fold itself. The ovary moves less than the ligament: 2 mm where the ligament moves 12.
+- **The round ligament's division does not open the anterior leaf of the broad ligament,** which is the simulator's
+  and is not part of the lab's sheet. The roof comes free along the ligament; the paravesical space is reached under it
+  from behind. In the scripted dissection the right hand reaches 28 of its 33 places.
+- **The pelvis is the simulator's, and is deeper than a real one,** so lengths along it run long: the internal iliac
+  trunk is about 5 cm here. The gap between the bladder and the wall is 1.5 to 2.5 cm, so each paravesical space is
+  under a centimetre and a half wide.
+- **Names** are placed at one fixed place on each structure and are shown through the peritoneum and through the
+  other structures under it, so a name can point at something that another lies in front of.
 - **Seeing the ureter.** It lies on the face of the medial leaf that is turned away from the scope. With labels on,
   its name is put on the leaf over it once it is uncovered, and the debrief and the panel report how much of it is
   uncovered, but the picture does not yet show it plainly from the scope's place: it is seen through the peritoneum,
@@ -539,9 +588,10 @@ settings under its own names in the browser's storage, so it and the simulator d
   and it does not reach the brim. The left hand reaches the brim and the medial leaf from outside.
 - The uterus does not move: there is no manipulator in the lab, and the sheet is laid on the ligaments as they lie
   with the uterus to the left.
-- The peritoneum is cut by triangles about 4 mm across, so an edge is stepped. It has no thickness and does not
-  wrinkle finely. Its tautness is a tether to where it lies, not tension in the sheet: an opening gapes only when an
-  edge is drawn on, and the sheet holds as firmly where the web under it has been swept away as where it has not.
+- The peritoneum is cut by triangles about 4 mm across, so an edge is stepped, most of all where the round ligament
+  is divided. It has no thickness and does not wrinkle finely. Its tautness is a tether to where it lies, not tension
+  in the sheet: an opening gapes only when an edge is drawn on, and the sheet holds as firmly where the web under it
+  has been swept away as where it has not. It never tears, however far it is stretched.
 - **Sweeping is by rule, not by force.** Every thread within reach of a moving tip parts, however slowly the tip
   moves. A thread that parts is gone: it does not hang, draw back or cling to the instrument. Web under a fold of
   peritoneum that is held in the jaws, or that peritoneum has been drawn across, is not drawn while that is so.
@@ -709,7 +759,7 @@ settings under its own names in the browser's storage, so it and the simulator d
 18. Wristed suturing
 
 19. A physics lab: free dissection on tissue that moves, starting with a right retroperitoneal ureter dissection
-    (Lab 0.1 and 0.2, done). What works there moves into the guided cases later, one structure at a time.
+    (Lab 0.1 to 0.3, done). What works there moves into the guided cases later, one structure at a time.
 
 If two webcams do not give steady enough depth with real hands, the fallback is a sensor made for hand tracking.
 
@@ -730,11 +780,11 @@ The review site's page is built from the same files, less the other five cases (
 only in this site's page and what is between `<!--@review-->` markers only in the review site's.
 The lab's page (`docs/lab/`) is built the same way: the same files less the other five cases and hand control, plus
 the files in `src/lab/`, with what is between `<!--@lab-->` markers in the template. An earlier lab is kept as its
-built page under `docs/lab/` (`docs/lab/v0.1/`), which the build does not touch.
+built page under `docs/lab/` (`docs/lab/v0.1/`, `docs/lab/v0.2/`), which the build does not touch.
 `test/check.mjs` checks all three pages' scripts, that the review page and the lab page have every element their
 scripts look up and no hand-control code, that the simulator's page and the review site's page still come out of
-the build exactly as Build 1.0 and Review 1.0 (the lab was added without changing either), and that Lab 0.1 is kept
-as it was published.
+the build exactly as Build 1.0 and Review 1.0 (the lab was added without changing either), and that Labs 0.1 and
+0.2 are kept as they were published.
 
 Tests drive a headless Chrome through Playwright (`test/shot.mjs <screenshot> <script>`):
 
@@ -807,7 +857,12 @@ Tests drive a headless Chrome through Playwright (`test/shot.mjs <screenshot> <s
 - `test/steps/lab.mjs` checks the lab (run the lab's tests with `PAGE=lab/`): its page; that with the pulse and
   peristalsis stopped nothing moves at all, how far each of them moves the peritoneum and that it moves nowhere
   else, and the time the physics takes; the web at rest, with no node of it outside the peritoneum; how far a tent
-  spreads, how soon it lies back and that it does not swing; the bipolar's click, second click and held click
+  spreads, how soon it lies back and that it does not swing; the anatomy (the two divisions, the order of the
+  anterior division's branches, the superior vesical arteries and the cord, the fold to the umbilicus, nerve over
+  artery over vein at the obturator canal, the three spaces); that every structure and space has a name, which names
+  show with the peritoneum unopened, and that none lies on another; how far the scope goes in; a shaft against the
+  edge of an opening, which stretches and loses no triangle; the medial edge drawn medially and what comes with it;
+  the round ligament divided coagulated and divided cold; the bipolar's click, second click and held click
   through real mouse events; an instrument stopped by unopened peritoneum; the first opening tented, coagulated and
   cut, cut cold, taken without tenting, and made medial to the IP ligament; energy over the ureter and on the IP
   ligament; through an opening, energy on the external iliac vessels and on the ureter, the Maryland closed on the
@@ -816,9 +871,10 @@ Tests drive a headless Chrome through Playwright (`test/shot.mjs <screenshot> <s
   tip, and one coagulated first; a small vessel bleeding under the peritoneum, the blood hiding what is beside it,
   bipolar and suction; peritoneum pulled out of the jaws; the debrief, and the sidewall put back on starting again.
 - `test/steps/labflow.mjs` plays the whole dissection as it is meant to go and reads the debrief: tent, coagulate
-  and cut lateral to the IP ligament, the medial edge drawn medially, the opening carried down, the closed bipolar in
-  through it and swept down the side of the ureter to the uterine artery, the jaws opened once, a sweep along the
-  artery, suction. It fails unless both goals are reached with a score of 85 or more. `SHOTS=1` writes pictures.
+  and cut lateral to the IP ligament, the medial edge drawn medially, the opening carried down a bite at a time (one
+  of them cold), the round ligament coagulated and divided, the closed bipolar in through the opening and swept down
+  the side of the ureter to the uterine artery, the jaws opened once, a sweep along the artery and through the
+  paravesical space, suction. It fails unless both goals are reached with a score of 85 or more. `SHOTS=1` writes pictures.
 - `test/steps/labdriver.mjs` is the scripted pair of hands those two use. It hands travel across the picture and
   along the shaft to the simulator's own free-depth drive, so the working-space limits, tissue contact and the rule
   about unopened peritoneum apply to it as to a person. It aims an instrument at its target, then slides it in.

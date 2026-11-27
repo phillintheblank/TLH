@@ -7,10 +7,10 @@
 
 // The uterus is held to the patient's left, and stays there: the sheet below is laid out on the round ligament and
 // the ovary as they lie in that position.
-const LB = { POSE: { yaw: -0.5, pitch: 0.17, push: 0 }, NU: 34, NX: 10, NR: 22, NP: 14, IPU: 0.62, URW: 0.56, TK: 40, EDGE: 6 };
+const LB = { POSE: { yaw: -0.5, pitch: 0.17, push: 0 }, NU: 34, NX: 10, NR: 22, NP: 14, IPU: 0.62, URW: 0.56, TK: 40, EDGE: 6, UOU: 0.2, RLU: 0.45 }; // UOU: how far along the ridge the utero-ovarian ligament is on the uterus. RLU: where along the round ligament the sheet begins
 LB.NC = LB.NU + LB.NX + 1; LB.NW = LB.NR + LB.NP + 1; LB.NS = LB.NC * LB.NW; LB.NQ = (LB.NC - 1) * (LB.NW - 1);
 const LG = new SideGeom(1); LG.compute(poseMat(LB.POSE, new THREE.Matrix4()), null, null);
-const PX = new XPBD(4600, 15000);
+const PX = new XPBD(5200, 17500);
 const _l1 = new V3(), _l2 = new V3(), _l3 = new V3(), _l4 = new V3(), _l5 = new V3();
 // where the external iliac artery and vein lie round the wall, in degrees, at a given depth of the pelvis
 const lbTh = (z, a) => { for (let i = 0; i < a.length - 1; i++) if (z >= a[i + 1][0] || i === a.length - 2) return lerp(a[i][1], a[i + 1][1], clamp((a[i][0] - z) / (a[i][0] - a[i + 1][0]), -0.3, 1.3)); };
@@ -40,18 +40,26 @@ function lbRest(i, j, out) {
 const lbId = (i, j) => j * LB.NC + i;
 // The peritoneum is taut. Every place on it is tethered where it lies (TK), as the areolar tissue under it holds it to
 // the wall: lifted in a pair of jaws it tents over a couple of centimetres and no further, and let go it lies back flat.
+// What joins one place on it to the next resists stretch and not compression. A membrane does not push: pressed
+// together along its own surface it gathers, where a sheet that could not shorten would buckle into ripples.
 (function () { // the sheet: particles, the constraints that hold it together, and what holds its edges
   const { NC, NW, NR, NU } = LB; LB.pin = new Uint8Array(LB.NS);
   for (let j = 0; j < NW; j++) for (let i = 0; i < NC; i++) {
     lbRest(i, j, _l3);
-    const pin = i === 0 || i === NC - 1 || j === 0 || j === NW - 1 || (j === NR && lbU(i, j) < LB.IPU); // the ovary and its ligament do not move
+    const pin = i === 0 || i === NC - 1 || j === 0 || j === NW - 1 || (j === NR && lbU(i, j) < LB.UOU); // its edges, the round ligament until that is divided, and the utero-ovarian ligament at the uterus
     PX.add(_l3.x, _l3.y, _l3.z, pin ? 0 : 1, LB.TK); LB.pin[lbId(i, j)] = pin ? 1 : 0;
   }
+  // The adnexa go with the peritoneum they are in. The ridge of the sheet from the ovary to the brim (the ovary, then the
+  // infundibulopelvic ligament) is held where it lies as the rest of the sheet is, no more, and can be drawn up to `reach`
+  // cm from there: most at the ovary's lateral pole, nothing at the uterus or at the brim. What the simulator draws there follows (lbAdnexa).
+  LB.pin0 = LB.pin.slice(); LB.free = new Uint8Array(LB.NS); LB.mob = new Uint8Array(LB.NS); LB.ridge = new Uint8Array(LB.NS); LB.reach = new Float32Array(NC);
+  let i0 = 0; while (LB.pin[lbId(i0, NR)]) i0++; LB.rg0 = i0;
+  for (let i = i0; i < NC - 1; i++) { LB.ridge[lbId(i, NR)] = 1; LB.reach[i] = 2.4 * Math.pow(Math.sin(Math.PI * Math.pow((i - i0 + 1) / (NC - i0), 0.7)), 0.8); }
   LB.eh = new Int32Array(NC * NW).fill(-1); LB.ev = new Int32Array(NC * NW).fill(-1); LB.qd = new Int32Array(LB.NQ * 2);
   for (let j = 0; j < NW; j++) for (let i = 0; i < NC; i++) {
-    if (i < NC - 1) LB.eh[lbId(i, j)] = PX.link(lbId(i, j), lbId(i + 1, j), 0.02);
-    if (j < NW - 1) LB.ev[lbId(i, j)] = PX.link(lbId(i, j), lbId(i, j + 1), 0.02);
-    if (i < NC - 1 && j < NW - 1) { const q = j * (NC - 1) + i; LB.qd[q * 2] = PX.link(lbId(i, j), lbId(i + 1, j + 1), 0.2); LB.qd[q * 2 + 1] = PX.link(lbId(i + 1, j), lbId(i, j + 1), 0.2); }
+    if (i < NC - 1) LB.eh[lbId(i, j)] = PX.link(lbId(i, j), lbId(i + 1, j), 0.02, true);
+    if (j < NW - 1) LB.ev[lbId(i, j)] = PX.link(lbId(i, j), lbId(i, j + 1), 0.02, true);
+    if (i < NC - 1 && j < NW - 1) { const q = j * (NC - 1) + i; LB.qd[q * 2] = PX.link(lbId(i, j), lbId(i + 1, j + 1), 0.2, true); LB.qd[q * 2 + 1] = PX.link(lbId(i + 1, j), lbId(i, j + 1), 0.2, true); }
   }
   // which way is in: toward the wall and the floor, away from the scope
   LB.nin = new Float32Array(LB.NS * 3);
@@ -109,18 +117,20 @@ function lbReindex() {
   for (let k = 0; k < NT; k++) if (dead[k]) for (const v of lbTri(k)) _lv1[v] = 1;
   for (let k = 0; k < NT; k++) if (!dead[k]) { const c = lbTri(k); if (_lv1[c[0]] || _lv1[c[1]] || _lv1[c[2]]) { near[k] = 1; _lv2[c[0]] = _lv2[c[1]] = _lv2[c[2]] = 1; } }
   for (let k = 0; k < NT; k++) if (!dead[k] && !near[k]) { const c = lbTri(k); if (_lv2[c[0]] || _lv2[c[1]] || _lv2[c[2]]) near[k] = 2; }
-  // the edge of an opening is free of what held it to the wall and can be drawn aside, and what is lifted in a pair of jaws comes off the wall round them
+  // the edge of an opening is free of what held it to the wall and can be drawn aside, what is lifted in a pair of jaws comes
+  // off the wall round them, and the peritoneum along a divided round ligament hangs from its stumps
   _lv1.fill(0); for (let k = 0; k < NT; k++) if (dead[k] || near[k]) { const c = lbTri(k); _lv1[c[0]] = _lv1[c[1]] = _lv1[c[2]] = 1; }
-  for (let i = 0; i < LB.NS; i++) PX.tk[i] = _lv1[i] || LB.heldV[i] ? LB.TK * LB.EDGE : LB.TK;
+  for (let i = 0; i < LB.NS; i++) PX.tk[i] = _lv1[i] || LB.heldV[i] || LB.free[i] ? LB.TK * LB.EDGE : LB.TK;
+  LB.mob.set(_lv1);
   for (let k = 0; k < NT; k++) if (!dead[k]) { idx.set(LB.fullIdx.subarray(k * 3, k * 3 + 3), n * 3); n++; const c = lbTri(k); if (!near[k] && !LB.heldV[c[0]] && !LB.heldV[c[1]] && !LB.heldV[c[2]]) { pidx.set(LB.fullIdx.subarray(k * 3, k * 3 + 3), m * 3); m++; } }
   LB.geo.setDrawRange(0, n * 3); LB.geo.index.needsUpdate = true; LB.pick.geometry.setDrawRange(0, m * 3); LB.pick.geometry.index.needsUpdate = true;
   const G = (i, j, k) => i < 0 || j < 0 || i >= NC - 1 || j >= NW - 1 || dead[(j * (NC - 1) + i) * 2 + k]; // triangle k of square (i, j) is gone, or was never there
   for (let j = 0; j < NW; j++) for (let i = 0; i < NC; i++) {
     const h = LB.eh[lbId(i, j)], v = LB.ev[lbId(i, j)];
-    if (h >= 0) PX.cf[h] = G(i, j, 0) && G(i, j - 1, 1) ? 0 : 1;
-    if (v >= 0) PX.cf[v] = G(i, j, 0) && G(i - 1, j, 1) ? 0 : 1;
+    if (h >= 0) PX.cf[h] = G(i, j, 0) && G(i, j - 1, 1) ? 2 : 3;
+    if (v >= 0) PX.cf[v] = G(i, j, 0) && G(i - 1, j, 1) ? 2 : 3;
   }
-  for (let q = 0; q < LB.NQ; q++) { PX.cf[LB.qd[q * 2]] = dead[q * 2] || dead[q * 2 + 1] ? 0 : 1; PX.cf[LB.qd[q * 2 + 1]] = dead[q * 2] && dead[q * 2 + 1] ? 0 : 1; }
+  for (let q = 0; q < LB.NQ; q++) { PX.cf[LB.qd[q * 2]] = dead[q * 2] || dead[q * 2 + 1] ? 2 : 3; PX.cf[LB.qd[q * 2 + 1]] = dead[q * 2] && dead[q * 2 + 1] ? 2 : 3; }
   for (let i = 0; i < LB.NS; i++) LB.alive[i] = lbAlive(i) ? 1 : 0;
   lbWebTrim();
 }
@@ -162,15 +172,38 @@ const LV = {}; // each: where it runs (arr), how thick (r), what it is called, a
     reg(t.mesh, ent, 'R', { piece: key }); scene.add(t.mesh);
     LV[key] = { key, name, arr, r, col, tube: t, pulseK: pulseK || 0, heat: 0 };
   };
-  const W = (th, z, inset) => wallPt(th, z, inset, 1);
-  mk('iia', 'Internal iliac artery', 'iliac', [W(thA(10.3), 10.3, 0), W(-24, 8, 0), W(-29, 5, 0), W(-31, 2, 0.02), W(-28, -0.6, 0.1), SIDEK[1].uaO], 0.34, COL.iliacA, 33, 0.04);
+  const W = (th, z, inset) => wallPt(th, z, inset, 1), K = SIDEK[1];
+  // The internal iliac artery leaves the common iliac at the brim, runs down the wall a few centimetres and divides. Its
+  // posterior division turns back toward the greater sciatic foramen. Its anterior division goes on down the wall, gives
+  // the umbilical, obturator and uterine arteries, and leaves the pelvis below as the internal pudendal and inferior gluteal.
+  const DV = W(-28.5, 5.6, 0), UO = W(-30.8, 2.5, 0.04), OB = W(-5, -2.9, 0.7);
+  mk('iia', 'Internal iliac artery', 'iliac', [W(thA(10.3), 10.3, 0), W(-24, 8.2, 0), DV], 0.34, COL.iliacA, 17, 0.04);
+  mk('iiaP', 'Posterior division of the internal iliac artery', 'iliac', [DV, W(-37, 4.7, -0.12), W(-47, 3.6, -0.3), W(-56, 2.4, -0.5)], 0.27, COL.iliacA, 13, 0.03);
+  mk('iiaA', 'Anterior division of the internal iliac artery', 'iliac', [DV, W(-31, 3.2, 0.02), W(-30.5, 1, 0.05), W(-27, -1, 0.1), K.uaO, W(-27, -4, 0.08), W(-37, -5.3, -0.1)], 0.29, COL.iliacA, 33, 0.04);
   mk('iiv', 'Internal iliac vein', 'iliac', [W(-30, 10.3, -0.1), W(-35, 7, -0.1), W(-38, 4, -0.08), W(-38.5, 1.5, -0.05), W(-37, -1, 0)], 0.46, COL.iliacV, 25);
-  mk('oua', 'Obliterated umbilical artery', 'vessel', [SIDEK[1].uaO, W(-10, -4.2, 0.2), W(4, -5.4, 0.2), W(16, -6.4, 0.15)], 0.19, C(206, 150, 138), 17, 0.02);
+  // The umbilical artery is the first branch of the anterior division. It runs forward and down along the wall, open as
+  // far as its superior vesical branches to the bladder. Just beyond them it has no lumen: the obliterated umbilical
+  // artery (medial umbilical ligament), a fibrous cord that goes on forward beside the bladder, a centimetre off the
+  // wall, with the paravesical space to either side of it, to the anterior wall, which it climbs as the medial umbilical fold.
+  mk('umb', 'Umbilical artery', 'vessel', [UO, W(-24.5, 1.3, 0.2), W(-17, -0.4, 0.35), W(-10.5, -1.8, 0.5), OB], 0.19, COL.art, 21, 0.05);
+  mk('sva1', 'Superior vesical artery', 'vessel', [sampleArr(LV.umb.arr, 0.72, new V3()), V(4.75, -0.9, -2.9), V(3.95, -0.1, -3.6), V(3.05, 0.5, -4)], 0.09, COL.art, 13, 0.05);
+  mk('sva2', 'Superior vesical artery', 'vessel', [sampleArr(LV.umb.arr, 0.93, new V3()), V(4.6, -0.7, -3.7), V(4, 0.3, -4.4), V(3.3, 1.1, -4.9)], 0.09, COL.art, 13, 0.05);
+  mk('oua', 'Obliterated umbilical artery', 'vessel', [OB, W(3, -3.7, 0.95), W(12, -4.5, 1), W(20, -4.9, 0.6), W(26, -5.1, 0.25)], 0.15, C(214, 196, 176), 21);
+  // the obturator nerve on the wall under the external iliac vein, and the obturator artery and vein under the nerve, to the obturator canal
   mk('obn', 'Obturator nerve', 'nerve', [W(-27, 7.5, -0.05), W(-20, 5, 0.02), W(-9, 2.5, 0.06), W(3, -0.5, 0.1), W(14, -3.8, 0.1)], 0.11, C(246, 236, 196), 25);
+  mk('oba', 'Obturator artery', 'vessel', [W(-29, 0.2, 0.06), W(-19, -0.9, 0.1), W(-8, -2, 0.12), W(4, -3.2, 0.12), W(15, -4.3, 0.1)], 0.12, COL.art, 21, 0.04);
+  mk('obv', 'Obturator vein', 'vessel', [W(-36, -0.9, 0), W(-21, -1.7, 0.06), W(-8, -2.7, 0.08), W(4, -3.8, 0.1), W(15, -4.8, 0.1)], 0.15, COL.vein, 21);
   mk('gfn', 'Genitofemoral nerve', 'nerve', [W(thA(9.5) + 7, 9.5, 0.04), W(thA(6) + 7, 6, 0.04), W(thA(2.5) + 7, 2.5, 0.04), W(thA(-1) + 7, -1, 0.04)], 0.06, C(244, 232, 196), 21);
   LV.eia = { key: 'eia', name: 'External iliac artery', arr: AN.iliacR.aA, r: 0.47, heat: 0 };
   LV.eiv = { key: 'eiv', name: 'External iliac vein', arr: AN.iliacR.aV, r: 0.55, heat: 0 };
-  LV.ua = { key: 'ua', name: 'Uterine artery', arr: LG.ua.slice(15), r: 0.17, heat: 0 }; // from where it crosses the ureter out to where it leaves the internal iliac
+  LV.ua = { key: 'ua', name: 'Uterine artery', arr: LG.ua.slice(15), r: 0.17, heat: 0 }; // from where it crosses the ureter out to where it leaves the anterior division
+  LB.iiaAll = LV.iia.arr.concat(LV.iiaA.arr.slice(1)); // the trunk and its anterior division as one course
+  // The medial umbilical folds and, between them, the median fold over the urachus: peritoneum raised by the cords as
+  // they climb the anterior wall to the umbilicus. They are landmarks: nothing is dissected there.
+  LB.folds = [];
+  const fold = (name, pts, r) => { const arr = spline(pts, vecArr(41)), tb = new Tube(41, 10, MAT.perit, 1, 8); tb.set(arr, 0, 1, u => r * sstep(0, 0.06, u) * (1 - 0.4 * sstep(0.8, 1, u)), (u, c) => { c[0] = 1; c[1] = 1.06; c[2] = 0.96; }); scene.add(tb.mesh); LB.folds.push({ name, arr }); };
+  for (const s of [1, -1]) fold(s > 0 ? 'Right medial umbilical fold' : 'Left medial umbilical fold', [[26, -5.1, 0.22], [38, -5.6, 0.15], [50, -5.5, 0.1], [59, -4.3, 0.06], [66, -1.5, 0.05], [73, 3, 0.05], [80, 8.5, 0.05], [86, 14, 0.05], [89.5, 17.5, 0.05]].map(a => wallPt(a[0], a[1], a[2], s)), 0.2);
+  fold('Median umbilical fold (urachus)', [V(0, 2.3, -4.3), wallPt(90, -3.6, 0.05, 1), wallPt(90, 0, 0.05, 1), wallPt(90, 5, 0.05, 1), wallPt(90, 11, 0.05, 1), wallPt(90, 17.5, 0.05, 1)], 0.17);
 })();
 
 // ---- the ureter: a soft tube on the inner face of the medial leaf, then across the floor and under the uterine artery ----
@@ -207,6 +240,31 @@ const LU = { r: 0.2 };
   LU.strip = new Float32Array(LU.n); LU.heat = new Float32Array(LU.n); LU.state = new Uint8Array(LU.n); // state: 1 burned, 2 crushed, 4 cut
 })();
 
+// ---- the round ligament ----
+// Drawn by the lab, not by the simulator, so that it can be divided where the trainee chooses. Medial to where the
+// sheet begins it lies where the simulator has it. From there to the internal ring it runs through the first row of
+// the sheet, which is pinned along it until it is divided. Divided, each stump is a slack cord with its peritoneum on it.
+LB.rl = { uc: 0.7, cut: false, gk: 0, seals: [], act: null, dry: true }; // as the simulator keeps a cord: where it is cut, how far its ends have drawn apart, where it is sealed
+LB.keys = { in: false, out: false }; LB.zoom = 0; // the scope: see labUpdate
+LB.rlArr = vecArr(41); LB.rdA = new Tube(26, 10, MAT.cord, 1, 3); LB.rdB = new Tube(26, 10, MAT.cord, 1, 3);
+for (const tb of [LB.rdA, LB.rdB]) { reg(tb.mesh, 'round', 'R'); scene.add(tb.mesh); }
+function lbRound() { // where it runs now
+  const RA = LB.rlArr, n = RA.length - 1;
+  for (let k = 0; k <= n; k++) { const u = k / n; if (u <= LB.RLU) sampleArr(LG.round, u, RA[k]); else { const f = (u - LB.RLU) / (1 - LB.RLU) * LB.NU, i = Math.min(LB.NU - 1, f | 0); PX.get(lbId(i, 0), RA[k]).lerp(PX.get(lbId(i + 1, 0), _l1), f - i); } }
+  return RA;
+}
+// ---- the adnexa ----
+// The simulator draws the ovary, the tube, their ligaments and the mesosalpinx. It moves them by `pulls`: so much, at
+// such a place along a curve. These say, each frame, how far the sheet's ridge has gone from where it lay.
+LB.pulls = [0.1, 0.3, 0.5, 0.7, 0.9].map(u => ({ s: 1, curve: 'ridge', u, off: new V3(), nat: new V3() })).concat([0.6, 0.8, 1].map(u => ({ s: 1, curve: 'tube', u, off: new V3(), nat: new V3() })));
+function lbAdnexa() {
+  const P = LB.pulls, x = PX.x, r = LB.r0;
+  const d = u => { const f = clamp((u - 0.1) / 0.9, 0, 1) * LB.NU, i = Math.min(LB.NU - 1, f | 0), a = lbId(i, LB.NR) * 3, b = a + 3, g = f - i; return _l1.set(lerp(x[a] - r[a], x[b] - r[b], g), lerp(x[a + 1] - r[a + 1], x[b + 1] - r[b + 1], g), lerp(x[a + 2] - r[a + 2], x[b + 2] - r[b + 2], g)); };
+  for (let k = 0; k < 5; k++) P[k].off.copy(d(P[k].u)).multiplyScalar(1 / 1.77); // the five overlap: together they follow the ridge
+  d(0.5); for (let k = 5; k < 8; k++) P[k].off.copy(_l1).multiplyScalar(0.62); // the tube's outer half goes with the ovary
+  if (S.pulls.indexOf(P[0]) < 0) S.pulls.push(...P);
+}
+
 // ---- areolar tissue between the peritoneum and the wall: a fine web ----
 // Loose areolar tissue and nothing else fills the space: a web of fine threads from the peritoneum to the wall, and
 // over every vessel, every nerve and the ureter. Its nodes are light particles, each tethered where it lies. Its
@@ -242,15 +300,19 @@ const lbOnArr = (arr, p, out) => sampleArr(arr, nearestUOnArr(arr, p), out).dist
   }
   for (let j = 3; j < NW - 1; j++) for (let i = 5; i < NC - 1; i++) { // from each node to those beside it, and aslant to the peritoneum beside its own place
     const a = lbId(i, j); if (top[a] < 0) continue;
-    for (const [di, dj, p] of [[1, 1, 0.85], [1, -1, 0.85], [2, 0, 0.3], [0, 2, 0.3]]) {
+    for (const [di, dj, p] of [[1, 1, 0.9], [1, -1, 0.9], [2, 0, 0.4], [0, 2, 0.4]]) {
       if (i + di >= NC || j + dj >= NW) continue; const b = lbId(i + di, j + dj); if (top[b] < 0) continue;
       if (rnd() < p) tie(top[a], top[b]);
       if (low[a] >= 0 && low[b] >= 0 && rnd() < p * 0.8) tie(low[a], low[b]);
-      if (low[b] >= 0 && rnd() < 0.3) tie(top[a], low[b]);
+      if (low[b] >= 0 && rnd() < 0.35) tie(top[a], low[b]);
     }
-    for (const [di, dj] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) { const b = lbId(i + di, j + dj); if (rnd() < 0.3 && PX.w[b] && gap[b] >= 0.3) tie(b, top[a]); }
+    for (const [di, dj] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) { const b = lbId(i + di, j + dj); if (rnd() < 0.35 && PX.w[b] && gap[b] >= 0.3) tie(b, top[a]); }
   }
   const col = []; for (let i = 0; i < LB.NS; i++) { if (top[i] >= 0) col.push(top[i]); if (low[i] >= 0) col.push(low[i]); }
+  const into = ns => { for (const n of ns) if (n >= 0) { // from a node into the web round it
+    let b1 = -1, d1 = 0.85, b2 = -1, d2 = 0.85; for (const c of col) { const d = PX.dist(n, c); if (d < d1) { b2 = b1; d2 = d1; b1 = c; d1 = d; } else if (d < d2) { b2 = c; d2 = d; } }
+    if (rnd() < 0.85) tie(n, b1); if (rnd() < 0.6) tie(n, b2);
+  } };
   // a net over each vessel and nerve on its side toward the pelvis, and over the ureter on its side away from its
   // leaf: nodes to either side of it all the way along, threads across it from one to the next, and a short thread from each node down onto it
   const net = (arr, r, inward, onto, ok) => {
@@ -268,13 +330,33 @@ const lbOnArr = (arr, p, out) => sampleArr(arr, nearestUOnArr(arr, p), out).dist
       }
     }
     for (let k = 0; k < P.length; k++) { tie(P[k], M[k]); if (k + 1 < P.length) { tie(M[k], P[k + 1]); if (rnd() < 0.5) tie(P[k], P[k + 1]); if (rnd() < 0.5) tie(M[k], M[k + 1]); } }
-    for (const n of P.concat(M)) if (n >= 0) { // and into the web round it
-      let b1 = -1, d1 = 0.85, b2 = -1, d2 = 0.85; for (const c of col) { const d = PX.dist(n, c); if (d < d1) { b2 = b1; d2 = d1; b1 = c; d1 = d; } else if (d < d2) { b2 = c; d2 = d; } }
-      if (rnd() < 0.85) tie(n, b1); if (rnd() < 0.6) tie(n, b2);
-    }
+    into(P.concat(M));
   };
-  for (const k of ['eia', 'eiv', 'iia', 'iiv', 'oua', 'obn', 'gfn', 'ua']) net(LV[k].arr, LV[k].r, (p, o) => o.set(-p.x, BOWL_YC - p.y, 0), null, p => p.z < BRIM - 0.8 && p.z > -4.7);
+  for (const k of ['eia', 'eiv', 'iia', 'iiaA', 'iiaP', 'iiv', 'umb', 'sva1', 'sva2', 'oua', 'oba', 'obv', 'obn', 'gfn', 'ua']) net(LV[k].arr, LV[k].r, (p, o) => o.set(-p.x, BOWL_YC - p.y, 0), null, p => p.z < BRIM - 0.8 && p.z > -5.3 && (k !== 'iiaP' || p.z > 4.2)); // (the posterior division runs out from under the medial leaf)
   net(urest, LU.r, (p, o) => o.set(p.x, p.y - BOWL_YC, 0), q => LU.i0 + q, (p, q) => q <= LU.kx);
+  // The spaces. Between the ureter and the internal iliac artery (the lateral pararectal space), and to either side of
+  // the obliterated umbilical artery, out to the wall and in to the bladder (the paravesical space), the web is laid
+  // across from the one to the other: each space is something to sweep open, and how much of it has been is measured.
+  LB.sp = { prL: [], pvL: [], pvM: [] };
+  const last = {}, inBladder = p => ((p.x - BL.c0.x) / BL.r.x) ** 2 + ((p.y - BL.c0.y) / BL.r.y) ** 2 + ((p.z - BL.c0.z) / BL.r.z) ** 2 < 1;
+  const span = (key, a, b, onto, q) => {
+    const L = a.distanceTo(b); if (L < 0.45 || L > 3) return;
+    const e = { a: a.clone(), b: b.clone(), q, n: [], thr: null }; LB.sp[key].push(e);
+    let at = onto != null ? onto : PX.add(a.x, a.y, a.z, 0, 0);
+    for (const f of L > 1.3 ? [0.25, 0.5, 0.75] : [0.35, 0.68]) {
+      t1.lerpVectors(e.a, e.b, f); t1.x += J(0.3); t1.y += J(0.3); t1.z += J(0.3); clear(t1); if (!inBowl(t1.x, t1.y, t1.z) || inBladder(t1) || !under(_l5.copy(t1))) { e.n.push(-1); continue; }
+      const n = PX.add(_l5.x, _l5.y, _l5.z, 3, 60); tie(at, n); at = n; e.n.push(n);
+    }
+    tie(at, PX.add(e.b.x, e.b.y, e.b.z, 0, 0));
+    const p = last[key]; if (p) for (let k = 0; k < e.n.length; k++) { tie(e.n[k], p.n[k] == null ? -1 : p.n[k]); if (rnd() < 0.5) tie(e.n[k], p.n[k + 1] == null ? -1 : p.n[k + 1]); }
+    last[key] = e; into(e.n);
+  };
+  for (let q = 2; q < LU.kx; q++) if (LU.onLeaf[q] && urest[q].z <= 8.3) { lbOnArr(LB.iiaAll, urest[q], _l4); span('prL', urest[q], _l4.clone(), LU.i0 + q, q); }
+  for (let k = 1; k < LV.oua.arr.length - 1; k++) {
+    const p = LV.oua.arr[k]; _l2.set(p.x, p.y - BOWL_YC, 0).normalize(); let s = 0.1; while (s < 3 && inBowl(p.x + _l2.x * s, p.y + _l2.y * s, p.z)) s += 0.1;
+    span('pvL', p, _l4.copy(p).addScaledVector(_l2, s - 0.1).clone(), null, k); // out to the wall
+    _l2.set((p.x - BL.c0.x) / BL.r.x, (p.y - BL.c0.y) / BL.r.y, (p.z - BL.c0.z) / BL.r.z); span('pvM', p, _l4.copy(p).sub(BL.c0).multiplyScalar(1 / _l2.length()).add(BL.c0).clone(), null, k); // in to the bladder
+  }
   LW.n = PX.n - LW.i0;
   // the place on the peritoneum that each node lies under: the one it rides, or the nearest
   LW.home = new Int32Array(LW.n).fill(-1); LW.out = new Uint8Array(LW.n);
@@ -289,12 +371,17 @@ const lbOnArr = (arr, p, out) => sampleArr(arr, nearestUOnArr(arr, p), out).dist
     // a thread hangs a little slack: which way it bows, and how much
     _l3.set(J(1), J(1), J(1)); _l2.sub(_l1); _l3.addScaledVector(_l2, -_l3.dot(_l2) / (_l2.lengthSq() || 1)).setLength(0.25 + 0.35 * rnd()); LS.bow.set([_l3.x, _l3.y, _l3.z], q * 3);
   });
+  for (const key in LB.sp) for (const e of LB.sp[key]) { // the threads that lie across each place in each space
+    const ab = t1.subVectors(e.b, e.a), l2 = ab.lengthSq(), c = [];
+    for (let q = 0; q < LS.n; q++) { t2.set(LS.mid[q * 3], LS.mid[q * 3 + 1], LS.mid[q * 3 + 2]).sub(e.a); const s = clamp(t2.dot(ab) / l2, 0, 1); if (t2.addScaledVector(ab, -s).lengthSq() < 0.16) c.push(q); }
+    e.thr = c; e.mid = new V3().lerpVectors(e.a, e.b, 0.5);
+  }
   // fibrils: from part way along one thread to part way along another that leaves the same node
   const at = new Map(), fa = [], fb = [], fu = [], fv = [];
   thr.forEach((t, q) => { for (const n of [t.a, t.b]) { if (!at.has(n)) at.set(n, []); at.get(n).push(q); } });
   for (const [n, l] of at) {
     if (l.length < 2) continue;
-    for (let k = 0, m = Math.min(l.length === 2 ? 1 : l.length, 4); k < m; k++) { const a = l[k], b = l[(k + 1) % l.length]; if (thr[a].v || thr[b].v || rnd() > 0.85) continue; const f = 0.3 + 0.5 * rnd(), g = 0.3 + 0.5 * rnd(); fa.push(a); fb.push(b); fu.push(thr[a].a === n ? f : 1 - f); fv.push(thr[b].a === n ? g : 1 - g); }
+    for (let k = 0, m = Math.min(l.length === 2 ? 1 : l.length, 5); k < m; k++) { const a = l[k], b = l[(k + 1) % l.length]; if (thr[a].v || thr[b].v || rnd() > 0.85) continue; const f = 0.3 + 0.5 * rnd(), g = 0.3 + 0.5 * rnd(); fa.push(a); fb.push(b); fu.push(thr[a].a === n ? f : 1 - f); fv.push(thr[b].a === n ? g : 1 - g); }
   }
   LS.nf = fa.length; LS.fa = Int32Array.from(fa); LS.fb = Int32Array.from(fb); LS.fu = Float32Array.from(fu); LS.fv = Float32Array.from(fv);
   // drawn: threads and fibrils as fine lines (a thread as three, so that it can bow), the small vessels as fine red tubes
@@ -316,7 +403,7 @@ const lbPeri = (u, ph) => 0.38 * Math.exp(-Math.pow((u - ph + 0.1) / 0.06, 2)) -
   const bi = [], bd = [], bu = [], bw = [], p = new V3(), q = new V3(), d = new V3();
   const each = i => {
     PX.rest(i, p); d.set(0, 0, 0);
-    for (const [v, amp] of [[LV.eia, 0.05], [LV.iia, 0.045], [LV.ua, 0.03]]) { const e = lbOnArr(v.arr, p, q), w = (1 - sstep(v.r + 0.1, v.r + 0.8, e)) * amp; if (w > 0.001 && e > 1e-3 && w > d.length()) d.subVectors(p, q).setLength(w); } // where two arteries lie together, the one that moves it more
+    for (const [v, amp] of [[LV.eia, 0.05], [LV.iia, 0.045], [LV.iiaA, 0.04], [LV.umb, 0.03], [LV.ua, 0.03]]) { const e = lbOnArr(v.arr, p, q), w = (1 - sstep(v.r + 0.1, v.r + 0.8, e)) * amp; if (w > 0.001 && e > 1e-3 && w > d.length()) d.subVectors(p, q).setLength(w); } // where two arteries lie together, the one that moves it more
     let uq = -1, ud = 0.85; for (let k = 1; k <= LU.kx + 1; k++) { const e = PX.rest(LU.i0 + k, q).distanceTo(p); if (e < ud) { ud = e; uq = k; } }
     if (uq < 0 && d.lengthSq() < 1e-8) return;
     bi.push(i); bd.push(d.x, d.y, d.z); bu.push(uq); bw.push(uq < 0 ? 0 : 1 - sstep(0.3, 0.85, ud));
@@ -357,9 +444,13 @@ function lbDraw(time) {
   // infundibulopelvic ligament along its row of the sheet
   for (let q = 0; q < LB.ipArr.length; q++) PX.get(lbId(LB.ipI0 + q, LB.NR), LB.ipArr[q]).addScaledVector(lbNin(lbId(LB.ipI0 + q, LB.NR), _l1), 0.08);
   LB.ipTube.set(LB.ipArr, 0, 1, u => lerp(0.27, 0.15, sstep(0.45, 1, u)), (u, c) => { const s = Math.min(1, LB.seal[lbId(LB.ipI0 + Math.round(u * (LB.ipArr.length - 1)), LB.NR)]); c[0] = lerp(COL.ip[0], COL.seal[0], s); c[1] = lerp(COL.ip[1], COL.seal[1], s); c[2] = lerp(COL.ip[2], COL.seal[2], s); c[3] = s; });
+  // the round ligament, in one piece or as two stumps
+  const rl = LB.rl, RA = lbRound(), gp = 0.07 * rl.gk;
+  LB.rdA.set(RA, 0, rl.uc - gp, u => 0.2 * taper(u, rl.uc - gp, rl.gk) * (1 - 0.3 * sealK(rl, u)), cordCol(rl, COL.lig, 0.07));
+  LB.rdB.set(RA, rl.uc + gp, 1, u => 0.2 * taper(u, rl.uc + gp, rl.gk) * (1 - 0.3 * sealK(rl, u)), cordCol(rl, COL.lig, 0.07));
   // arteries pulse
   const pl = pulse(time);
-  for (const k of ['iia', 'oua']) { const v = LV[k]; v.tube.set(v.arr, 0, 1, () => v.r * (1 + v.pulseK * pl), (u, c) => { const h = Math.min(1, v.heat * 2); c[0] = lerp(v.col[0], COL.seal[0], h); c[1] = lerp(v.col[1], COL.seal[1], h); c[2] = lerp(v.col[2], COL.seal[2], h); c[3] = h; }); }
+  for (const k in LV) { const v = LV[k]; if (v.tube) v.tube.set(v.arr, 0, 1, () => v.r * (1 + v.pulseK * pl), (u, c) => { const h = Math.min(1, v.heat * 2); c[0] = lerp(v.col[0], COL.seal[0], h); c[1] = lerp(v.col[1], COL.seal[1], h); c[2] = lerp(v.col[2], COL.seal[2], h); c[3] = h; }); }
   // the web, lit by the scope as everything else is, and red where blood stands in it
   const x = PX.x, wl = LB.wells, sp = LS.pos, sc = LS.col, cf = PX.cf, ci = PX.ci, cj = PX.cj, wet = wl.some(w => w.v > 0.05);
   LS.lines.material.opacity = Math.min(0.95, 0.6 * renderer.getPixelRatio()); // a line is one pixel wide however fine the screen
@@ -405,6 +496,7 @@ function lbDraw(time) {
 }
 // everything back as it was before anything was touched
 function lbResetModel() {
+  LB.pin.set(LB.pin0); LB.free.fill(0); Object.assign(LB.rl, { uc: 0.7, cut: false, gk: 0, seals: [], act: null, dry: true });
   PX.r.set(LB.r0); PX.reset(); LB.dead.fill(0); LB.seal.fill(0); LB.heldV.fill(0); lbReindex(); lbPaint();
   for (let c = 0; c < PX.m; c++) PX.cf[c] |= 1;
   for (let i = 0; i < LB.NS; i++) PX.w[i] = LB.pin[i] ? 0 : 1;

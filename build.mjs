@@ -11,7 +11,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 const root = path.dirname(new URL(import.meta.url).pathname);
 const dir = path.join(root, 'src/js'), out = path.join(root, 'docs'), rdir = path.join(root, 'src/review'), rout = path.join(root, 'dist/laparoscape');
-const LAB = { name: 'MIGS Simulator', label: 'Lab 0.2' };
+const LAB = { name: 'MIGS Simulator', label: 'Lab 0.3' };
 const REVIEW = {
   name: 'laparoscape', label: 'Review 1.0', email: 'feedback@laparoscape.com', by: 'Phillip Connell, MD', domain: 'laparoscape.com',
   asks: [ // what the reviewers are asked: on the welcome sheet, on the debrief, and at the head of the results they copy

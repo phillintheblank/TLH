@@ -27,8 +27,11 @@ const same = rd('../docs/index.html').replace("lib: './vendor/mediapipe/vision_b
 console.log(same ? 'docs: the simulator\'s page is Build 1.0 as frozen' : 'docs: the simulator\'s page differs from Build 1.0 as frozen in docs/v1.0/'); if (!same) bad = true;
 const sha = createHash('sha256').update(fs.readFileSync(new URL('../dist/laparoscape/index.html', import.meta.url))).digest('hex');
 console.log(sha === REVIEW_SHA ? 'review: the page is Review 1.0 as published' : 'review: the page differs from Review 1.0 as published (' + sha + ')'); if (sha !== REVIEW_SHA) bad = true;
-// The lab's earlier build stays as it was published, under docs/lab/: the page differs only in where it looks for the shared 3D library.
+// The lab's earlier builds stay as they were published, under docs/lab/: each page differs only in where it looks for the shared 3D library.
 const LAB01_SHA = '60cefca48cb615c55fb530ec1aaf7e277313bc69e5ea02576db1f22227b676d6';
 const l01 = createHash('sha256').update(rd('../docs/lab/v0.1/index.html').replace("'../../vendor/three.module.min.js'", "'../vendor/three.module.min.js'")).digest('hex');
 console.log(l01 === LAB01_SHA ? 'lab: Lab 0.1 is kept as published in docs/lab/v0.1/' : 'lab: docs/lab/v0.1/ differs from Lab 0.1 as published'); if (l01 !== LAB01_SHA) bad = true;
+const LAB02_SHA = '2ac8ab443d018b98cc083636e9adb95c173761024cf3269ea5a6a8bfc32ab2df';
+const l02 = createHash('sha256').update(rd('../docs/lab/v0.2/index.html').replace("'../../vendor/three.module.min.js'", "'../vendor/three.module.min.js'")).digest('hex');
+console.log(l02 === LAB02_SHA ? 'lab: Lab 0.2 is kept as published in docs/lab/v0.2/' : 'lab: docs/lab/v0.2/ differs from Lab 0.2 as published'); if (l02 !== LAB02_SHA) bad = true;
 if (bad) process.exit(1);

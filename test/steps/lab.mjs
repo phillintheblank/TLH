@@ -1,5 +1,6 @@
-// Checks of the lab (PAGE=lab/): its page, the tissue at rest and what moves it, the web under the peritoneum, each
-// instrument, the first opening and how it is graded, and each way the dissection can go wrong. Instruments are steered by labdriver.mjs through the simulator's
+// Checks of the lab (PAGE=lab/): its page, the tissue at rest and what moves it, the web under the peritoneum, the
+// anatomy and its names, each instrument, the first opening and how it is graded, the edge of an opening, the adnexa
+// and the round ligament, and each way the dissection can go wrong. Instruments are steered by labdriver.mjs through the simulator's
 // own free-depth drive, so contact, the working-space limits and the rule about unopened peritoneum apply. Where a
 // check needs a wide opening to start from, it cuts one out of the sheet directly (open()), and says so.
 import { install } from './labdriver.mjs';
@@ -8,7 +9,7 @@ export default async function (page) {
   const ev = (fn, a) => page.evaluate(fn, a);
   // ---- the page ----
   const pg = await ev(() => ({ title: document.title, brand: document.getElementById('brandSub').textContent, insts: [...document.querySelectorAll('#insts .inst span')].map(e => e.textContent), manip: getComputedStyle(document.getElementById('manip')).display, hands: !!document.getElementById('btnHands'), guide: getComputedStyle(document.getElementById('btnGuide')).display, robots: (document.querySelector('meta[name=robots]') || {}).content, cases: Object.keys(window.__sim.CASES).length }));
-  ok(/lab/i.test(pg.title) && /Lab 0\.2/.test(pg.brand), 'the page is the lab: "' + pg.brand + '"');
+  ok(/lab/i.test(pg.title) && /Lab 0\.3/.test(pg.brand), 'the page is the lab: "' + pg.brand + '"');
   ok(pg.insts.join() === 'Maryland,Bipolar,Suction', 'three instruments on the tray: ' + pg.insts.join(', '));
   ok(pg.manip === 'none' && pg.guide === 'none' && !pg.hands && pg.cases === 1, 'no manipulator, no guidance switch, no hand control, one case');
   ok(/noindex/.test(pg.robots || ''), 'search engines are asked not to list it');
@@ -77,8 +78,8 @@ export default async function (page) {
   // ---- the first opening ----
   const e1 = await T(() => { const t = window.__t, s = window.__sim; t.fresh(); const k = t.tent(39, 17); const r = t.bite(39, 15, 0.9); const E = s.S.lab.entry; return { k, cut: t.cut(), E, un: s.S.stats.unsealedCuts, bl: s.S.bleeders.length, goal: (window.__lab.lbMetrics(), window.__lab.goal.entry) }; });
   ok(e1.k === 'peritoneum' && e1.cut > 3 && e1.E && e1.E.zone === 'triangle' && e1.E.tented && e1.E.sealed && e1.un === 0 && e1.bl === 0 && e1.goal, 'tented, coagulated and cut lateral to the IP ligament: opened, in the right place, tented (' + (e1.E ? (e1.E.lift * 10).toFixed(0) : '?') + ' mm), dry, goal 1 reached');
-  const e2 = await T(() => { const t = window.__t, s = window.__sim; t.fresh(); t.tent(39, 17); t.bite(39, 15, 0); const E = s.S.lab.entry; return { E, un: s.S.stats.unsealedCuts, bl: s.S.bleeders.length, ev: s.S.events.map(e => e.text).join(' | ') }; });
-  ok(e2.E && !e2.E.sealed && e2.un === 1 && e2.bl >= 1 && /without coagulating/.test(e2.ev), 'the same bite cut cold: the edge bleeds and the cut is counted');
+  const e2 = await T(() => { const t = window.__t, s = window.__sim; t.fresh(); t.tent(39, 17); t.bite(39, 15, 0); const E = s.S.lab.entry; return { E, un: s.S.stats.unsealedCuts, bl: s.S.bleeders.map(b => b.rate), ev: s.S.events.map(e => e.text).join(' | '), sc: s.CASE.score().notes }; });
+  ok(e2.E && !e2.E.sealed && e2.un === 1 && e2.bl.length === 1 && e2.bl[0] <= 8 && /cut cold/.test(e2.ev) && !e2.sc.some(n => /cold|coagulating/.test(n)), 'the same bite cut cold: the edge oozes a little, the bite is counted, and nothing is deducted for it');
   const e3 = await T(() => { const t = window.__t, s = window.__sim, D = window.__drv; t.fresh(); if (s.HAND.R.openGoal < 0.3) D.press('R', 0.05); D.to('R', D.rest(36, 12), { touch: true }); D.press('R', 0.9); D.cut('R'); const E = s.S.lab.entry; return { E, sc: s.CASE.score() }; });
   ok(e3.E && !e3.E.tented && e3.sc.notes.some(n => /not tented/.test(n)), 'a first bite on peritoneum that was not lifted is recorded as not tented (lifted ' + (e3.E ? (e3.E.lift * 10).toFixed(0) : '?') + ' mm)');
   const e4 = await T(() => { const t = window.__t, s = window.__sim, D = window.__drv, B = window.__lab.LB; t.fresh(); s.setInst('L', 'bipolar'); D.tick(60); const r = D.to('L', D.rest(28, B.NR + 5), { touch: true }); D.press('L', 0.9); D.cut('L'); const E = s.S.lab.entry; window.__lab.lbMetrics(); return { r, zone: E && E.zone, goal: window.__lab.goal.entry }; }); // the left hand reaches the medial leaf
@@ -107,6 +108,45 @@ export default async function (page) {
     s.setInst('R', 'maryland'); D.tick(60); const u = D.ureter(34), n = D.nin(39, 30); D.to('R', D.add(u, [0, 0.12, 0], 1), { tol: 0.1 }); D.press('R', 0.05); const held = L.LH.R.kind; D.press('R', 0.05); // closed beside it holding nothing, then opened
     L.lbMetrics(); return { held, strip: L.goal.stripCm, ev: s.S.events.map(e => e.text).join(' | '), blunt: s.S.stats.blunt }; });
   ok(h7.strip > 0 || /crush/.test(h7.ev), 'jaws worked on the ureter itself: ' + (h7.strip > 0 ? 'its sheath is stripped over ' + h7.strip.toFixed(1) + ' cm' : 'it is crushed'));
+  // ---- the anatomy under the peritoneum, and its names ----
+  const an = await T(() => { const s = window.__sim, L = window.__lab, D = window.__drv, V = L.LV, B = L.LB, V3 = s.THREE.Vector3, t = window.__t; t.fresh();
+    const near = (arr, p) => arr.reduce((a, q) => Math.min(a, q.distanceTo(p)), 9), along = (arr, p) => { let b = 0, bd = 9; arr.forEach((q, i) => { const d = q.distanceTo(p); if (d < bd) { bd = d; b = i; } }); return b / (arr.length - 1); }, end = a => a[a.length - 1];
+    const A = V.iiaA.arr, o = { umb: along(A, V.umb.arr[0]), oba: along(A, V.oba.arr[0]), ua: along(A, end(V.ua.arr)) };
+    s.S.labels = true; s.render(0.5); D.tick(30); s.render(0.5); const names = L.LBL.list.map(l => l.text), on = L.LBL.on.map(l => l.text), bx = L.LBL.box; let lap = 0; for (let i = 0; i < bx.length; i++) for (let j = i + 1; j < bx.length; j++) if (bx[i].x < bx[j].x + bx[j].w && bx[j].x < bx[i].x + bx[i].w && Math.abs(bx[i].y - bx[j].y) < 20) lap++;
+    s.S.labels = false;
+    return { div: [near(V.iia.arr, A[0]), near(V.iia.arr, V.iiaP.arr[0])], o, off: [near(A, V.umb.arr[0]), near(A, V.oba.arr[0]), near(A, end(V.ua.arr))], sv: [near(V.umb.arr, V.sva1.arr[0]), near(V.umb.arr, V.sva2.arr[0])], svAt: [along(V.umb.arr, V.sva1.arr[0]), along(V.umb.arr, V.sva2.arr[0])], cord: V.oua.arr[0].distanceTo(end(V.umb.arr)), fold: end(V.oua.arr).distanceTo(B.folds[0].arr[0]), bl: [end(V.sva1.arr), end(V.sva2.arr)].map(p => ((p.x - L.BL.c0.x) / L.BL.r.x) ** 2 + ((p.y - L.BL.c0.y) / L.BL.r.y) ** 2 + ((p.z - L.BL.c0.z) / L.BL.r.z) ** 2),
+      canal: [end(V.obn.arr).z, end(V.oba.arr).z, end(V.obv.arr).z], top: end(B.folds[0].arr).toArray(), meet: end(B.folds[0].arr).distanceTo(end(B.folds[2].arr)), sp: Object.keys(B.sp).map(k => [k, B.sp[k].length, B.sp[k].every(e => e.thr.length > 3)]), names, on, lap }; });
+  ok(an.div[0] < 0.01 && an.div[1] < 0.01, 'the internal iliac artery divides into an anterior and a posterior division');
+  ok(an.off.every(d => d < 0.2) && an.o.umb < an.o.oba && an.o.oba < an.o.ua, 'the umbilical artery is the first branch of the anterior division, then the obturator, then the uterine');
+  ok(an.sv.every(d => d < 0.2) && an.svAt.every(u => u > 0.6) && an.bl.every(v => v < 1.35) && an.cord < 0.01, 'the superior vesical arteries leave the umbilical artery near its end and reach the bladder, and just beyond them it is the obliterated cord');
+  ok(an.fold < 0.1 && Math.abs(an.top[0]) < 0.3 && an.top[2] > 17 && an.meet < 0.5, 'the cord runs on into the medial umbilical fold, which climbs the anterior wall to meet the median fold at the umbilicus');
+  ok(an.canal[0] > an.canal[1] && an.canal[1] > an.canal[2], 'at the obturator canal the nerve lies above the artery, and the artery above the vein');
+  ok(an.sp.length === 3 && an.sp.every(e => e[1] >= 8 && e[2]), 'the web is laid across three spaces: ' + an.sp.map(e => e[0] + ' at ' + e[1] + ' places').join(', '));
+  const need = ['Right ureter', 'Right IP ligament (ovarian vessels)', 'Right round ligament', 'External iliac artery', 'External iliac vein', 'Internal iliac artery', 'Anterior division', 'Posterior division', 'Internal iliac vein', 'Umbilical artery', 'Superior vesical arteries', 'Obliterated umbilical artery (medial umbilical ligament)', 'Uterine artery', 'Obturator nerve', 'Obturator artery', 'Obturator vein', 'Genitofemoral nerve', 'Psoas muscle', 'Obturator internus muscle', 'Right medial umbilical fold', 'Median umbilical fold (urachus)', 'Lateral pararectal space (Latzko)', 'Medial pararectal space (Okabayashi)', 'Lateral paravesical space', 'Medial paravesical space', 'Uterus', 'Bladder', 'Right ovary', 'Right tube'];
+  ok(need.every(n => an.names.includes(n)), 'every structure and space has a name (' + an.names.length + ' in all)' + (need.every(n => an.names.includes(n)) ? '' : ': missing ' + need.filter(n => !an.names.includes(n)).join(', ')));
+  ok(an.on.length >= 22 && ['Right ureter', 'Anterior division', 'Umbilical artery', 'Obturator nerve', 'Lateral pararectal space (Latzko)', 'Lateral paravesical space'].every(n => an.on.includes(n)) && an.lap === 0, 'with labels on and the peritoneum unopened, ' + an.on.length + ' names are on the picture, those under it among them, and none lies on another' + (an.lap ? ' (' + an.lap + ' do)' : '') + (process.env.DEBUG ? ' ' + an.on.join(', ') : ''));
+  // ---- the scope ----
+  await ev(() => { window.__sim.CAM.userIns = 6; window.__drv.tick(60); }); const z0 = await ev(() => window.__sim.camera.position.distanceTo(window.__sim.CAM.tgt));
+  await page.keyboard.down('Equal'); await tick(70); await page.keyboard.up('Equal'); await tick(60); const z1 = await ev(() => [window.__sim.camera.position.distanceTo(window.__sim.CAM.tgt), window.__lab.LB.zoom]);
+  await page.keyboard.down('Minus'); await tick(70); await page.keyboard.up('Minus'); await tick(60); const z2 = await ev(() => { const s = window.__sim, r = [s.camera.position.distanceTo(s.CAM.tgt), window.__lab.LB.zoom]; s.CAM.userIns = 0; return r; });
+  ok(z0 > 7 && z1[0] < 3 && z1[1] > 5 && z2[1] === 0 && z2[0] > 7, 'the scope goes in to ' + z1[0].toFixed(1) + ' cm from what it looks at (the simulator stops at ' + z0.toFixed(1) + ' cm), and comes back');
+  // ---- the edge of an opening, the adnexa, the round ligament (the test cuts a short opening first) ----
+  const ed = await T(() => { const t = window.__t, s = window.__sim, D = window.__drv, L = window.__lab, B = L.LB, P = L.PX; t.fresh(); t.open(38, 40, 11, 19); D.tick(10); const d0 = t.cut();
+    const off = (i, j) => { const k = L.lbId(i, j) * 3; return Math.hypot(P.x[k] - B.r0[k], P.x[k + 1] - B.r0[k + 1], P.x[k + 2] - B.r0[k + 2]); }, most = () => { let m = 0; for (let j = 10; j < 20; j++) for (let i = 35; i < 44; i++) m = Math.max(m, off(i, j)); return m; };
+    // the right hand in through the opening, then swung against its lateral edge
+    if (s.HAND.R.openGoal > 0.3) D.press('R', 0.05); const r = D.to('R', D.add(D.rest(39, 15), D.nin(39, 15), 0.9), { tol: 0.15 }); let push = most(), ne = 0; for (let k = 0; k < 12; k++) { D.nudge('R', [0.1, 0, 0.05], 4); push = Math.max(push, most()); ne = Math.max(ne, L.LH.R.ne); }
+    const lost = t.cut() - d0, on = s.HAND.R.pick.ent, inn = L.LH.R.in; D.to('R', [5.6, 2.2, 7.5]); D.tick(40); const back = most();
+    // the medial edge held in the Maryland and drawn medially
+    const ov0 = s.AN.side.R.cur.ovC.clone(); D.to('L', D.at(37, 15), { touch: true }); D.press('L', 0.05); const kind = L.LH.L.kind; D.nudge('L', [-2, 0.6, 0], 80); D.tick(10);
+    const ip = off(26, B.NR), ov = s.AN.side.R.cur.ovC.distanceTo(ov0), slips = s.S.lab.slips, open = L.goal.openCm; D.press('L', 0.05); D.tick(40); const ipBack = off(26, B.NR);
+    return { in: r.in, inn, lost, push, ne, back, kind, ip, ov, slips, ipBack }; });
+  ok(ed.in && ed.lost === 0 && ed.push > 0.2 && ed.ne > 0 && ed.back < 0.05, 'a shaft pushed against the edge of an opening stretches it ' + (ed.push * 10).toFixed(0) + ' mm aside and tears nothing; taken out, the edge lies back');
+  ok(ed.kind === 'peritoneum' && ed.ip > 0.8 && ed.ov > 0.1 && ed.slips === 0 && ed.ipBack < 0.1, 'the medial edge drawn 2 cm medially takes the IP ligament ' + (ed.ip * 10).toFixed(0) + ' mm and the ovary ' + (ed.ov * 10).toFixed(0) + ' mm with it; let go, they go back');
+  const rd = await T(() => { const t = window.__t, s = window.__sim, D = window.__drv, L = window.__lab, B = L.LB; const one = hold => { t.fresh(); if (s.HAND.R.openGoal < 0.3) D.press('R', 0.05); const r = D.to('R', B.rlArr[32].toArray(), { touch: true }); D.press('R', hold); D.cut('R'); D.tick(30); L.lbMetrics();
+      return { on: r.on, cut: B.rl.cut, dry: B.rl.dry, gap: B.rl.gk, free: B.free.reduce((a, b) => a + b, 0), bl: s.S.bleeders.length, zone: s.S.lab.entry && s.S.lab.entry.zone, goal: L.goal.entry, notes: s.CASE.score().notes, inj: t.inj() }; };
+    return [one(1.4), one(0.05)]; });
+  ok(rd[0].on === 'round' && rd[0].cut && rd[0].dry && rd[0].gap > 0.9 && rd[0].free > 20 && rd[0].bl === 0 && rd[0].inj.length === 0 && !rd[0].notes.some(n => /[Rr]ound|Entry/.test(n)) && rd[0].goal, 'the round ligament coagulated and divided: its stumps draw apart, the peritoneum along it hangs free, nothing bleeds and nothing is deducted');
+  ok(rd[1].cut && !rd[1].dry && rd[1].bl >= 1 && rd[1].notes.some(n => /Round ligament divided without/.test(n)), 'divided without coagulating it, it bleeds and is counted'); if (process.env.DEBUG) console.log(JSON.stringify(rd));
   // ---- the web: swept, spread, and the small vessels in it (the test opens a wide window first) ----
   const w1 = await T(() => { const t = window.__t, s = window.__sim, D = window.__drv, L = window.__lab, B = L.LB, U = L.LU, P = L.PX; t.fresh();
     // on unopened peritoneum an instrument parts nothing
@@ -146,11 +186,11 @@ export default async function (page) {
   // ---- the score, the debrief, and starting again ----
   const fin = await T(() => { const t = window.__t, s = window.__sim, D = window.__drv, L = window.__lab, B = L.LB; t.fresh(); t.open(36, 43, 8, 20); if (s.HAND.R.openGoal > 0.3) D.press('R', 0.05); D.to('R', L.LV.eiv.arr[18].toArray(), { touch: true }); D.press('R', 1.2);
     s.STEPS[0].button.fn(); D.tick(3); const sc = s.CASE.score(), shown = !document.getElementById('debrief').hidden, goals = document.getElementById('dbGoals').innerText, txt = s.resultsText();
-    document.getElementById('dbRestart').click(); D.tick(5); const back = { cut: t.cut(), inj: t.inj().length, web: L.LS.n - t.web(), start: !document.getElementById('startCard').hidden, d: t.disp()[1] };
+    document.getElementById('dbRestart').click(); D.tick(5); const back = { cut: t.cut(), inj: t.inj().length, web: L.LS.n - t.web(), rl: L.LB.rl.cut || L.LB.free.reduce((a, b) => a + b, 0) > 0, start: !document.getElementById('startCard').hidden, d: t.disp()[1] };
     return { sc, shown, goals, txt: txt.length, back }; });
   ok(fin.shown && fin.sc.pts <= 65 && fin.sc.notes.some(n => /iliac (vein|artery)/.test(n)) && /Not reached/.test(fin.goals), 'ending opens the debrief: ' + fin.sc.pts + ' points with an iliac vessel injured, goals listed');
   if (process.env.DEBUG) console.log(JSON.stringify(fin.back));
-  ok(fin.back.cut === 0 && fin.back.inj === 0 && fin.back.web === 0 && fin.back.start && fin.back.d < 0.3, 'Start again puts the sidewall back as it was');
+  ok(fin.back.cut === 0 && fin.back.inj === 0 && fin.back.web === 0 && !fin.back.rl && fin.back.start && fin.back.d < 0.3, 'Start again puts the sidewall back as it was');
   console.log(errs.length ? errs.length + ' FAILED' : 'all lab checks passed');
   if (errs.length) throw new Error(errs.length + ' lab checks failed');
 }

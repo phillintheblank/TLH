@@ -27,9 +27,9 @@ WS.VIS = 2; // The right port lies almost over the right sidewall. With the simu
 SOLID.perit = 1; // an instrument's shaft cannot sweep sideways through peritoneum that has not been opened: it goes in through the opening
 const JR = 0.25; // half the width of a pair of jaws: what lies this near their line is against them
 // HOLD: a click held this long is a hold, and starts the energy. SWEEP, ALONG: how near a thread of the web lies to a moving tip, or to the jaws behind it, when it parts.
-// SLIP: how many times its own length peritoneum held in the jaws stretches before it pulls out of them
-const LK = { HOLD: 0.28, JAW: { maryland: 1.6, bipolar: 1.9, suction: 0.6 }, SWEEP: 0.55, ALONG: 0.35, SLIP: 2.6 };
-const mkLH = () => ({ in: false, held: [], kind: '', down: false, t0: 0, wasOpen: true, coag: false, last: new V3(), vHold: null, sph: [new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4()], ns: 0 });
+// SLIP: how many times its own length peritoneum held in the jaws stretches before it pulls out of them. ZOOM: how many cm further than the simulator's the scope goes in
+const LK = { HOLD: 0.28, JAW: { maryland: 1.6, bipolar: 1.9, suction: 0.6 }, SWEEP: 0.55, ALONG: 0.35, SLIP: 2.6, ZOOM: 5.5 };
+const mkLH = () => ({ in: false, held: [], kind: '', down: false, t0: 0, wasOpen: true, coag: false, last: new V3(), vHold: null, carry: null, sph: [new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4()], ns: 0, edge: [{ p: new V3(), d: new V3(), len: 0 }, { p: new V3(), d: new V3(), len: 0 }], ne: 0 });
 const LH = { L: mkLH(), R: mkLH() };
 const _ja = new V3(), _jb = new V3(), _jy = new V3(), _jc = new V3(), _jm = new V3(), _jn = new V3();
 // the jaws of an instrument as a line from its tip back toward its port
@@ -69,13 +69,19 @@ const MAJOR = 'Pressure held on the vessel. In theatre: call for help, vascular 
 function lbVesselHit(key, p, how) { // a named vessel or nerve burned, cut or torn
   const v = LV[key];
   if (key === 'obn' || key === 'gfn') { lbInjury(key, v.name + ' ' + how); return; }
-  if (key === 'oua') { if (how !== 'coagulated') { if (lbInjury('oua', v.name + ' ' + how)) lbBleed(p, 25, false, v.name, 25, 'The vessel has stopped bleeding'); } return; }
+  if (key === 'oua') { lbInjury('oua', v.name + ' ' + how); return; } // a cord: there is nothing in it to bleed
   if (key === 'ua') {
     if (how === 'coagulated') { if (!S.lab.uaSealed) { S.lab.uaSealed = true; lbInjury('uaCoag', 'Uterine artery coagulated'); } return; }
     if (lbInjury('uaCut', 'Uterine artery ' + how) && !S.lab.uaSealed) { lbBleed(p, 300, true, 'uterine artery'); logEvent('bleed', 'The uterine artery is bleeding. Control it with the bipolar on the bleeding point.'); }
     return;
   }
-  if (lbInjury(key, 'Major vascular injury: ' + v.name.toLowerCase() + ' ' + how)) lbBleed(p, key === 'eia' || key === 'iia' ? 420 : 280, key === 'eia' || key === 'iia', v.name, 8, MAJOR);
+  if (key === 'sva1' || key === 'sva2') { if (lbInjury('sva', v.name + ' ' + how) && how !== 'coagulated') lbBleed(p, 60, true, 'superior vesical artery', 30, 'The vessel has stopped bleeding'); return; }
+  if (key === 'umb' || key === 'oba' || key === 'obv') {
+    if (lbInjury(key, v.name + ' ' + how) && how !== 'coagulated') { lbBleed(p, key === 'obv' ? 140 : 160, key !== 'obv', v.name.toLowerCase()); logEvent('bleed', 'The ' + v.name.toLowerCase() + ' is bleeding. Control it with the bipolar on the bleeding point.'); }
+    return;
+  }
+  const k = key === 'iiaA' || key === 'iiaP' ? 'iia' : key; // either division is the internal iliac artery
+  if (lbInjury(k, 'Major vascular injury: ' + v.name.toLowerCase() + ' ' + how)) lbBleed(p, k === 'eia' || k === 'iia' ? 420 : 280, k === 'eia' || k === 'iia', v.name, 8, MAJOR);
 }
 function lbPart(q) { // a thread of the web parted. One that is a small vessel bleeds unless it was coagulated first
   const c = LS.c[q]; if (!(PX.cf[c] & 1)) return;
@@ -93,6 +99,7 @@ function lbHeldMask() {
 function lbRelease(h) {
   const st = LH[h.key];
   for (const e of st.held) PX.w[e.i] = e.t === 's' && LB.pin[e.i] ? 0 : 1;
+  st.carry = null;
   const had = st.held.some(e => e.t === 's'); st.held.length = 0; st.kind = ''; st.vHold = null; if (had) lbHeldMask();
 }
 function lbClose(h) {
@@ -113,9 +120,22 @@ function lbClose(h) {
   if (ur && lbInjury('ureterCrush', 'The ureter was grasped in the jaws: crush injury')) S.lab.crush = true;
   if (st.kind === 'peritoneum') S.stats.traction++;
   // a vessel in the jaws is not an injury until it is pulled on
-  if (!ur) for (const k of ['eia', 'eiv', 'iia', 'iiv', 'ua']) { const v = LV[k], n = lbSegArr(v.arr); if (n.d < v.r + JR + 0.08 && (st.in || k === 'ua')) { st.vHold = { k, p0: h.tip.clone(), at: v.arr[n.at] }; break; } }
+  if (!ur) for (const k of ['eia', 'eiv', 'iia', 'iiaA', 'iiaP', 'iiv', 'umb', 'oba', 'obv', 'ua']) { const v = LV[k], n = lbSegArr(v.arr); if (n.d < v.r + JR + 0.08 && (st.in || k === 'ua')) { st.vHold = { k, p0: h.tip.clone(), at: v.arr[n.at] }; break; } }
   h.grab = c.length || st.vHold ? { pull: null, onRelease: lbRelease } : { pull: null };
-  if (c.some(e => e.t === 's')) lbHeldMask();
+  if (c.some(e => e.t === 's')) { lbHeldMask(); lbCarry(h, c); }
+}
+// Peritoneum is a sheet here, and a sheet pushed toward the ridge it hangs from only gathers. Tissue is thicker than
+// that: a fold of the medial flap drawn medially takes the infundibulopelvic ligament and the ovary with it. So while
+// the Maryland holds peritoneum within 4 cm of that ridge, the ridge is carried the way the jaws go (PX.collide): fully
+// where it is nearest the fold, less to either side over about 3 cm, and no further than the peritoneum still
+// attached to it, and LB.reach, let it come.
+function lbCarry(h, held) {
+  const { NC, NR } = LB, hs = held.filter(e => e.t === 's' && ((e.i / NC) | 0) !== NR), st = LH[h.key]; st.carry = null; if (!hs.length) return; // (the ridge itself in the jaws is carried by them)
+  _jc.set(0, 0, 0); for (const e of hs) _jc.add(PX.rest(e.i, _jm)); _jc.multiplyScalar(1 / hs.length);
+  let b0 = -1, bd = 4; for (let i = LB.rg0; i <= LB.NU; i++) { const d = PX.rest(lbId(i, NR), _jn).distanceTo(_jc); if (d < bd) { bd = d; b0 = i; } } // (beyond NU the ridge is the brim, where the ligament is fixed)
+  if (b0 < 0) return; const k = 1 - sstep(2.5, 4, bd), list = [];
+  for (let i = LB.rg0; i <= LB.NU + 3; i++) { const w = k * Math.exp(-Math.pow((i - b0) / 9, 2)); if (w > 0.05) list.push(lbId(i, NR), w); }
+  st.carry = { p0: h.tip.clone(), list };
 }
 function lbOpen(h) {
   const st = LH[h.key], had = st.held.length > 0;
@@ -163,16 +183,20 @@ function lbCoag(h, dt) {
   }
   L.minU = Math.min(L.minU, Math.max(0, near)); if (near < 0.5) { L.nearSec += dt; if (!h.nearFlag) { h.nearFlag = true; S.stats.nearMiss++; logEvent('near', 'Energy within 5 mm of the ureter'); sfx.warn(); } }
   for (const k in LV) {
-    const v = LV[k], n = lbSegArr(v.arr), d = n.d - v.r - JR; if (d > 0.06) continue; on = true;
-    const need = k === 'ua' ? 1 : k === 'obn' || k === 'gfn' ? 0.5 : k === 'oua' ? 0.6 : 0.3; v.heat += dt * 1.5;
+    const v = LV[k]; if (!v.r) continue; const n = lbSegArr(v.arr), d = n.d - v.r - JR; if (d > 0.06) continue; on = true;
+    const need = k === 'ua' ? 1 : k === 'umb' ? 0.8 : k === 'oua' ? 0.6 : k === 'obn' || k === 'gfn' ? 0.5 : /^(sva|ob)/.test(k) ? 0.4 : 0.3; v.heat += dt * 1.5;
     if (v.heat >= need) lbVesselHit(k, v.arr[n.at].clone(), 'coagulated');
   }
+  // the round ligament in the jaws is sealed where they hold it: about a second
+  const rl = LB.rl, rn = rl.cut ? null : lbSegArr(LB.rlArr);
+  if (rn && rn.d < 0.2 + JR + 0.08) { const u = rn.at / (LB.rlArr.length - 1); if (u > LB.RLU + 0.03 && u < 0.97 && sealK(rl, u) < 0.9) { on = true; if (!rl.act || Math.abs(rl.act.u - u) > 0.04) rl.act = { u, w: 0.05, p: 0 }; rl.act.p += dt / 0.9; if (rl.act.p >= 1) { rl.seals.push({ u: rl.act.u, w: 0.05 }); rl.act = null; sfx.sealDone(); } } }
   // the ovarian vessels run in the infundibulopelvic ligament
   let ip = 0; for (let i = LB.ipI0; i < LB.NC - 1; i++) if (LB.seal[lbId(i, LB.NR)] >= 1.2 || LB.seal[lbId(i, LB.NR + 1)] >= 1.6) ip++;
   if (ip >= 2) lbInjury('ipCoag', 'Infundibulopelvic ligament coagulated: the ovarian vessels are in it');
   sustain('bip', on ? 560 : 430, 'sine', on ? 0.065 : 0.05);
 }
-// The blade divides what the closed jaws hold. Peritoneum that was coagulated first parts dry; cut cold, its edge bleeds.
+// The blade divides what the closed jaws hold. Peritoneum that was coagulated first parts dry; cut cold, its edge oozes
+// a little, which is not held against the surgeon. An opening is made longer the same way: a bite at a time.
 function labCut(hand) {
   const h = hand || activeHand(), L = S.lab;
   if (h.inst !== 'bipolar' || h.exch > 0) { hint('cutinst', 'The cut blade is on the advanced bipolar'); return true; }
@@ -180,9 +204,19 @@ function labCut(hand) {
   lbStrip(h, 1.75); const kill = [];
   for (let k = 0; k < LB.NQ * 2; k++) if (!LB.dead[k]) { lbTriC(k, _jm); if (lbInStrip(_jm.x, _jm.y, _jm.z, 0.17)) kill.push(k); }
   let other = false;
+  // the round ligament in the closed jaws is divided, and the peritoneum on it with it
+  const rl = LB.rl, rn = rl.cut ? null : lbSegArr(LB.rlArr), ru = rn ? rn.at / (LB.rlArr.length - 1) : 0;
+  if (rn && rn.d < 0.2 + JR + 0.05 && ru > LB.RLU + 0.03 && ru < 0.97) {
+    const dry = sealK(rl, ru) > 0.5, ic = clamp(Math.round((ru - LB.RLU) / (1 - LB.RLU) * LB.NU - 0.5), 0, LB.NU - 1); other = true;
+    Object.assign(rl, { cut: true, uc: ru, dry, act: null }); L.round = { t: S.t, dry };
+    for (const q of [ic - 1, ic, ic + 1]) if (q >= 0 && q < LB.NC - 1) for (const k of [q * 2, q * 2 + 1]) if (!LB.dead[k] && !kill.includes(k)) kill.push(k);
+    for (let i = 1; i < LB.NU; i++) { const a = lbId(i, 0); LB.pin[a] = 0; LB.free[a] = 1; if (!LB.heldV[a]) PX.w[a] = 1; } // its two stumps, and the peritoneum on them, hang free
+    logEvent('info', dry ? 'Round ligament divided' : 'Round ligament divided without coagulating it: it bleeds');
+    if (!dry) { lbBleed(sampleArr(LB.rlArr, ru, new V3()), 40, true, 'round ligament', 30, 'The round ligament has stopped bleeding'); sfx.warn(); }
+  }
   for (let q = 0; q < LS.n; q++) if ((PX.cf[LS.c[q]] & 1) && lbThread(q) < 0.25) { lbPart(q); other = true; }
   for (let q = 1; q <= LU.kx; q++) if (lbSegP(LU.i0 + q) < LU.r + JR + 0.08 && L.cutU < 0) { L.cutU = q; LU.state[q] |= 4; other = true; lbInjury('ureterCut', 'The right ureter was divided by the blade'); for (let c = 0; c < PX.m; c++) if ((PX.ci[c] === LU.i0 + q && PX.cj[c] >= LU.i0 && PX.cj[c] < LU.i0 + LU.n) || (PX.cj[c] === LU.i0 + q && PX.ci[c] >= LU.i0 && PX.ci[c] < LU.i0 + LU.n)) PX.cf[c] = 0; }
-  for (const k in LV) { const v = LV[k], n = lbSegArr(v.arr); if (n.d < v.r + JR) { lbVesselHit(k, v.arr[n.at].clone(), 'divided by the blade'); other = true; } }
+  for (const k in LV) { const v = LV[k]; if (!v.r) continue; const n = lbSegArr(v.arr); if (n.d < v.r + JR) { lbVesselHit(k, v.arr[n.at].clone(), 'divided by the blade'); other = true; } }
   if (!kill.length && !other) { hint('cutnone', 'Nothing in the jaws to divide here'); return true; }
   sfx.cut(); h.open = 0;
   if (kill.length) {
@@ -196,7 +230,7 @@ function labCut(hand) {
     }
     cen.multiplyScalar(1 / n); lbReindex(); L.cuts += kill.length;
     const sealed = s / kill.length >= 0.75, c0 = lbTriC(kill[0], new V3());
-    if (!sealed) { S.stats.unsealedCuts++; lbBleed(c0, 16, false, 'peritoneal edge', 35, 'The edge has stopped bleeding'); logEvent('bleed', 'Peritoneum cut without coagulating it first: the edge bleeds'); sfx.warn(); }
+    if (!sealed) { S.stats.unsealedCuts++; lbBleed(c0, 6, false, 'peritoneal edge', 20, 'The edge has stopped oozing'); if (!L.coldSaid) { L.coldSaid = true; logEvent('info', 'Peritoneum cut cold: its edge oozes a little'); } }
     if (ipq) { if (lbInjury('ipCut', 'Infundibulopelvic ligament divided: the ovarian vessels are in it') && !sealed) lbBleed(c0, 90, true, 'ovarian vessels'); }
     if (!L.entry) { // the first opening: where it is, and whether the peritoneum was lifted off what lies under it
       const k0 = kill[kill.length >> 1] >> 1, w = ((k0 / (LB.NC - 1)) | 0) / LB.NR, u = lbU(k0 % (LB.NC - 1), (k0 / (LB.NC - 1)) | 0);
@@ -221,7 +255,7 @@ function labSuction(h, dt) { for (const w of LB.wells) if (w.v > 0 && h.tip.dist
 
 // ---- every frame: the tissue ----
 function lbCollide() { // instrument tips push the ureter aside, and under the peritoneum lift it from beneath and push the web before them
-  const x = PX.x, w = PX.w, u0 = LU.i0, n0 = LW.i0, n1 = LW.i0 + LW.n;
+  const x = PX.x, w = PX.w, u0 = LU.i0, n0 = LW.i0, n1 = LW.i0 + LW.n, NS = LB.NS, mob = LB.mob, r0 = LB.r0;
   for (const h of HANDS) {
     const st = LH[h.key];
     for (let s = 0; s < st.ns; s++) {
@@ -230,20 +264,40 @@ function lbCollide() { // instrument tips push the ureter aside, and under the p
       for (let q = 1; q <= LU.kx; q++) if (w[u0 + q] > 0) push(u0 + q, R + LU.r);
       if (st.in) { for (let i = 0; i < LB.NS; i++) if (w[i] > 0) push(i, R); for (let i = n0; i < n1; i++) if (w[i] > 0) push(i, R); }
     }
+    // The edge of an opening does not tear when a shaft is pushed against it: it is stretched aside round the shaft
+    for (let e = 0; e < st.ne; e++) {
+      const E = st.edge[e], px = E.p.x, py = E.p.y, pz = E.p.z, dx = E.d.x, dy = E.d.y, dz = E.d.z, ax = h.dir.x, ay = h.dir.y, az = h.dir.z;
+      for (let i = 0; i < NS; i++) if (mob[i] && w[i] > 0) {
+        const k = i * 3; let vx = x[k] - px, vy = x[k + 1] - py, vz = x[k + 2] - pz; const a = vx * ax + vy * ay + vz * az; if (a > 1 || a < -1) continue; vx -= a * ax; vy -= a * ay; vz -= a * az;
+        const s = vx * dx + vy * dy + vz * dz, l2 = vx * vx + vy * vy + vz * vz - s * s; if (l2 > 1.2 || s < -E.len - 0.1) continue; // (not the far edge of the opening)
+        const need = 0.34 * Math.exp(-l2 / 0.3) - s; if (need > 0) { x[k] += dx * need * 0.5; x[k + 1] += dy * need * 0.5; x[k + 2] += dz * need * 0.5; }
+      }
+    }
   }
 }
-PX.collide = lbCollide;
+PX.collide = () => {
+  lbCollide();
+  const x = PX.x, r0 = LB.r0, NR = LB.NR;
+  // the adnexa go with a fold of peritoneum held beside them (lbCarry)
+  for (const h of HANDS) { const cy = LH[h.key].carry; if (!cy) continue; const dx = h.tip.x - cy.p0.x, dy = h.tip.y - cy.p0.y, dz = h.tip.z - cy.p0.z, l = cy.list; for (let e = 0; e < l.length; e += 2) { const k = l[e] * 3, w = l[e + 1]; if (PX.w[l[e]] === 0) continue; x[k] += (r0[k] + dx * w - x[k]) * 0.25; x[k + 1] += (r0[k + 1] + dy * w - x[k + 1]) * 0.25; x[k + 2] += (r0[k + 2] + dz * w - x[k + 2]) * 0.25; } }
+  // and come only so far from where they lie (LB.reach)
+  for (let i = LB.rg0; i < LB.NC - 1; i++) { const k = lbId(i, NR) * 3, dx = x[k] - r0[k], dy = x[k + 1] - r0[k + 1], dz = x[k + 2] - r0[k + 2], d2 = dx * dx + dy * dy + dz * dz, m = LB.reach[i]; if (d2 > m * m && PX.w[k / 3] > 0) { const s = m / Math.sqrt(d2); x[k] = r0[k] + dx * s; x[k + 1] = r0[k + 1] + dy * s; x[k + 2] = r0[k + 2] + dz * s; } }
+};
 const _lr = new THREE.Raycaster();
 function lbHands() {
   for (const h of HANDS) {
     const st = LH[h.key];
     // under the peritoneum? The tip is, once it has gone in through a place that was cut, until it comes back out
     _lr.set(h.port, h.dir); _lr.far = Math.max(0.1, h.ins - 0.03); const hits = _lr.intersectObject(LB.full, false);
-    // pushed through the edge of an opening, a tip or a shaft tears the opening wider
-    let tore = false;
-    if (S.running) for (const x of hits) if (!LB.dead[x.faceIndex] && LB.near[x.faceIndex]) { for (let k = 0; k < LB.NQ * 2; k++) if (!LB.dead[k] && LB.near[k] && lbTriC(k, _jm).distanceTo(x.point) < 0.42) { LB.dead[k] = 1; tore = true; } }
-    if (tore) { lbReindex(); S.lab.cuts++; if (S.lab.entry && S.t - S.lab.tearT > 1.5) S.lab.widened++; S.lab.tearT = S.t; }
-    if (!hits.length) st.in = false; else if (!st.in) st.in = hits.some(x => LB.dead[x.faceIndex]);
+    // Pushed against the edge of an opening, a shaft does not tear it. Within two triangles of the opening the edge gives,
+    // stretched aside round the shaft (lbCollide); further than that from it the peritoneum stops the instrument.
+    st.ne = 0;
+    for (const x of hits) if (!LB.dead[x.faceIndex] && LB.near[x.faceIndex] && st.ne < 2) {
+      let bd = 4; for (let k = 0; k < LB.NQ * 2; k++) if (LB.dead[k]) { const d = lbTriC(k, _jm).distanceToSquared(x.point); if (d < bd) { bd = d; _jc.copy(_jm); } }
+      if (bd >= 4) continue;
+      const e = st.edge[st.ne++]; e.p.copy(x.point); e.d.copy(x.point).sub(_jc); e.d.addScaledVector(h.dir, -e.d.dot(h.dir)); e.len = e.d.length(); e.d.normalize(); // len: how far the shaft is from the opening
+    }
+    if (!hits.length) st.in = false; else if (!st.in) st.in = hits.some(x => LB.dead[x.faceIndex] || LB.near[x.faceIndex]);
     // the tip, and the jaws behind it, as balls
     const back = _jn.copy(h.port).sub(h.tip).normalize(), jl = LK.JAW[h.inst] || 1.6, op = h.open * 0.42;
     st.sph[0].set(h.tip.x, h.tip.y, h.tip.z, 0.26); st.ns = 1;
@@ -260,6 +314,12 @@ function labUpdate(dt, time) {
   const sd = AN.side.R; for (const m of [sd.st.roofL, sd.st.postL, sd.st.areolar, sd.t.ip, URETER.R.tube]) m.mesh.visible = false;
   for (const h of HANDS) if (h.inst === 'grasper' && h.exch <= 0) { h.sub.grasper.g.visible = false; h.inst = 'maryland'; h.sub.maryland.g.visible = true; }
   DEPTH.auto = false; S.guided = false;
+  for (const m of [sd.t.roundA, sd.t.roundB]) m.mesh.visible = false; // the lab draws its own round ligament
+  LB.rl.gk = damp(LB.rl.gk, LB.rl.cut ? 1 : 0, 7, dt);
+  lbAdnexa();
+  // The scope goes in further here than in the simulator: at the simulator's limit, + carries on and - comes back
+  if (LB.keys.in && CAM.userIns >= 5.99) LB.zoom = Math.min(LK.ZOOM, LB.zoom + 6 * dt); if (LB.keys.out && LB.zoom > 0) { LB.zoom = Math.max(0, LB.zoom - 6 * dt); CAM.userIns = 6; }
+  CAM.insGoal = CAM.goal.distanceTo(CAM.pivot) - LAB_STEPS[0].dist + LB.zoom;
   lbHands();
   lbBeat(time);
   PX.step(clamp(dt, 0.004, 0.034));
@@ -281,10 +341,11 @@ function labTick(dt) {
     if (h.inst !== 'maryland' && h.inst !== 'bipolar' && st.held.length) lbRelease(h);
     // the peritoneum pulls out of the jaws before it stretches to SLIP times its length
     if (st.kind === 'peritoneum') for (const e of st.held) if (e.t === 's') { const c = LB.eh[e.i], d = LB.ev[e.i]; if ((c >= 0 && (PX.cf[c] & 1) && PX.dist(PX.ci[c], PX.cj[c]) > LK.SLIP * PX.cl[c]) || (d >= 0 && (PX.cf[d] & 1) && PX.dist(PX.ci[d], PX.cj[d]) > LK.SLIP * PX.cl[d])) { lbOpen(h); L.slips++; logEvent('tech', 'The peritoneum was pulled out of the jaws'); break; } }
+    if (st.kind === 'peritoneum') for (const e of st.held) if (e.t === 's' && LB.ridge[e.i] && PX.get(e.i, _jm).distanceTo(PX.rest(e.i, _jn)) > LB.reach[e.i % LB.NC] + 0.3) { lbOpen(h); L.slips++; logEvent('tech', 'The ligament was pulled out of the jaws: the adnexa come no further'); break; }
     if (st.vHold && st.vHold.p0.distanceTo(h.tip) > 0.8) { const v = st.vHold; lbOpen(h); lbVesselHit(v.k, v.at.clone(), 'torn by traction'); }
     if (st.in && st.last.distanceTo(h.tip) > 0.012) lbSweep(h);
     st.last.copy(h.tip);
-    if (st.in) { L.inT += dt; for (const s of LR.list) if (!s.seen && s.at(_jm).distanceTo(h.tip) < 1.15) s.seen = true; for (let q = 0; q < LU.n; q++) if (LU.prc[q] && !L.prSeen[q] && lbMid(q, _jm).distanceTo(h.tip) < 0.9) L.prSeen[q] = 1; }
+    if (st.in) { L.inT += dt; for (const s of LR.list) if (!s.seen && s.at(_jm).distanceTo(h.tip) < 1.15) s.seen = true; for (const key in LB.sp) { const A = LB.sp[key], seen = L.spSeen[key]; for (let k = 0; k < A.length; k++) if (!seen[k] && A[k].mid.distanceTo(h.tip) < 0.9) seen[k] = 1; } }
   }
   // what stretched until it broke in the last step: threads of the web, and what holds the ureter to its leaf
   for (const c of PX.broke) {
@@ -303,7 +364,6 @@ function labTick(dt) {
 // A place on a structure counts as uncovered once an instrument has worked beside it under the peritoneum, most of
 // the web that lay on it has been swept off, and no blood stands over it.
 const LR = { list: [], by: {} };
-function lbMid(q, out) { PX.get(LU.i0 + q, out); const n = nearestOnArr(LV.iia.arr, out); return out.lerp(LV.iia.arr[Math.round(n.u * (LV.iia.arr.length - 1))], 0.5); }
 (function () {
   const add = (key, at, rad, face) => { const s = { key, at, rad, face, seen: false, rev: false }; LR.list.push(s); (LR.by[key] = LR.by[key] || []).push(s); };
   // The side of each place that the dissection works on. The ureter is left on its leaf, which brings its blood supply, and is uncovered on its other side; a vessel on the wall is uncovered on its side toward the pelvis
@@ -311,19 +371,15 @@ function lbMid(q, out) { PX.get(LU.i0 + q, out); const n = nearestOnArr(LV.iia.a
     const p = PX.rest(LU.i0 + q, new V3()); let b = -1, bd = 0.75; for (let i = 0; i < LB.NS; i++) { const d = PX.rest(i, _jm).distanceTo(p); if (d < bd) { bd = d; b = i; } }
     add('ureter', o => PX.get(LU.i0 + q, o), LU.r + 0.05, b < 0 ? null : lbNin(b, new V3()));
   }
-  for (const k of ['ua', 'iia', 'iiv', 'oua', 'obn', 'gfn', 'eia', 'eiv']) { const v = LV[k]; for (let i = 0; i < v.arr.length; i++) { const p = v.arr[i]; if (p.z < BRIM - 0.8 && p.z > -4.7) add(k, o => o.copy(p), v.r + 0.08, new V3(-p.x, BOWL_YC - p.y, 0).normalize()); } }
+  for (const k of ['ua', 'iia', 'iiaA', 'iiaP', 'iiv', 'umb', 'sva1', 'sva2', 'oua', 'oba', 'obv', 'obn', 'gfn', 'eia', 'eiv']) { const v = LV[k]; for (let i = 0; i < v.arr.length; i++) { const p = v.arr[i]; if (p.z < BRIM - 0.8 && p.z > -5.3) add(k, o => o.copy(p), v.r + 0.08, new V3(-p.x, BOWL_YC - p.y, 0).normalize()); } }
   LS.byC = new Map(); for (let q = 0; q < LS.n; q++) LS.byC.set(LS.c[q], q);
   LU.attC = new Set(LU.att.map(a => a.c));
   LB.ipRest = []; for (let i = LB.ipI0; i < LB.NC; i++) LB.ipRest.push(PX.rest(lbId(i, LB.NR), new V3()));
   // the threads of the web that lie on each place
   const M = LS.mid; for (const s of LR.list) { const p = s.at(new V3()), f = s.face, c = []; for (let q = 0; q < LS.n; q++) { const dx = M[q * 3] - p.x, dy = M[q * 3 + 1] - p.y, dz = M[q * 3 + 2] - p.z; if (Math.hypot(dx, dy, dz) < s.rad + 0.35 && (!f || dx * f.x + dy * f.y + dz * f.z > -0.05)) c.push(q); } s.cov = c; }
-  // and those that cross the pararectal space: between each place on the ureter and the internal iliac artery beside it
-  LU.prc = [];
-  for (let q = 0; q < LU.n; q++) {
-    LU.prc.push(null); if (q < 2 || q >= LU.kx || !LU.onLeaf[q] || PX.rest(LU.i0 + q, _ja).z > 8.3) continue;
-    sampleArr(LV.iia.arr, nearestUOnArr(LV.iia.arr, _ja), _jb); if (_ja.distanceTo(_jb) > 3) continue;
-    const c = []; for (let e = 0; e < LS.n; e++) if (lbSeg(M[e * 3], M[e * 3 + 1], M[e * 3 + 2]) < 0.4) c.push(e); if (c.length) LU.prc[q] = c;
-  }
+  // how far it is from one place to the next along each space (LB.sp): along the ureter, and along the obliterated umbilical artery
+  let len = 0; const A = LV.oua.arr; for (let i = 1; i < A.length; i++) len += A[i].distanceTo(A[i - 1]);
+  LB.spDs = { prL: LU.ds, pvL: len / (A.length - 1), pvM: len / (A.length - 1) };
 })();
 // the longest stretch of a row of places that all pass, counting through a gap of up to `bridge` places that do not
 const lbRun = (ok, n, bridge) => { let best = 0, cur = 0, gap = 0, end = -1, bEnd = -1; for (let q = 0; q < n; q++) { if (ok(q)) { cur += 1 + gap; gap = 0; end = q; if (cur > best) { best = cur; bEnd = end; } } else if (cur && gap < bridge) gap++; else { cur = 0; gap = 0; } } return { n: best, end: bEnd }; };
@@ -338,12 +394,13 @@ function lbMetrics() {
   const U = LR.by.ureter, run = lbRun(q => U[q].rev, U.length, 2), G = L.goal; // a tag of web left on it, under a centimetre, does not break the run
   G.ureterCm = run.n * LU.ds; G.toUA = run.n > 0 && run.end >= U.length - 3; G.ua = LR.by.ua.slice(0, 7).filter(s => s.rev).length >= 3;
   G.found = {}; for (const k in LR.by) { const a = LR.by[k], n = a.filter(s => s.rev).length; G.found[k] = n >= Math.max(3, a.length * 0.2); }
-  G.found.ureter = G.ureterCm >= 1.5; G.found.ua = G.ua;
-  // the pararectal space: the web between the ureter and the internal iliac artery swept out
-  const pr = lbRun(q => { const a = LU.prc[q]; return !!a && !!L.prSeen[q] && left(a) <= 0.25 * a.length; }, LU.n, 1);
-  G.prCm = pr.n * LU.ds;
-  G.entry = !!L.entry && L.entry.zone === 'triangle' && !['ureterBurn', 'ureterCut', 'ureterCrush', 'ipCoag', 'ipCut', 'eia', 'eiv', 'iia', 'iiv'].some(k => S.injuries[k] && S.injuries[k].t <= L.entry.t + 20);
-  G.ureter = G.ureterCm >= 6 && G.toUA && G.ua; G.pr = G.prCm >= 2;
+  G.found.ureter = G.ureterCm >= 1.5; G.found.ua = G.ua; G.found.sva = G.found.sva1 || G.found.sva2; delete G.found.sva1; delete G.found.sva2;
+  // the spaces: how far along each the web that lay across it has been swept out. A place counts once an instrument has
+  // worked in it and three quarters of the threads across it are parted
+  for (const key in LB.sp) { const A = LB.sp[key], seen = L.spSeen[key]; G.sp[key] = lbRun(k => !!seen[k] && left(A[k].thr) <= 0.25 * A[k].thr.length, A.length, 1).n * LB.spDs[key]; }
+  G.prCm = G.sp.prL; G.pr = G.prCm >= 2; G.pvL = G.sp.pvL >= 1.5; G.pvM = G.sp.pvM >= 1.5;
+  G.entry = !!L.entry && (L.entry.zone === 'triangle' || L.entry.zone === 'round') && !['ureterBurn', 'ureterCut', 'ureterCrush', 'ipCoag', 'ipCut', 'eia', 'eiv', 'iia', 'iiv'].some(k => S.injuries[k] && S.injuries[k].t <= L.entry.t + 20);
+  G.ureter = G.ureterCm >= 6 && G.toUA && G.ua;
   let str = 0; for (let q = 1; q < LU.n; q++) if (LU.strip[q] >= 1) str++; G.stripCm = str * LU.ds;
   // how long the opening is
   let far = 0; const pts = [];
@@ -351,8 +408,9 @@ function lbMetrics() {
   for (let i = 0; i < pts.length; i += 1) for (let j = i + 1; j < pts.length; j += 1) far = Math.max(far, pts[i].distanceTo(pts[j]));
   G.openCm = pts.length ? far + 0.36 : 0;
 }
-const LNAME = { ureter: 'ureter', ua: 'uterine artery', iia: 'internal iliac artery', iiv: 'internal iliac vein', oua: 'obliterated umbilical artery', obn: 'obturator nerve', gfn: 'genitofemoral nerve', eia: 'external iliac artery', eiv: 'external iliac vein' };
-const ZONE = { triangle: 'Lateral to the IP ligament', ip: 'On the IP ligament', medial: 'Medial to the IP ligament', iliac: 'Over the external iliac vessels', round: 'On the round ligament', adnexa: 'Beside the adnexa, not at the sidewall' };
+const LNAME = { ureter: 'ureter', ua: 'uterine artery', iia: 'internal iliac artery', iiaA: 'its anterior division', iiaP: 'its posterior division', iiv: 'internal iliac vein', umb: 'umbilical artery', sva: 'superior vesical arteries', oua: 'obliterated umbilical artery', oba: 'obturator artery', obv: 'obturator vein', obn: 'obturator nerve', gfn: 'genitofemoral nerve', eia: 'external iliac artery', eiv: 'external iliac vein' };
+const SPACE = { prL: 'Lateral pararectal space', pvL: 'Lateral paravesical space', pvM: 'Medial paravesical space' };
+const ZONE = { triangle: 'Lateral to the IP ligament', ip: 'On the IP ligament', medial: 'Medial to the IP ligament', iliac: 'Over the external iliac vessels', round: 'At the round ligament', adnexa: 'Beside the adnexa, not at the sidewall' };
 
 // ---- score ----
 function labScore() {
@@ -361,13 +419,13 @@ function labScore() {
   const ded = (n, t) => { pts -= n; notes.push(t + ' (&minus;' + n + ')'); };
   if (!E) ded(30, 'The retroperitoneum was not opened');
   else {
-    if (E.zone !== 'triangle') ded(12, 'Entry: ' + ZONE[E.zone].toLowerCase());
+    if (E.zone !== 'triangle' && E.zone !== 'round') ded(12, 'Entry: ' + ZONE[E.zone].toLowerCase());
     if (!E.tented) ded(6, 'First bite taken with the peritoneum lying on what is under it, not tented');
   }
-  if (S.stats.unsealedCuts) ded(Math.min(9, 3 * S.stats.unsealedCuts), 'Peritoneum cut without coagulating it first, ' + S.stats.unsealedCuts + ' time' + (S.stats.unsealedCuts > 1 ? 's' : ''));
+  if (L.round && !L.round.dry) ded(3, 'Round ligament divided without coagulating it');
   for (const [k, n, t] of [['ureterCut', 40, 'Ureter divided'], ['ureterBurn', 30, 'Thermal injury to the ureter'], ['ureterCrush', 12, 'Ureter grasped: crush injury'], ['ureterOff', 12, 'Ureter pulled off the leaf that carries its blood supply'],
     ['ipCut', 20, 'IP ligament divided'], ['ipCoag', 15, 'IP ligament coagulated'], ['eia', 35, 'External iliac artery injured'], ['eiv', 35, 'External iliac vein injured'], ['iia', 35, 'Internal iliac artery injured'], ['iiv', 35, 'Internal iliac vein injured'],
-    ['uaCut', 15, 'Uterine artery divided'], ['uaCoag', 8, 'Uterine artery coagulated'], ['oua', 5, 'Obliterated umbilical artery divided'], ['obn', 12, 'Obturator nerve injured'], ['gfn', 6, 'Genitofemoral nerve injured']]) if (I[k] && !(k === 'uaCoag' && I.uaCut) && !(k === 'ipCoag' && I.ipCut)) ded(n, t);
+    ['uaCut', 15, 'Uterine artery divided'], ['uaCoag', 8, 'Uterine artery coagulated'], ['umb', 12, 'Umbilical artery injured'], ['sva', 5, 'Superior vesical artery injured'], ['oba', 12, 'Obturator artery injured'], ['obv', 12, 'Obturator vein injured'], ['oua', 5, 'Obliterated umbilical artery divided'], ['obn', 12, 'Obturator nerve injured'], ['gfn', 6, 'Genitofemoral nerve injured']]) if (I[k] && !(k === 'uaCoag' && I.uaCut) && !(k === 'ipCoag' && I.ipCut)) ded(n, t);
   if (G.stripCm >= 1) ded(G.stripCm >= 2.5 ? 10 : 5, 'Ureteric sheath stripped over ' + G.stripCm.toFixed(1) + ' cm');
   if (L.nearSec >= 2 && !I.ureterBurn) ded(4, 'Energy within 5 mm of the ureter for ' + L.nearSec.toFixed(1) + ' s');
   if (S.ebl > 150) ded(10, 'Blood loss over 150 mL'); else if (S.ebl > 50) ded(5, 'Blood loss over 50 mL');
@@ -380,18 +438,18 @@ function labDebrief(row) {
   const L = S.lab, G = L.goal, E = L.entry, I = S.injuries, yn = (b, y, n) => (b ? y || 'Yes' : n || 'No');
   const found = Object.keys(LNAME).filter(k => G.found[k]).map(k => LNAME[k]);
   const goals = row('1. Retroperitoneum entered in the right place, nothing injured', yn(G.entry, 'Reached', 'Not reached'), G.entry ? '' : 'warn') + row('2. Ureter followed to the uterine artery, and the artery uncovered', yn(G.ureter, 'Reached', 'Not reached') + ': ' + G.ureterCm.toFixed(1) + ' of ' + (LR.by.ureter.length * LU.ds).toFixed(0) + ' cm of ureter', G.ureter ? '' : 'warn') +
-    row('Pararectal space developed (not required)', yn(G.pr, 'Yes', 'No') + (G.prCm ? ', over ' + G.prCm.toFixed(1) + ' cm' : '')) + row('Uncovered', found.length ? found.join(', ') : 'nothing');
+    ['prL', 'pvL', 'pvM'].map(k => row(SPACE[k] + ' (not required)', G.sp[k] >= 0.3 ? 'Developed over ' + G.sp[k].toFixed(1) + ' cm' : 'Not developed')).join('') + row('Uncovered', found.length ? found.join(', ') : 'nothing');
   const g = $('dbGoals'); if (g && goals.charAt(0) === '<') g.innerHTML = goals; // on the page; not when the debrief is being written out as plain text
-  const ves = ['eia', 'eiv', 'iia', 'iiv', 'uaCut', 'uaCoag', 'oua'].filter(k => I[k]).length, ur = ['ureterCut', 'ureterBurn', 'ureterCrush', 'ureterOff'].filter(k => I[k]);
+  const ves = ['eia', 'eiv', 'iia', 'iiv', 'uaCut', 'uaCoag', 'umb', 'sva', 'oba', 'obv', 'oua'].filter(k => I[k]).length, ur = ['ureterCut', 'ureterBurn', 'ureterCrush', 'ureterOff'].filter(k => I[k]);
   const safety = row('Ureter', ur.length ? ur.map(k => ({ ureterCut: 'divided', ureterBurn: 'thermal injury', ureterCrush: 'crushed', ureterOff: 'pulled off its leaf' })[k]).join(', ') : 'Intact', ur.length ? 'bad' : '') +
     row('Ureteric sheath', G.stripCm >= 0.3 ? 'Stripped over ' + G.stripCm.toFixed(1) + ' cm' : 'Preserved', G.stripCm >= 1 ? 'warn' : '') +
     row('Energy within 5 mm of the ureter', L.nearSec.toFixed(1) + ' s' + (L.minU < 9 ? ' (closest ' + (L.minU * 10).toFixed(0) + ' mm)' : ''), L.nearSec >= 2 ? 'warn' : '') +
     row('IP ligament', I.ipCut ? 'Divided' : I.ipCoag ? 'Coagulated' : 'Intact', I.ipCut || I.ipCoag ? 'bad' : '') +
     row('Vessel injuries', ves, ves ? 'bad' : '') + row('Nerve injuries', (I.obn ? 1 : 0) + (I.gfn ? 1 : 0), I.obn || I.gfn ? 'bad' : '') + row('Small vessels cut uncoagulated', L.smallBleeds, L.smallBleeds > 6 ? 'warn' : '');
-  const tech = row('Opened', E ? ZONE[E.zone] : 'Not opened', E && E.zone === 'triangle' ? '' : 'warn') +
+  const tech = row('Opened', E ? ZONE[E.zone] : 'Not opened', E && (E.zone === 'triangle' || E.zone === 'round') ? '' : 'warn') +
     row('First bite tented', E ? yn(E.tented, 'Yes, ' + (E.lift * 10).toFixed(0) + ' mm', 'No') : 'n/a', E && !E.tented ? 'warn' : '') +
     row('Length of the opening', E ? G.openCm.toFixed(1) + ' cm' : 'n/a') +
-    row('Peritoneum cut uncoagulated', S.stats.unsealedCuts, S.stats.unsealedCuts ? 'warn' : '') + row('Opening widened bluntly', L.widened + (L.widened === 1 ? ' time' : ' times')) + row('Blunt spreads', S.stats.blunt) +
+    row('Bites of peritoneum cut cold', S.stats.unsealedCuts) + row('Round ligament', L.round ? (L.round.dry ? 'Divided, coagulated first' : 'Divided without coagulating it') : 'Not divided', L.round && !L.round.dry ? 'warn' : '') + row('Blunt spreads', S.stats.blunt) +
     row('Peritoneum lost from the jaws', L.slips, L.slips >= 2 ? 'warn' : '') + row('Time under the peritoneum', fmtT(L.inT));
   return [safety, tech];
 }
@@ -408,22 +466,19 @@ const LAB = {
   id: 'lab', name: 'Retroperitoneal ureter dissection', tag: ', right side, free play', blurb: 'Free play on tissue that moves.',
   sub: 'Right pelvic sidewall. Normal anatomy.',
   brief: ['A woman with normal pelvic anatomy: no endometriosis and no adhesions. The uterus is held to her left on its manipulator, which puts the right sidewall on stretch. 10 mm umbilical scope and two 5 mm lateral ports, as for the hysterectomy. You are looking at her right sidewall: the round ligament above, the infundibulopelvic ligament running back to the pelvic brim, and the external iliac vessels under the peritoneum beside it.',
-    'Open the retroperitoneum, find the ureter, and follow it down to where it passes under the uterine artery. Under the peritoneum there is loose areolar tissue and no fat: an instrument swept through it, or jaws opened in it, part it. The Maryland starts in your left hand and the advanced bipolar in your right. The suction is on the tray for blood that wells up.'],
+    'Open the retroperitoneum, find the ureter, and follow it down to where it passes under the uterine artery. Carry the opening toward the round ligament a bite at a time, coagulated first or cut cold: the peritoneum stretches round an instrument but does not tear. Hold the medial edge of the opening in the Maryland and draw it medially, and the ovary and its ligament come with it. The round ligament can be coagulated and divided to open the space further. Under the peritoneum there is loose areolar tissue and no fat: an instrument swept through it, or jaws opened in it, part it. The Maryland starts in your left hand and the advanced bipolar in your right. The suction is on the tray for blood that wells up.'],
   steps: LAB_STEPS, insts: ['maryland', 'bipolar', 'suction'], warp: [0, 0], tipZ: 7.5, ureters: false, eblWarn: 50, needleHint: '',
   // A structure is named once it has been uncovered. The ureter lies on the far side of the medial leaf from the scope, so
   // its name is put on the leaf over it, where it can be seen through the peritoneum
-  labels: [['Right IP lig.', () => _w.copy(LB.ipArr[9])]].concat(Object.keys(LNAME).map(k => [k === 'ureter' ? 'Right ureter, under this leaf' : 'Right ' + LNAME[k], () => {
-    const s = LR.by[k].filter(s => s.rev), p = (s.length ? s[s.length >> 1] : LR.by[k][0]).at(_w); if (k !== 'ureter') return p;
-    let b = 0, bd = 1e9; for (let i = 0; i < LB.NS; i++) { const a = i * 3, d = (PX.x[a] - p.x) ** 2 + (PX.x[a + 1] - p.y) ** 2 + (PX.x[a + 2] - p.z) ** 2; if (d < bd) { bd = d; b = i; } }
-    return PX.get(b, _w).addScaledVector(lbNin(b, _l5), -0.12);
-  }, () => S.lab && S.lab.goal.found[k]])),
+  labels: [], // the lab names things itself (08-lab.js)
   state(s) {
     lbResetModel();
-    for (const k of ['L', 'R']) Object.assign(LH[k], { in: false, held: [], kind: '', down: false, coag: false, vHold: null });
+    for (const k of ['L', 'R']) Object.assign(LH[k], { in: false, held: [], kind: '', down: false, coag: false, vHold: null, carry: null, ne: 0 });
     for (const r of LR.list) { r.seen = false; r.rev = false; }
     s.guided = false;
-    s.lab = { entry: null, cuts: 0, widened: 0, tearT: -9, slips: 0, smallBleeds: 0, nearSec: 0, minU: 9, cutU: -1, crush: false, offLeaf: 0, uaSealed: false, inT: 0, mT: 0, paint: true, prSeen: new Uint8Array(LU.n),
-      goal: { entry: false, ureter: false, pr: false, ua: false, toUA: false, ureterCm: 0, prCm: 0, stripCm: 0, openCm: 0, found: {} } };
+    s.lab = { entry: null, round: null, cuts: 0, slips: 0, smallBleeds: 0, nearSec: 0, minU: 9, cutU: -1, crush: false, offLeaf: 0, uaSealed: false, inT: 0, mT: 0, paint: true, spSeen: { prL: new Uint8Array(LB.sp.prL.length), pvL: new Uint8Array(LB.sp.pvL.length), pvM: new Uint8Array(LB.sp.pvM.length) },
+      goal: { entry: false, ureter: false, pr: false, pvL: false, pvM: false, ua: false, toUA: false, ureterCm: 0, prCm: 0, stripCm: 0, openCm: 0, found: {}, sp: { prL: 0, pvL: 0, pvM: 0 } } };
+    LB.zoom = 0;
   },
   show() {}, update: labUpdate, suction: labSuction, score: labScore, debrief: labDebrief, sutures: () => ({ st: [], from: null, on: false }), force() {}
 };
