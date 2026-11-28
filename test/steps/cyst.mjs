@@ -9,7 +9,7 @@ export default async function (page) {
   const settle = () => ev(() => { for (let i = 0; i < 10; i++) window.__sim.tick(0.033); });
   // ---- the chooser ----
   await page.click('#caseList .case:nth-child(4)'); await settle(); let c = await look();
-  ok('the fourth case is the cystectomy: its tray and steps, and an ovary with a cyst in place of the model\'s right ovary', c.cases === 6 && c.id === 'cyst' && c.tools === 4 && c.steps === 7 && c.cystOvary && !c.modelOvary && c.otherOvary && c.saved === 'cyst', c);
+  ok('the fourth case is the cystectomy: its tray and steps, and an ovary with a cyst in place of the model\'s right ovary', c.cases === 7 && c.id === 'cyst' && c.tools === 4 && c.steps === 7 && c.cystOvary && !c.modelOvary && c.otherOvary && c.saved === 'cyst', c);
   await page.click('#caseList .case:nth-child(1)'); await settle(); c = await look();
   ok('choosing the hysterectomy puts the model\'s ovary back', c.id === 'tlh' && !c.cystOvary && c.modelOvary && c.tools === 5, c);
   await page.click('#caseList .case:nth-child(4)');

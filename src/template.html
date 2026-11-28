@@ -180,7 +180,21 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 }
 @media (max-width:520px){.manip-r{width:auto;flex:1}.metrics{grid-template-columns:repeat(2,1fr)}.hand{flex:1 1 124px}.hud{font-size:10.5px}#hudProx{display:none}}
 @media (prefers-reduced-motion:reduce){.toast,.prog i{transition:none}}
+.optrow{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0 0 8px}.optrow span{min-width:118px;color:var(--muted);font-size:13px}
+.choices{display:flex;flex-direction:column;gap:6px;margin:6px 0}.choices:empty{display:none}
+.choices .mini{text-align:left;padding:7px 10px;font-size:13.5px}
+.choices .ok{border-color:var(--ok);color:var(--ok)}.choices .no{border-color:var(--crit);color:#ffb3b0}.choices .dim{opacity:.45}
+.checklist li.miss i{background:var(--warn);border-color:var(--warn)}
 </style>
+<!--@main--><style>
+/* the anatomy case: nothing is operated on, so the instrument tray, the energy record and the depth controls are put away */
+.anat .tools,.anat .mousepanel,.anat .handpanel,.anat .metrics,.anat #btnHands,.anat .hud.tl,.anat .hud.tr .hudline:nth-child(n+2){display:none}
+.anat .stepcard ol{list-style:none;padding-left:0}
+.anat .checklist li{cursor:pointer}.anat .checklist li:hover{color:var(--text)}
+.axmap{display:none}.anat .axmap{display:flex;gap:12px;align-items:center}
+.axmap canvas{flex:none;width:168px;height:112px;border-radius:8px;border:1px solid var(--line);background:#0a0f12}
+.axmap p{margin:0;max-width:25ch;color:var(--muted);font-size:12.5px}.axmap b{display:block;font:600 12px var(--body);letter-spacing:.09em;text-transform:uppercase;margin-bottom:4px}
+</style><!--@/main-->
 <!--@review--><style>
 /* the review site: its own name, a welcome sheet, and a signature */
 .brand h1{text-transform:none;letter-spacing:.02em}
@@ -239,7 +253,10 @@ input[type=range]{width:100%;accent-color:var(--accent)}
             <h2 id="caseTitle"></h2>
             <p class="sub" id="caseSub"></p>
             <div id="caseBrief"></div>
+            <div id="caseOpts"></div>
             <div class="cta"><button type="button" class="primary" id="btnBeginHands">Begin with hand control</button><button type="button" class="ghost" id="btnBegin">Begin with the mouse</button></div>
+            <div id="helpCase" hidden><h3>Controls</h3><ul class="keys" id="helpKeys"></ul></div>
+            <div id="helpStd">
             <p class="fine">Hand control uses this device's camera. The video is analysed in your browser and is never recorded or sent anywhere. A short calibration learns directions and your pinch from your own movements, for whichever cameras you use.</p>
             <h3>With your hands</h3>
             <ul class="keys">
@@ -266,6 +283,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
               <li><b>C</b><span>Cut blade</span></li>
               <li><b>+ and &minus;, arrows</b><span>Advance and aim the scope</span></li>
             </ul>
+            </div>
             <p class="fine">An educational rehearsal tool with simplified anatomy and tissue behaviour. It is not a validated assessment and does not replace supervised training.</p>
           </div>
 <!--@/main--><!--@review-->          <div class="sheet">
@@ -276,7 +294,10 @@ input[type=range]{width:100%;accent-color:var(--accent)}
             <p class="lead">A rehearsal of the operation in your browser, step by step, built for learners. Please play it through once and tell me what you would change before it goes to them.</p>
             <p class="sub" id="caseSub"></p>
             <div id="caseBrief"></div>
+            <div id="caseOpts"></div>
             <div class="cta"><button type="button" class="primary" id="btnBegin">Begin</button><span class="fine" style="margin:0">Allow about 20 minutes the first time. A mouse is recommended; a trackpad also works.</span></div>
+            <div id="helpCase" hidden><h3>Controls</h3><ul class="keys" id="helpKeys"></ul></div>
+            <div id="helpStd">
             <h3>Controls</h3>
             <ul class="keys">
               <li><b>Move</b><span>Swings the selected instrument about its port</span></li>
@@ -290,6 +311,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
               <li><b>+ and &minus;, arrows</b><span>Advance and aim the scope</span></li>
               <li><b>Auto depth</b><span>A switch in the panel on the right: the tip follows the tissue and the wheel moves the scope. It starts off.</span></li>
             </ul>
+            </div>
             <h3>What I would like to know</h3>
             <ol class="asks">__ASKS__</ol>
             <p>Send your thoughts to <a href="mailto:__EMAIL__?subject=laparoscape%20__LABELQ__%20feedback">__EMAIL__</a>. The step number at the top of the right-hand panel (Step 8 of 21) tells me where you were. At the end of the case, <b>Copy my results</b> puts these questions and your score, timings and event log on the clipboard to paste into the email.</p>
@@ -303,7 +325,10 @@ input[type=range]{width:100%;accent-color:var(--accent)}
             <p class="lead">A free dissection on tissue that tents, parts, tears and bleeds. There are no steps and no prompts: you choose where to open and how to dissect, and the debrief reports what you did.</p>
             <p class="sub" id="caseSub"></p>
             <div id="caseBrief"></div>
+            <div id="caseOpts"></div>
             <div class="cta"><button type="button" class="primary" id="btnBegin">Begin</button><span class="fine" style="margin:0">A mouse with a wheel is recommended. End the dissection with the button in the panel on the right.</span></div>
+            <div id="helpCase" hidden><ul class="keys" id="helpKeys"></ul></div>
+            <div id="helpStd">
             <h3>Instruments</h3>
             <ul class="keys" style="grid-template-columns:1fr">
               <li><b>Maryland dissector</b><span>A click closes the jaws and a second click opens them. Closed on tissue, it holds. Opened inside loose tissue, it spreads.</span></li>
@@ -320,6 +345,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
               <li><b>+ and &minus;, arrows</b><span>Advance and aim the scope. Here it goes in close.</span></li>
               <li><b>L</b><span>Anatomy labels. Every structure and space is named: grey while it is still covered, white once you have uncovered it.</span></li>
             </ul>
+            </div>
             <p class="fine">An early educational prototype with simplified anatomy and tissue behaviour. It has not been validated, it is not an assessment, and it is not for patient care. Nothing you do in it is recorded or sent anywhere.</p>
           </div>
 <!--@/lab-->        </div>
@@ -355,11 +381,11 @@ input[type=range]{width:100%;accent-color:var(--accent)}
         <video id="camVideo" class="cam-video" playsinline muted></video><video id="camVideo2" class="cam-video" playsinline muted></video>
 <!--@/main-->        <div id="debrief" class="modal" hidden>
           <div class="sheet">
-            <div class="db-top"><div><h2>Case debrief</h2><p class="sub" id="dbGrade" style="margin:0"></p></div><div class="db-score"><span id="dbScore">0</span><small> / 100</small></div></div>
-            <h3>Deductions</h3><ul id="dbNotes"></ul>
-            <h3>Efficiency</h3><div class="db-grid" id="dbA"></div>
-            <h3>Safety</h3><div class="db-grid" id="dbB"></div>
-            <h3>Technique</h3><div class="db-grid" id="dbC"></div>
+            <div class="db-top"><div><h2 id="dbTitle">Case debrief</h2><p class="sub" id="dbGrade" style="margin:0"></p></div><div class="db-score"><span id="dbScore">0</span><small> / 100</small></div></div>
+            <h3 id="dbH0">Deductions</h3><ul id="dbNotes"></ul>
+            <h3 id="dbH1">Efficiency</h3><div class="db-grid" id="dbA"></div>
+            <h3 id="dbH2">Safety</h3><div class="db-grid" id="dbB"></div>
+            <h3 id="dbH3">Technique</h3><div class="db-grid" id="dbC"></div>
             <h3>Event log</h3><ul class="log" id="dbLog"></ul>
             <div class="cta"><button type="button" class="primary" id="dbRestart">Run the case again</button><!--@review--><button type="button" class="ghost" id="dbCopy">Copy my results</button><!--@/review--><button type="button" class="ghost" id="dbClose">Look at the field</button><!--@review--><span id="dbCopied" role="status" aria-live="polite"></span><!--@/review--></div><!--@review-->
             <h3>Before you go</h3>
@@ -395,6 +421,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
           <div class="grp" id="insts"></div>
           <p class="tray-note" id="trayNote"></p>
         </div>
+<!--@main-->        <div class="axmap"><canvas id="axMap" width="168" height="112" role="img" aria-label="Map of the pelvis as seen from the port, with a frame round what the picture now shows"></canvas><p><b>Where the scope is looking.</b> The pelvis from the port: her right is on the right. The frame is what the picture shows now.</p></div><!--@/main-->
       </div>
     </section>
     <aside class="side" id="side">
@@ -405,8 +432,9 @@ input[type=range]{width:100%;accent-color:var(--accent)}
         <div class="chips" id="stepChips"></div>
         <button type="button" class="mini" id="btnExpo" hidden>Set this exposure for me</button>
         <div class="prog"><div class="track"><i id="stepBar"></i></div><span id="stepProg"></span></div>
+        <div class="choices" id="stepChoices"></div>
         <div class="btnrow"><button type="button" class="primary" id="stepBtn1" hidden></button><button type="button" class="primary" id="stepBtn2" hidden></button></div>
-        <p class="pearl"><b>Pearl</b><span id="stepPearl"></span></p>
+        <p class="pearl"><b id="pearlTag">Pearl</b><span id="stepPearl"></span></p>
       </section>
       <section class="block mousepanel">
         <h3>Depth and mouse</h3>

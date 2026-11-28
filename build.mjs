@@ -24,7 +24,7 @@ const REVIEW = {
     'What else would you change or add, and what options would you want, before sharing it with your learners?'
   ]
 };
-const LEFT_OUT = /^(06[b-f]-|08-hands\.js$)/; // the review site's page has no other cases and no hand control
+const LEFT_OUT = /^(06[b-g]-|08-hands\.js$)/; // the review site's page has no other cases and no hand control
 const read = f => fs.readFileSync(f, 'utf8'), list = d => fs.readdirSync(d).filter(f => f.endsWith('.js')).map(f => path.join(d, f));
 const join = files => files.sort((a, b) => path.basename(a).localeCompare(path.basename(b))).map(read).join('\n');
 const template = read(path.join(root, 'src/template.html'));

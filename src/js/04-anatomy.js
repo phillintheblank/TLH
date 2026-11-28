@@ -166,7 +166,7 @@ const AN = { side: {} };
     const up = Math.sin(th), deep = sstep(2, -8, z);
     c[0] = 1 - 0.1 * deep; c[1] = (1 + 0.1 * Math.max(0, up)) * (1 - 0.16 * deep); c[2] = (1 - 0.06 * Math.max(0, up)) * (1 - 0.16 * deep);
   }, { closedU: true, su: 6, sv: 5 });
-  AN.bowl = reg(new THREE.Mesh(g, MAT.perit), 'wall');
+  AN.bowl = reg(new THREE.Mesh(g, MAT.bowl), 'wall');
   scene.add(AN.bowl);
 })();
 
@@ -193,7 +193,7 @@ const URETER = {};
     const tu = new Tube(49, 8, MAT.cord, 1, 5);
     reg(tu.mesh, 'ureter', side); scene.add(tu.mesh);
     URETER[side] = { arr: uA, tube: tu, s, phase: s > 0 ? 0 : 2.6 };
-    AN['iliac' + side] = { aA, ta, aV };
+    AN['iliac' + side] = { aA, ta, aV, tv };
   }
 })();
 
@@ -566,6 +566,7 @@ function updateAnatomy(dt, time) {
   }
   // bladder
   BL.c.set(BL.c0.x, BL.c0.y + 0.4 * S.flap, BL.c0.z - 3.4 * S.flap - 2.3 * Math.max(0, S.pose.pitch - PITCH0) * (1 - 0.5 * S.flap));
+  if (CASE.bladder) CASE.bladder(BL.c); // a case may hold the bladder aside
   AN.bladder.position.copy(BL.c); AN.bladder.scale.z = (BL.r.z - 0.6 * S.flap) / BL.r.z;
   vufFrame(); // before the leaves, which hang from it
   for (const k of ['R', 'L']) {

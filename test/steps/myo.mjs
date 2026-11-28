@@ -7,7 +7,7 @@ export default async function (page) {
   // ---- the chooser on the start screen ----
   const look = () => ev(() => { const s = window.__sim; return { id: s.CASE.id, title: document.getElementById('caseTitle').textContent, tools: document.querySelectorAll('#insts .inst').length, steps: document.querySelectorAll('#checklist li').length, on: [...document.querySelectorAll('#caseList .case')].map(b => b.classList.contains('on')), model: s.UT.mesh.visible, myo: s.UT.myo.visible, flaps: s.FB.flap.every(f => f.mesh.visible), saved: localStorage.getItem('tlh.case.v1'), brand: document.getElementById('brandSub').textContent }; });
   let c = await look();
-  ok('starts on the hysterectomy with all six cases offered', c.id === 'tlh' && c.on.length === 6 && c.on[0] && !c.on.slice(1).some(Boolean) && c.tools === 5 && c.steps === 21 && c.model && !c.myo, c);
+  ok('starts on the hysterectomy with all seven cases offered', c.id === 'tlh' && c.on.length === 7 && c.on[0] && !c.on.slice(1).some(Boolean) && c.tools === 5 && c.steps === 21 && c.model && !c.myo, c);
   await page.click('#caseList .case:nth-child(2)'); c = await look();
   ok('choosing the myomectomy changes the brief, the tray, the list and the uterus', c.id === 'myo' && /myomectomy/i.test(c.title) && c.tools === 7 && c.steps === 9 && !c.model && c.myo && c.flaps && c.saved === 'myo' && /myomectomy/.test(c.brand), c);
   await page.click('#caseList .case:nth-child(1)'); c = await look();

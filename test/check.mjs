@@ -17,16 +17,22 @@ for (const [name, rel] of [['docs', '../docs/index.html'], ['review', '../dist/l
   if (miss.length) { console.log(name + ': no element with id ' + miss.join(', ')); bad = true; } else console.log(name + ': every id the script uses is in the page');
   if (/mediapipe|getUserMedia|hand_landmarker/.test(html)) { console.log(name + ': hand-control code is in the page'); bad = true; }
 }
-// The lab was added beside Build 1.0 without changing it. Until the simulator or the review site is next changed on
-// purpose, their pages must come out of the build exactly as they were: the simulator's as it is frozen in docs/v1.0/
-// (which differs only in where it looks for the hand-tracking files), the review site's by its checksum (Review 1.0,
-// as published at laparoscape.com). When either is changed on purpose, freeze it first and update this.
-const REVIEW_SHA = '9e4aeee5960dfeb2f601af89676efb3dcabc6891b67da8f36658f02c1e9c8002';
-const rd = rel => fs.readFileSync(new URL(rel, import.meta.url), 'utf8');
-const same = rd('../docs/index.html').replace("lib: './vendor/mediapipe/vision_bundle.mjs', wasm: './vendor/mediapipe/wasm', model: './models/hand_landmarker.task'", "lib: '../vendor/mediapipe/vision_bundle.mjs', wasm: '../vendor/mediapipe/wasm', model: '../models/hand_landmarker.task'") === rd('../docs/v1.0/index.html');
-console.log(same ? 'docs: the simulator\'s page is Build 1.0 as frozen' : 'docs: the simulator\'s page differs from Build 1.0 as frozen in docs/v1.0/'); if (!same) bad = true;
-const sha = createHash('sha256').update(fs.readFileSync(new URL('../dist/laparoscape/index.html', import.meta.url))).digest('hex');
-console.log(sha === REVIEW_SHA ? 'review: the page is Review 1.0 as published' : 'review: the page differs from Review 1.0 as published (' + sha + ')'); if (sha !== REVIEW_SHA) bad = true;
+// The simulator, the review site and the lab are built from shared files, and work on one must be seen to leave the
+// others alone. Until the simulator or the review site is next changed on purpose, their pages must come out of the
+// build exactly as they did at Build 1.1, by their checksums. When either is changed on purpose, freeze it first and
+// update this.
+// Build 1.1 changed shared files, so the review site's page as built is no longer Review 1.0 as published at
+// laparoscape.com (that page's checksum was 9e4aeee5960dfeb2f601af89676efb3dcabc6891b67da8f36658f02c1e9c8002). The
+// site itself has not been changed: it carries Review 1.0 until the next review round is published.
+const SIM_SHA = '68f457ce96d6da0380150931f0e3518b634d6ea85bbc5fe8b18330bf543c7aab', REVIEW_SHA = '56f80b0a7663c0590257186c666b978fefd6b078f23c4a14563f22f8f0b476de';
+const rd = rel => fs.readFileSync(new URL(rel, import.meta.url), 'utf8'), sum = rel => createHash('sha256').update(fs.readFileSync(new URL(rel, import.meta.url))).digest('hex');
+const sim = sum('../docs/index.html');
+console.log(sim === SIM_SHA ? 'docs: the simulator\'s page is Build 1.1 as published' : 'docs: the simulator\'s page differs from Build 1.1 as published (' + sim + ')'); if (sim !== SIM_SHA) bad = true;
+const sha = sum('../dist/laparoscape/index.html');
+console.log(sha === REVIEW_SHA ? 'review: the page is as it was built at Build 1.1' : 'review: the page differs from the one built at Build 1.1 (' + sha + ')'); if (sha !== REVIEW_SHA) bad = true;
+// Build 1.0 stays as it was frozen, under docs/v1.0/.
+const V10_SHA = '0df4e8902cccd2669f4ef33e3bdffca31ac9768d3ab127a2ab00d395858983a6', v10 = sum('../docs/v1.0/index.html');
+console.log(v10 === V10_SHA ? 'docs: Build 1.0 is kept as frozen in docs/v1.0/' : 'docs: docs/v1.0/ differs from Build 1.0 as frozen'); if (v10 !== V10_SHA) bad = true;
 // The lab's earlier builds stay as they were published, under docs/lab/: each page differs only in where it looks for the shared 3D library.
 const LAB01_SHA = '60cefca48cb615c55fb530ec1aaf7e277313bc69e5ea02576db1f22227b676d6';
 const l01 = createHash('sha256').update(rd('../docs/lab/v0.1/index.html').replace("'../../vendor/three.module.min.js'", "'../vendor/three.module.min.js'")).digest('hex');

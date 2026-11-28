@@ -8,7 +8,7 @@ function visibleAt(p, tol) {
   if (_pv.z > 1 || Math.abs(_pv.x) > 0.98 || Math.abs(_pv.y) > 0.98) return false;
   _ndc.set(_pv.x, _pv.y); RAY2.setFromCamera(_ndc, camera);
   const hits = RAY2.intersectObjects(PICKS, false), d = camera.position.distanceTo(p);
-  for (let i = 0; i < hits.length; i++) if (shown(hits[i].object)) return hits[i].distance > d - (tol || 0.5);
+  for (let i = 0; i < hits.length; i++) if (solidHit(hits[i])) return hits[i].distance > d - (tol || 0.5);
   return true;
 }
 const ENT_NAME = {
@@ -89,7 +89,7 @@ function drawOverlay(time) {
     }
   }
   if (S.labels) {
-    const all = CASE.labels ? LABELS.concat(CASE.labels) : LABELS;
+    const all = CASE.labelSet ? CASE.labelSet() : CASE.labels ? LABELS.concat(CASE.labels) : LABELS; // a case may name its own set of things
     if (time > labelT) { labelT = time + 0.3; labelVis = all.map(l => (!l[2] || l[2]()) && visibleAt(l[1](), 0.7)); }
     all.forEach((l, i) => {
       if (!labelVis[i]) return; project(l[1](), _ps);
@@ -100,7 +100,8 @@ function drawOverlay(time) {
       pill(c, dx < 0 ? lx - w : lx, ly - 10, l[0]);
     });
   }
-  if (S.guided) for (const h of HANDS) { const P = h.pick; if (h.ptr.on && P.hit && ENT_NAME[P.ent] && !h.firing && !h.grab) pill(c, h.ptr.x + 14, h.ptr.y + 12, ENT_NAME[P.ent](P.side)); }
+  if (S.guided) for (const h of HANDS) { const P = h.pick; if (!h.ptr.on || !P.hit || h.firing || h.grab) continue; const nm = CASE.hover ? CASE.hover(P) : ENT_NAME[P.ent] && ENT_NAME[P.ent](P.side); if (nm) pill(c, h.ptr.x + 14, h.ptr.y + 12, nm); }
+  if (CASE.overlay) CASE.overlay(c, time); // what the case itself marks on the picture
 }
 // Guided free depth: a ring round the step's target closes in as the driven tip nears it in space and turns green
 // on arrival, since a flat picture does not show how deep the target lies. Also says when tissue lies between this
@@ -207,11 +208,17 @@ function buildCaseUI() {
     const b = el('button', 'inst', '<kbd>' + (i + 1) + '</kbd><span>' + INST[t].short + '</span>');
     b.type = 'button'; b.id = 'inst-' + t; b.title = INST[t].name + '. ' + INST[t].use; b.addEventListener('click', () => setInst(ACTIVE, t)); tray.appendChild(b);
   });
-  const list = $('checklist'); list.innerHTML = '<h3>Procedure</h3>'; let phase = null, ol = null;
-  STEPS.forEach((s, i) => {
-    if (s.phase !== phase) { phase = s.phase; list.appendChild(el('h4', null, phase)); ol = el('ol'); list.appendChild(ol); }
-    const li = el('li', null, '<i></i><span>' + s.short + '</span>'); li.id = 'cl-' + i; ol.appendChild(li);
-  });
+  buildChecklist();
+  const opts = $('caseOpts'); opts.innerHTML = ''; // what the case lets the trainee choose before starting
+  for (const o of CASE.options || []) {
+    const r = el('div', 'optrow', '<span>' + o.label + '</span>');
+    for (const [v, t, tip] of o.opts) { const b = el('button', 'tog' + (o.get() === v ? ' on' : ''), t); b.type = 'button'; b.title = tip; b.setAttribute('aria-pressed', o.get() === v ? 'true' : 'false'); b.addEventListener('click', () => { o.set(v); setCase(CASE.id); }); r.appendChild(b); }
+    opts.appendChild(r);
+  }
+  $('helpStd').hidden = !!CASE.help; $('helpCase').hidden = !CASE.help; // a case that is not an operation explains its own controls
+  $('helpKeys').innerHTML = (CASE.help || []).map(h => '<li><b>' + h[0] + '</b><span>' + h[1] + '</span></li>').join('');
+  $('pearlTag').textContent = CASE.pearlTag || 'Pearl';
+  if (!SITE) { $('btnBeginHands').hidden = !!CASE.noHands; $('btnBegin').textContent = CASE.noHands ? 'Begin' : 'Begin with the mouse'; }
   const pick = $('caseList'); pick.innerHTML = ''; pick.hidden = Object.keys(CASES).length < 2; // nothing to choose between
   for (const id in CASES) {
     const b = el('button', 'case' + (CASES[id] === CASE ? ' on' : ''), '<b>' + CASES[id].name + '</b><span>' + CASES[id].blurb + '</span>');
@@ -222,13 +229,21 @@ function buildCaseUI() {
   $('brandSub').textContent = (SITE ? SITE.label : BUILD) + ' \u00b7 ' + CASE.name.toLowerCase() + CASE.tag;
   $('keyNums').textContent = '1 to ' + CASE.insts.length;
 }
+function buildChecklist() { // the list of the case's steps, under their phases; a case may let a step be clicked to go to it (jump)
+  const list = $('checklist'); list.innerHTML = '<h3>' + (CASE.listTitle || 'Procedure') + '</h3>'; let phase = null, ol = null;
+  STEPS.forEach((s, i) => {
+    if (s.phase !== phase) { phase = s.phase; list.appendChild(el('h4', null, phase)); ol = el('ol'); list.appendChild(ol); }
+    const li = el('li', null, '<i></i><span>' + s.short + '</span>'); li.id = 'cl-' + i; ol.appendChild(li);
+    if (CASE.jump) li.addEventListener('click', () => CASE.jump(i));
+  });
+}
 function renderStepCard() {
   const st = STEPS[S.step];
-  $('stepNo').textContent = 'Step ' + (S.step + 1) + ' of ' + STEPS.length; $('stepPhase').textContent = st.phase;
+  $('stepNo').textContent = ((CASE.stepWord == null ? 'Step' : CASE.stepWord) + ' ' + (S.step + 1) + ' of ' + STEPS.length).trim(); $('stepPhase').textContent = st.phase;
   $('stepTitle').textContent = st.title;
   $('stepText').innerHTML = st.text.map(t => '<li>' + t + '</li>').join('');
   $('stepPearl').textContent = st.pearl;
-  STEPS.forEach((s, i) => { const li = $('cl-' + i); li.className = i < S.step || S.ended ? 'done' : i === S.step ? 'cur' : ''; });
+  STEPS.forEach((s, i) => { const li = $('cl-' + i); li.className = (i < S.step || S.ended ? 'done' : i === S.step ? 'cur' : '') + (s.miss ? ' miss' : ''); });
   $('side').scrollTop = 0;
 }
 const toolName = t => INST[t].name.split(',')[0];
@@ -256,7 +271,9 @@ function renderUI(dt) {
   const show1 = S.running && st.button && !(st.button.hide && st.button.hide());
   b1.hidden = !show1; if (show1) b1.textContent = st.button.label;
   const show2 = S.running && st.button2 && st.button2.show(); b2.hidden = !show2; if (show2) b2.textContent = st.button2.label;
-  $('stepPearl').parentElement.hidden = false;
+  $('stepPearl').parentElement.hidden = !!(st.noPearl && st.noPearl());
+  const ch = st.choices ? st.choices().map((o, j) => '<button type="button" class="mini ' + o.cls + '" data-i="' + j + '">' + o.label + '</button>').join('') : ''; // a step may offer choices
+  if (renderUI.ch !== ch) $('stepChoices').innerHTML = renderUI.ch = ch;
   // tray
   for (const k of ['L', 'R']) { const e = $('hand' + k); e.classList.toggle('on', ACTIVE === k); e.querySelector('b').textContent = INST[HAND[k].exchTo || HAND[k].inst].short + (HAND[k].grab && HAND[k].grab.pull ? ' (holding)' : ''); }
   for (const t of CASE.insts) $('inst-' + t).classList.toggle('on', (h.exchTo || h.inst) === t);
@@ -297,10 +314,11 @@ function renderUI(dt) {
 function setPoseGoal(p) { if (S.manipOut) return; if (p.yaw != null) S.poseGoal.yaw = clamp(p.yaw, -LIM.yaw, LIM.yaw); if (p.pitch != null) S.poseGoal.pitch = clamp(p.pitch, LIM.pMin, LIM.pMax); if (p.push != null) S.poseGoal.push = clamp(p.push, 0, 1); uiDirty(); }
 function showDebrief() {
   const sc = CASE.score(), s = S.stats, row = (k, v, cls) => '<div class="row ' + (cls || '') + '"><span>' + k + '</span><b>' + v + '</b></div>', rows = CASE.debrief(row);
-  $('dbGrade').textContent = sc.grade; $('dbScore').textContent = sc.pts;
-  $('dbA').innerHTML = row('Operative time', fmtT(S.t)) + row('Estimated blood loss', Math.round(S.ebl + (CASE.ebl0 || 0)) + ' mL', S.ebl > CASE.eblWarn ? 'warn' : '') + row('Energy activations', s.activations) + row('Energy time', s.energyTime.toFixed(0) + ' s') + row('Instrument exchanges', s.exchanges);
+  $('dbTitle').textContent = CASE.dbTitle || 'Case debrief'; $('dbGrade').textContent = sc.grade; $('dbScore').textContent = sc.pts;
+  (CASE.dbHeads || ['Deductions', 'Efficiency', 'Safety', 'Technique']).forEach((t, i) => { $('dbH' + i).textContent = t; }); // a case that is not an operation has its own headings
+  $('dbA').innerHTML = CASE.dbA ? CASE.dbA(row) : row('Operative time', fmtT(S.t)) + row('Estimated blood loss', Math.round(S.ebl + (CASE.ebl0 || 0)) + ' mL', S.ebl > CASE.eblWarn ? 'warn' : '') + row('Energy activations', s.activations) + row('Energy time', s.energyTime.toFixed(0) + ' s') + row('Instrument exchanges', s.exchanges);
   $('dbB').innerHTML = rows[0]; $('dbC').innerHTML = rows[1];
-  $('dbNotes').innerHTML = sc.notes.length ? sc.notes.map(n => '<li>' + n + '</li>').join('') : '<li class="good">No deductions. Clean case.</li>';
+  $('dbNotes').innerHTML = sc.notes.length ? sc.notes.map(n => '<li>' + n + '</li>').join('') : '<li class="good">' + (sc.clean || 'No deductions. Clean case.') + '</li>';
   $('dbLog').innerHTML = S.events.length ? S.events.map(e => '<li class="' + e.type + '"><time>' + fmtT(e.t) + '</time>' + e.text + '</li>').join('') : '<li class="none">No events recorded</li>';
   $('debrief').hidden = false; uiDirty(true);
 }
@@ -308,8 +326,9 @@ function showDebrief() {
 // ---------- lifecycle ----------
 function resetSteps() { for (const s of STEPS) { if (s.reset) s.reset(); if (s.acc != null) s.acc = 0; if (s.cnt != null) s.cnt = 0; if (s.vis) { s.vis = []; s.visT = 0; } s.entered = false; } for (const k in _um) delete _um[k]; }
 function resetHands() {
-  for (const [k, sx, inst] of [['L', -1, 'grasper'], ['R', 1, 'bipolar']]) {
-    const h = HAND[k]; h.sub[h.inst].g.visible = false; h.inst = inst; h.sub[inst].g.visible = true;
+  const hs = CASE.hands || { L: 'grasper', R: 'bipolar' }; // a case may start with other instruments, or with one hand only
+  for (const [k, sx] of [['L', -1], ['R', 1]]) {
+    const h = HAND[k], inst = hs[k] || 'grasper'; h.sub[h.inst].g.visible = false; h.inst = inst; h.sub[inst].g.visible = true; h.grp.visible = !!hs[k];
     h.tip.set(3.4 * sx, -0.4, CASE.tipZ); h.goal.copy(h.tip); h.surf.copy(h.tip); h.grab = null; h.exch = 0; h.exchTo = null; h.firing = false; h.open = h.openGoal = 0.7; h.roll = 0;
     h.ptr.on = false; h.pick.hit = false; h.pick.ent = null; h.nearFlag = false; h.lastUp = -9;
     poseFromPoint(h, h.tip); h.touch = false; h.press = h.pressT = 0; h.cmd.dx = h.cmd.dy = h.cmd.dz = 0;
@@ -331,7 +350,7 @@ function resetWorld(running) {
 }
 // Take up a case: its steps, its uterus, its tray and its list.
 function setCase(id) {
-  CASE = CASES[id] || CASES.tlh; STEPS = CASE.steps; UTW.a = CASE.warp[0]; UTW.b = CASE.warp[1];
+  CASE = CASES[id] || CASES.tlh; STEPS = CASE.steps; UTW.a = CASE.warp[0]; UTW.b = CASE.warp[1]; $('app').className = CASE.cls || '';
   for (const k in CASES) if (CASES[k].show) CASES[k].show(CASES[k] === CASE);
   BAG.visible = false; POOL.scale.setScalar(CASE.poolWide || 1); POOL.rotation.x = -Math.PI / 2 + (CASE.poolTilt || POOL_TILT); PF.cols = null;
   try { localStorage.setItem(KEYS, CASE.id); } catch (_) {}

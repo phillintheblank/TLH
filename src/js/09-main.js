@@ -60,6 +60,7 @@ function wire() {
   $('btnExpo').addEventListener('click', () => { const r = STEPS[S.step].rec; if (r) setPoseGoal(r); });
   $('stepBtn1').addEventListener('click', () => { const b = STEPS[S.step].button; if (b && S.running) b.fn(); });
   $('stepBtn2').addEventListener('click', () => { const b = STEPS[S.step].button2; if (b && S.running) b.fn(); });
+  $('stepChoices').addEventListener('click', e => { const b = e.target.closest('button'), st = STEPS[S.step]; if (b && S.running && st.choose) st.choose(+b.dataset.i); });
   // a mouse click on a control must not leave it focused, or Space would re-fire it instead of switching hands
   document.addEventListener('mousedown', e => { if (e.target.closest && e.target.closest('button')) e.preventDefault(); });
   // manipulator pad
@@ -80,6 +81,7 @@ function wire() {
     const k = e.key.toLowerCase();
     if (['w', 'a', 's', 'd', 'q', 'e', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', '=', '+', '-', '_'].includes(k)) { held[k] = true; if (k.startsWith('arrow') && S.running) e.preventDefault(); return; }
     if (!S.running) return;
+    if (CASE.key && !(k === ' ' && e.target && /^(BUTTON|INPUT)$/.test(e.target.tagName)) && CASE.key(k)) { e.preventDefault(); return; } // a case may have keys of its own
     if (k >= '1' && k <= '9') { const t = CASE.insts[+k - 1]; if (t) setInst(ACTIVE, t); }
     else if (k === ' ' || k === 'x') { if (e.target && /^(BUTTON|INPUT)$/.test(e.target.tagName) && k === ' ') return; e.preventDefault(); setActive(ACTIVE === 'L' ? 'R' : 'L'); }
     else if (k === 'c') cutAction();
@@ -180,8 +182,9 @@ window.__sim = {
   proj(p) { project(new V3(p[0], p[1], p[2]), _ps); return { x: _ps.x, y: _ps.y }; },
   cuffAt(p) { const lp = new V3(p[0], p[1], p[2]).applyMatrix4(new THREE.Matrix4().copy(VG.M).invert()); return { x: lp.x, edge: lp.z < 0 ? 'ant' : 'post', depth: Math.max(0, -lp.y) }; }, // where on the vaginal cuff a point lies, as the bite check sees it
   render(dt) { renderFrame(dt == null ? 0.5 : dt, simTime, S.haze); drawOverlay(simTime); renderUI(1); htRenderUI(1, simTime); },
+  ui() { renderUI(1); }, // the panels alone, without drawing the picture: software rendering makes a frame cost a second or more
   setQuality, QUAL, GRADE, LIGHT, MAT, POST, head, scene, camera, renderer, THREE,
   DEPTH, DENT, freeDepth, freePick, poseFromPoint, primaryDown, primaryUp, releaseGrab, nearTarget, PICKS, shown, VUF, PF
 };
 if (SITE) window.__sim.resultsText = resultsText; // the review site has no other cases and no hand control to check
-else Object.assign(window.__sim, { fakeHand, htIngest, calibFinish, calBuild, camFillPickers, FB, fbSero, EC, CY, cySurf, cyBed, LS, lsAmpPt, lsCanal, SC, scPath, scWall, scFloor });
+else Object.assign(window.__sim, { fakeHand, htIngest, calibFinish, calBuild, camFillPickers, FB, fbSero, EC, CY, cySurf, cyBed, LS, lsAmpPt, lsCanal, SC, scPath, scWall, scFloor, AX, AXS, AXQ, AXV, axWhat, axName, peelAt, axSides, axV, axGo, axPt, axTh, axPickAt, PEEL });
