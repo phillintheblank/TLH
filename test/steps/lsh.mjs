@@ -9,7 +9,7 @@ export default async function (page) {
   const settle = () => ev(() => { for (let i = 0; i < 10; i++) window.__sim.tick(0.033); });
   // ---- the chooser ----
   await page.click('#caseList .case:nth-child(5)'); await settle(); let c = await look();
-  ok('the fifth of six cases is the supracervical hysterectomy: 19 steps, no needle driver, no cup', c.cases === 6 && c.id === 'lsh' && c.steps.length === 19 && c.tools.length === 4 && !c.tools.includes('Needle driver') && !c.cup && c.uterus && !c.stump && c.saved === 'lsh', { cases: c.cases, id: c.id, n: c.steps.length, tools: c.tools, cup: c.cup });
+  ok('the fifth of seven cases is the supracervical hysterectomy: 19 steps, no needle driver, no cup', c.cases === 7 && c.id === 'lsh' && c.steps.length === 19 && c.tools.length === 4 && !c.tools.includes('Needle driver') && !c.cup && c.uterus && !c.stump && c.saved === 'lsh', { cases: c.cases, id: c.id, n: c.steps.length, tools: c.tools, cup: c.cup });
   ok('it is the hysterectomy a side at a time as far as the uterine vessels, then amputates: no cardinal ligaments, colpotomy or cuff', c.steps.join() === 'survey,mesoR,uoR,roundR,postR,antR,bladR,uaR,mesoL,uoL,roundL,postL,antL,bladL,uaL,amp,bag,stump,final', c.steps);
   await page.click('#caseList .case:nth-child(1)'); await settle(); c = await look();
   ok('choosing the total hysterectomy puts the cup back', c.id === 'tlh' && c.cup && c.uterus && !c.corpus && !c.stump, c.cup);

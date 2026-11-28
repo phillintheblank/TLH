@@ -212,24 +212,53 @@ void dentApply( vec3 p, inout vec3 off, inout vec3 nrm ) {
 		}
 	}
 }`;
-// the shadow pass must see the same dent, or the pit would fall inside the shadow of its own undented surface
-function dentDepth() {
+// 4. Peritoneum can be opened as a window. A window is a set of capsules (two points and a radius, in the world): inside
+//    them the surface is not drawn, and its cut edge is pale. Only a material made with peel has this (the pelvic wall).
+//    A case fills PEEL: for each capsule, a = one end and the radius (negative: shut), b = the other end and how far
+//    short of its full size the window stands, in cm, while it is opening.
+const PEEL_N = 24, PEEL = { a: { value: [] }, b: { value: [] } };
+for (let i = 0; i < PEEL_N; i++) { PEEL.a.value.push(new THREE.Vector4(0, 0, 0, -1)); PEEL.b.value.push(new THREE.Vector4()); }
+const PEEL_PARS = `
+varying vec3 vWP; uniform vec4 peelA[ ${PEEL_N} ]; uniform vec4 peelB[ ${PEEL_N} ];
+float peelAt( vec3 p ) {
+	float v = 0.0;
+	for ( int i = 0; i < ${PEEL_N}; i ++ ) {
+		if ( peelA[ i ].w < 0.0 ) continue;
+		vec3 ab = peelB[ i ].xyz - peelA[ i ].xyz, ap = p - peelA[ i ].xyz;
+		float sd = length( ap - ab * clamp( dot( ap, ab ) / dot( ab, ab ), 0.0, 1.0 ) ) - peelA[ i ].w;
+		v = max( v, 0.5 - ( sd + peelB[ i ].w ) / 0.5 );
+	}
+	return clamp( v, 0.0, 1.0 );
+}`;
+function peelAt(p) { // the same in script: how open the peritoneum is at p (0..1)
+  let v = 0;
+  for (let i = 0; i < PEEL_N; i++) {
+    const a = PEEL.a.value[i], b = PEEL.b.value[i]; if (a.w < 0) continue;
+    const ex = b.x - a.x, ey = b.y - a.y, ez = b.z - a.z, px = p.x - a.x, py = p.y - a.y, pz = p.z - a.z, t = clamp((px * ex + py * ey + pz * ez) / (ex * ex + ey * ey + ez * ez), 0, 1);
+    v = Math.max(v, 0.5 - (Math.hypot(px - ex * t, py - ey * t, pz - ez * t) - a.w + b.w) / 0.5);
+  }
+  return clamp(v, 0, 1);
+}
+const PEEL_VERT = '\n\tvWP = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;';
+// the shadow pass must see the same dent, or the pit would fall inside the shadow of its own undented surface; and the same window
+function dentDepth(peel) {
   const d = new THREE.MeshDepthMaterial();
   d.onBeforeCompile = sh => {
     sh.uniforms.dent = DENT.pos; sh.uniforms.dentDir = DENT.dir;
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>' + DENT_PARS)
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvec3 dentOff = vec3( 0.0 ), dentN = vec3( 0.0 );\n\tdentApply( position, dentOff, dentN );\n\ttransformed += dentOff;');
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>' + DENT_PARS + (peel ? '\nvarying vec3 vWP;' : ''))
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvec3 dentOff = vec3( 0.0 ), dentN = vec3( 0.0 );\n\tdentApply( position, dentOff, dentN );\n\ttransformed += dentOff;' + (peel ? PEEL_VERT : ''));
+    if (peel) { sh.uniforms.peelA = PEEL.a; sh.uniforms.peelB = PEEL.b; sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>' + PEEL_PARS).replace('#include <map_fragment>', '#include <map_fragment>\n\tif ( peelAt( vWP ) > 0.5 ) discard;'); }
   };
-  d.customProgramCacheKey = () => 'dent-depth';
+  d.customProgramCacheKey = () => 'dent-depth' + (peel ? '-peel' : '');
   return d;
 }
-function tissueHook(tri) {
+function tissueHook(tri, peel) {
   return sh => {
     sh.uniforms.dent = DENT.pos; sh.uniforms.dentDir = DENT.dir;
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float dry;\nvarying float vDry;' + DENT_PARS + (tri ? '\nvarying vec3 vOP;\nvarying vec3 vON;' : ''))
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float dry;\nvarying float vDry;' + DENT_PARS + (tri ? '\nvarying vec3 vOP;\nvarying vec3 vON;' : '') + (peel ? '\nvarying vec3 vWP;' : ''))
       .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\n\tvec3 dentOff = vec3( 0.0 );\n\tdentApply( position, dentOff, objectNormal );')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\n\ttransformed += dentOff;\n\tvDry = dry;' + (tri ? '\n\tvOP = position; vON = normal;' : ''));
-    let f = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vDry;' + (tri ? TRI_PARS : ''))
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n\ttransformed += dentOff;\n\tvDry = dry;' + (tri ? '\n\tvOP = position; vON = normal;' : '') + (peel ? PEEL_VERT : ''));
+    let f = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vDry;' + (tri ? TRI_PARS : '') + (peel ? PEEL_PARS : ''))
       .replace('#include <lights_physical_fragment>', '#include <lights_physical_fragment>\n\tmaterial.roughness = mix( material.roughness, 0.93, vDry );\n\t#ifdef USE_CLEARCOAT\n\t\tmaterial.clearcoat *= 1.0 - vDry;\n\t#endif');
     if (tri) {
       sh.uniforms.triK = { value: new V3(tri.k, tri.n, tri.m) };
@@ -237,6 +266,7 @@ function tissueHook(tri) {
         .replace('#include <normal_fragment_maps>', '\tnormal = triNormal( normalMap, triK.y, normalScale, 0.0, vec2( 0.0 ), triON, triW );')
         .replace('#include <clearcoat_normal_fragment_maps>', '\tclearcoatNormal = triNormal( clearcoatNormalMap, triK.z, clearcoatNormalScale, triK.z * 0.21, clearcoatNormalScale * 1.7, triON, triW );');
     }
+    if (peel) { sh.uniforms.peelA = PEEL.a; sh.uniforms.peelB = PEEL.b; f = f.replace('#include <color_fragment>', '#include <color_fragment>\n\tfloat peelK = peelAt( vWP );\n\tdiffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.96, 0.84, 0.78 ), 0.6 * smoothstep( 0.15, 0.5, peelK ) );\n\tdiffuseColor.a = 1.0 - peelK;'); }
     sh.fragmentShader = f;
   };
 }
@@ -249,15 +279,17 @@ function wet(o) {
     clearcoat: 1, clearcoatRoughness: 0.17, clearcoatNormalMap: rep(NRM.micro, mr[0], mr[1]), clearcoatNormalScale: new V2(ms, ms),
     normalMap: rep(base, br[0], br[1]), normalScale: new V2(bs, bs)
   }, o);
-  delete p.mr; delete p.ms; delete p.relief; delete p.bs; delete p.br; delete p.tri;
+  delete p.mr; delete p.ms; delete p.relief; delete p.bs; delete p.br; delete p.tri; delete p.peel;
+  if (o.peel) { p.alphaTest = 0.5; p.alphaToCoverage = true; }
   const m = new THREE.MeshPhysicalMaterial(p);
-  m.onBeforeCompile = tissueHook(o.tri); m.customProgramCacheKey = () => (o.tri ? 'tissue-tri' : 'tissue');
-  m.userData.depth = dentDepth();
+  m.onBeforeCompile = tissueHook(o.tri, o.peel); m.customProgramCacheKey = () => (o.tri ? 'tissue-tri' : 'tissue') + (o.peel ? '-peel' : '');
+  m.userData.depth = dentDepth(o.peel);
   return m;
 }
 const MAT = {
   uterus: wet({ map: TEX.uterus, tri: { k: 0.2, n: 0.3, m: 1 }, bs: 0.6 }),
   perit: wet({ map: TEX.perit, tri: { k: 0.15, n: 0.3, m: 1 }, bs: 0.8 }),
+  bowl: wet({ map: TEX.perit, tri: { k: 0.15, n: 0.3, m: 1 }, bs: 0.8, peel: true }), // the pelvic wall's peritoneum, which a case may open as a window
   leaf: wet({ map: TEX.leaf, side: THREE.DoubleSide, mr: [4, 4], bs: 0.4, roughness: 0.5, transmission: 0.45, transmissionMap: TEX.leaf.userData.trans, thickness: 0, ior: 1.4 }),
   bladder: wet({ map: TEX.bladder, tri: { k: 0.16, n: 0.45, m: 1 }, relief: NRM.fat, bs: 0.5 }),
   bowel: wet({ map: TEX.bowel, mr: [8, 5], br: [2, 2], bs: 0.8 }),

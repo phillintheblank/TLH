@@ -1,8 +1,8 @@
 // ---------- the cases ----------
 // A case is its steps (each with its own targets, checks and teaching text), the instruments on its tray, how its
 // pelvis differs from the model's, and how it is scored. Everything else is shared.
-const BUILD = 'Build 1.0';
-const CASES = SITE ? { tlh: TLH } : { tlh: TLH, myo: MYO, ect: ECT, cyst: CYS, lsh: LSH, scp: SCP }; // the review site carries the hysterectomy alone: the other cases' files are not in its page
+const BUILD = 'Build 1.1';
+const CASES = SITE ? { tlh: TLH } : { tlh: TLH, myo: MYO, ect: ECT, cyst: CYS, lsh: LSH, scp: SCP, anat: ANAT }; // the review site carries the hysterectomy alone: the other cases' files are not in its page
 
 // ---------- step engine (every case) ----------
 let stepExpoChecked = false, stepPressed = false;

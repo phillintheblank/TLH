@@ -8,7 +8,7 @@ export default async function (page) {
   const settle = () => ev(() => { for (let i = 0; i < 10; i++) window.__sim.tick(0.033); });
   // ---- the chooser ----
   await page.click('#caseList .case:nth-child(3)'); await settle(); let c = await look();
-  ok('the third case is the ectopic: its tray and steps, a pelvis full of blood, clots, a swollen tube', c.cases === 6 && c.id === 'ect' && c.tools === 3 && c.steps === 7 && c.pool === 500 && c.clots === 4 && c.wide === 2 && c.swollen && c.model && c.saved === 'ect', c);
+  ok('the third case is the ectopic: its tray and steps, a pelvis full of blood, clots, a swollen tube', c.cases === 7 && c.id === 'ect' && c.tools === 3 && c.steps === 7 && c.pool === 500 && c.clots === 4 && c.wide === 2 && c.swollen && c.model && c.saved === 'ect', c);
   await page.click('#caseList .case:nth-child(1)'); await settle(); c = await look();
   ok('choosing the hysterectomy clears all of that away', c.id === 'tlh' && c.pool === 0 && c.clots === 0 && c.wide === 1 && !c.swollen && c.tools === 5, c);
   await page.click('#caseList .case:nth-child(3)');

@@ -1,7 +1,7 @@
 # MIGS Simulator
 
 A browser-based simulator of laparoscopic gynaecological surgery: a 3D scope view of the pelvis, a uterine
-manipulator, instruments driven by your hands or the mouse, complications and an end-of-case debrief. Six cases
+manipulator, instruments driven by your hands or the mouse, complications and an end-of-case debrief. Seven cases
 share the one pelvis, and you choose between them on the start screen:
 
 - **Total laparoscopic hysterectomy** with bilateral salpingectomy: 21 steps, five instruments.
@@ -14,6 +14,8 @@ share the one pelvis, and you choose between them on the start screen:
   steps, four instruments.
 - **Laparoscopic sacrocolpopexy**, which carries on from the supracervical hysterectomy in the same patient: a
   Y-shaped mesh from the vagina and cervix to the sacral promontory. 11 steps, five instruments.
+- **Pelvic anatomy**, which is not an operation: 47 structures of the normal pelvis, at the surface and under the
+  peritoneum of the sidewall, to be toured, found and named.
 
 Two things set it apart. **Hand control:** cameras track both hands, each hand drives its own instrument at the
 same time, a pinch works the instrument, and an open, flat hand acts as a clutch. With two cameras a hand also
@@ -45,10 +47,13 @@ on the case's tray), `W A S D` tilt and deviate the uterus, `Q E` push it cephal
 the vault on its probe), `+` and `-` advance and withdraw the scope, arrow keys aim it, `G` guidance, `L` anatomy labels,
 `M` sound. With the mouse, `Esc` frees the cursor for the panels and a click on the picture takes the instruments again.
 
+The anatomy case is played by pointing and has its own short list on its start sheet: click a structure, `Space` or
+`Enter` for the next, `B` back, `1` to `4` to choose a name, `P` to put the peritoneum back or open it again.
+
 ## Cases
 
 The start screen offers the cases; the choice is remembered, and `?case=tlh`, `?case=myo`, `?case=ect`, `?case=cyst`,
-`?case=lsh` or `?case=scp` in the address picks one.
+`?case=lsh`, `?case=scp` or `?case=anat` in the address picks one.
 Everything outside the case is shared: the pelvis, the instruments, hand and mouse control, depth, the picture,
 bleeding, the step engine and the debrief.
 
@@ -249,11 +254,47 @@ and keys.
   sacrocolpopexy is less common with a supracervical than with a total hysterectomy (Nassif et al. 2022, a
   meta-analysis, [doi:10.1097/AOG.0000000000004901](https://doi.org/10.1097/AOG.0000000000004901)).
 
+**Pelvic anatomy.** Not an operation: a normal pelvis to learn on sight, with nothing to seal, cut or score but
+recognition. It is this site's alone (the review site does not carry it).
+
+- **What it holds:** 47 structures in two tiers. *At the surface* (29, seen without opening anything): the fundus,
+  cornu, round ligament, tube, fimbriae, ovary, utero-ovarian and infundibulopelvic ligaments and mesosalpinx; the
+  bladder, the vesicouterine fold, the anterior leaf of the broad ligament, the median, medial and lateral umbilical
+  folds and the deep inguinal ring; the isthmus, the uterosacral ligaments, the posterior cul-de-sac, the rectosigmoid
+  and the posterior leaf; the promontory, the common iliac bifurcation, the ureter at the brim, the external iliac
+  artery, psoas, the genitofemoral nerve, the pelvic sidewall triangle and the ureter on the sidewall. *Under the
+  peritoneum* (18): the internal iliac artery and vein, the external iliac vein, the obliterated umbilical artery,
+  the uterine artery, the deep uterine vein and the obturator vessels; the obturator and hypogastric nerves; the
+  ureter under the uterine artery and in its tunnel; the lateral and medial pararectal spaces, the lateral and medial
+  paravesical spaces, the cardinal ligament, and the vesicovaginal and rectovaginal spaces. Each has a name, where it
+  is and how to know it, and why it matters to a surgeon. Both sides are there, and two things are shown again on
+  the left because they differ: the ureter at the brim (under the sigmoid, crossing the common iliac artery) and the
+  hypogastric nerve (nearer the ureter).
+- **Three ways to use it,** chosen on the start sheet with which tier to cover. *Tour* shows each structure in turn,
+  marked in the picture, with its text; pointing at anything names it, `L` names everything in the view and `G`
+  hides the marks. *Find it* names a structure and you click on it: a miss says what you clicked and gives a hint,
+  the same structure on the other side is a miss, and three misses or *Show me* give the answer. *Name it* marks a
+  structure and offers four names; it also asks eight questions about how structures lie to one another (what
+  crosses over the ureter, what divides the pararectal space, the order at the cornu). The two tests take the
+  structures in a fresh order each time, one view after another, and end with results: how many were right first
+  time, what to revise and how each of those went, a breakdown by region, and the slowest.
+- **The picture:** the scope and the uterus are set for each view (thirteen views, from a survey of the whole pelvis
+  to the base of the broad ligament) and can still be moved. For a view of the retroperitoneum the peritoneum of
+  that sidewall is opened as a window (`P` puts it back, to compare) and whatever is in the way is held aside: the
+  adnexa, the bladder, or the sigmoid on the left. The vesicovaginal and rectovaginal spaces are shown opened as the
+  hysterectomy and the sacrocolpopexy open them. One probe points; it comes in from the side the pointer is on and
+  is in the picture only while it points. Under the picture a small map shows the pelvis from the port with a frame
+  round what the picture shows now.
+- **Source** for the one measured figure in its text, found through PubMed: the hypogastric nerve lay a mean 8.6 mm
+  from the ureter on the left and 14.5 mm on the right, in five cadavers and ten laparoscopies (Seracchioli et al.
+  2019, [doi:10.1016/j.jmig.2019.01.010](https://doi.org/10.1016/j.jmig.2019.01.010)). The rest of the text is
+  standard surgical anatomy written for this build, and waits for a surgeon's correction.
+
 A case is its list of steps (each with its own targets, checks and teaching text), the instruments on its tray, how
 its pelvis differs from the model's (a fibroid in the wall, blood and clot, a swollen tube, an ovary with a cyst in
 it, a cervix left on its ligaments, a promontory and a mesh), and how it is scored. In the source that is one file
 per case (`06a-hysterectomy.js`, `06b-myomectomy.js`, `06c-ectopic.js`, `06d-cystectomy.js`,
-`06e-supracervical.js`, `06f-sacrocolpopexy.js`). A case may also build on another: the supracervical hysterectomy
+`06e-supracervical.js`, `06f-sacrocolpopexy.js`, `06g-anatomy.js`). A case may also build on another: the supracervical hysterectomy
 takes most of its steps from the total hysterectomy, and the sacrocolpopexy starts in the state the supracervical
 hysterectomy ends in.
 `06-steps.js` holds what the cases share, such as the steps that seal and divide a pedicle, and `06z-cases.js`
@@ -322,7 +363,8 @@ the jaws and energy needs contact. There are three ways to drive it.
 
 | Build | Added | Removed | Play it |
 |---|---|---|---|
-| 1.0 | The hysterectomy as it goes to colleagues for review. At the low-pressure check the right uterine pedicle oozes and the blood collects in the posterior cul-de-sac until the bleeding is controlled, to be aspirated from there: the pool's height is worked out from the volume and the shape of the pelvic floor, so a few millilitres show. The cuff's second layer is run back in single bites through both edges. In auto depth the bipolar's tip rides a bleeding point it is pointed at, and the energy stops when the bleeding does | The venous ooze at the cuff angle; in the hysterectomy, a pool that showed only past 20 mL and at the near edge of the picture, and a suction step with nothing to aspirate; the second layer's separate anterior and posterior bites; energy that carried on behind a bleeding point once it was controlled | https://phillintheblank.github.io/TLH/ |
+| 1.1 | A seventh case, pelvic anatomy, which is not an operation: 47 structures of the normal pelvis in two tiers (29 at the surface, 18 under the peritoneum of the sidewall) with where each is, how to know it and why it matters; a tour, and two tests of the learner (*Find it*, by a click on the structure, and *Name it*, from four names, with eight questions on how structures lie to one another) that end in results by region. The retroperitoneum of each sidewall, drawn under the peritoneum and shown by opening a window in it: the iliac vessels and their division, the internal iliac vessels, the obliterated umbilical artery, the obturator nerve and vessels, the hypogastric nerve, the ureter's whole pelvic course, the deep uterine vein, the cardinal ligament and the four spaces. The folds of the anterior wall, psoas, the genitofemoral nerve and the promontory. A map of where the scope is looking. A case can now have choices on the start sheet, its own controls list, its own words on the step card and the results, a single pointing instrument, and answers to choose from | Nothing from the six operations. In the code: the step card's and the debrief's fixed wording (*Step*, *Pearl*, *Deductions* and the rest are now each case's to set), the list of steps built inside the case chooser (now its own function), and the assumption that every case has two working instruments and a choice of depth | https://phillintheblank.github.io/TLH/ |
+| 1.0 | The hysterectomy as it goes to colleagues for review. At the low-pressure check the right uterine pedicle oozes and the blood collects in the posterior cul-de-sac until the bleeding is controlled, to be aspirated from there: the pool's height is worked out from the volume and the shape of the pelvic floor, so a few millilitres show. The cuff's second layer is run back in single bites through both edges. In auto depth the bipolar's tip rides a bleeding point it is pointed at, and the energy stops when the bleeding does | The venous ooze at the cuff angle; in the hysterectomy, a pool that showed only past 20 mL and at the near edge of the picture, and a suction step with nothing to aspirate; the second layer's separate anterior and posterior bites; energy that carried on behind a bleeding point once it was controlled | https://phillintheblank.github.io/TLH/v1.0/ |
 | 0.10 | The hysterectomy corrected by a surgeon after playing 0.9. At the ureter survey the ovary lifts anteriorly, not toward the midline, and shows more than twice as much of the ureter. Peritoneum is sealed by a short burn and then cut with the blade, like a pedicle, in fewer and larger bites: four to the posterior leaf, three to the anterior, two to each half of the fold. The uterine vessels take three burns side by side, the third between the first two, and are cut through the middle one. The dissected bladder flap is one sheet with the anterior leaf on each side. The cuff is closed in two layers, the same suture run back left to right over the closed cuff. The needle driver holds a half-circle needle two thirds back from its point, angled 45 degrees forward, and the needle's point is its working tip | Peritoneum that cut itself once the bipolar was held on it; the single wide burn on the uterine vessels; the free side edges of the bladder flap; the single-layer cuff; the small needle held square across open jaws; the ovary's lift toward the uterus | https://phillintheblank.github.io/TLH/v0.10/ |
 | 0.9 | The total hysterectomy reworked to a surgeon's order and instruments. One side is finished before the other is started: mesosalpinx, utero-ovarian ligament, the incision carried forward to the round ligament, posterior leaf, anterior leaf and its half of the vesicouterine fold, bladder, uterine vessels, cardinal ligament. The advanced bipolar does all of it, peritoneum included, in bites; the hook is for the colpotomy only. The freed tube hangs behind the uterus. At the survey the ovary lifts off the sidewall while an instrument is beside the ureter. The bladder is taken down by holding the bipolar or the grasper at its edge, and the instrument sweeps by itself. The bipolar's jaws are redrawn with a blunt, rounded tip and coated edges. The supracervical hysterectomy follows the same order, and the sacrocolpopexy's anterior dissection is held, not swept by hand. A test of the new order (`tlh.mjs`) | The hook as the instrument for the leaves of the broad ligament and the fold; the vesicouterine fold and the bladder flap as steps of their own between the two sides; the suction tip as the bladder's instrument, with its press for each sweep; the freed tube swinging forward over the uterus; the bipolar's pointed jaws; jaws that opened through each other, on every jawed instrument; the exposure penalty at the bladder (a hold now waits for the exposure instead); four unused helpers; nine source files of the original mouse simulator that the build had not read since 0.1 (they are in the repository's history) | https://phillintheblank.github.io/TLH/v0.9/ |
 | 0.8 | Two cases for one patient. A fifth, laparoscopic supracervical hysterectomy: the hysterectomy as far as the uterine vessels, then amputation at the internal os, the specimen out in a bag, and a cervix left on its cardinal and uterosacral ligaments. A sixth, laparoscopic sacrocolpopexy, which starts where the fifth ends: a vaginal probe, a sigmoid to sweep off the promontory, the promontory with the left common iliac vein and the middle sacral vessels, a peritoneal incision that opens and is closed again, rectovaginal and vesicovaginal dissection, a Y-shaped mesh sutured to the vagina, the cervix and the anterior longitudinal ligament, and tension judged from where the vault is held | The bladder flap's fixed six sweeps (the step is now a builder that each case sets); the rectosigmoid as a fixed shape (a case may now lay it elsewhere); the rule that the cardinal ligament's inner half always leaves with the specimen; the cuff's fall-back applied to whatever is left on the vagina (a cervix on its ligaments rests near neutral); the limit of nine suture threads | https://phillintheblank.github.io/TLH/v0.8/ |
@@ -339,7 +381,8 @@ the jaws and energy needs contact. There are three ways to drive it.
 Each build's source is kept on a `checkpoint/…` branch (`checkpoint/v0.1-hands`, `checkpoint/v0.2-realism`,
 `checkpoint/v0.3a-depth`, `checkpoint/v0.3b-handdepth`, `checkpoint/v0.3c-assist`, `checkpoint/v0.4-twocam`,
 `checkpoint/v0.5-myomectomy`, `checkpoint/v0.6-ectopic`, `checkpoint/v0.7-cystectomy`,
-`checkpoint/v0.8-sacrocolpopexy`, `checkpoint/v0.9-tlh-order`, `checkpoint/v0.10-tlh-corrections`, `checkpoint/v1.0-tlh-review`), and the built page of each
+`checkpoint/v0.8-sacrocolpopexy`, `checkpoint/v0.9-tlh-order`, `checkpoint/v0.10-tlh-corrections`, `checkpoint/v1.0-tlh-review`,
+`checkpoint/v1.1-pelvic-anatomy`), and the built page of each
 earlier build stays in `docs/` under its version number.
 
 Each build removes what it replaces. Size is tracked, with no target. Builds 0.5 to 0.7 each grew by a whole case
@@ -347,7 +390,11 @@ and its tests (the salpingectomy is 251 lines and the cystectomy 321, against 49
 reuses the steps that seal and divide a pedicle, and the second draws its ovary from two simple shapes). Build 0.8
 added two cases: the supracervical hysterectomy is 152 lines, because most of its steps are the total
 hysterectomy's, and the sacrocolpopexy 402. Build 0.9 added no case: it reworked the hysterectomy's steps, which
-left the source 47 lines longer, and added a test of the new order. Build 0.10 corrected it, with 119 more lines of source and 37 more of tests, and build 1.0 added 54 and 27:
+left the source 47 lines longer, and added a test of the new order. Build 0.10 corrected it, with 119 more lines of source and 37 more of tests, and build 1.0 added 54 and 27.
+Build 1.1 added the anatomy case, the largest yet at 687 lines: it draws a retroperitoneum the operations do not
+have, and carries the text for 47 structures. The rest of its growth is the window in the peritoneum and what the
+interface needed for a case that is not an operation. (The review site, added between the two builds, is 111 of
+the source lines and 55 of the test lines.)
 
 | Build | Source (`src/`) | Tests (`test/`) | Built page |
 |---|---|---|---|
@@ -360,6 +407,7 @@ left the source 47 lines longer, and added a test of the new order. Build 0.10 c
 | 0.9 | 5,711 lines | 1,787 lines | 453 KB |
 | 0.10 | 5,830 lines | 1,824 lines | 466 KB |
 | 1.0 | 5,884 lines | 1,851 lines | 471 KB |
+| 1.1 | 6,762 lines | 2,121 lines | 557 KB |
 
 ## The review site
 
@@ -370,8 +418,8 @@ published.
 
 | | This site | The review site |
 |---|---|---|
-| Name on the page | MIGS Simulator, Build 1.0 | laparoscape, Review 1.0 |
-| Cases | All six | The total hysterectomy |
+| Name on the page | MIGS Simulator, Build 1.1 | laparoscape, Review 1.0 |
+| Cases | All seven | The total hysterectomy |
 | Control | Mouse or hand control | Mouse or trackpad. No hand control: no camera code, runtime or model in the site |
 | Start screen | Case list, the patient, both sets of controls | A welcome sheet: what it is, the patient, the controls, seven questions for the reviewer, where to send feedback |
 | Depth to start | Manual (the last setting is remembered) | Manual, with Auto depth offered |
@@ -452,6 +500,25 @@ two files, the rest its welcome sheet in the template) and a test of 44 lines.
   for the floor and the rectum, not for the uterus, the cup or the cuff, so with a great deal of blood the sheet can
   be seen inside an open vagina. The low-pressure ooze is always the same pedicle at the same rate. A second-layer
   stitch is one click wherever on the closed cuff it lands: the needle is not seen to pass through both walls.
+- The anatomy case is new and has been played by script only. Its list of structures was agreed with a surgeon; its
+  text (where each structure is, how to know it, why it matters), the eight questions and their wrong answers, the
+  views, and where each mark sits have not been reviewed by one.
+- The anatomy case shows one normal pelvis. There are no variants (no accessory obturator vessel over the pubic bone,
+  no duplex ureter, no high bifurcation), no fat, and no disease. Both sides are drawn from one description, with two
+  differences on the left: the ureter crosses the common iliac artery a little above the bifurcation, and the
+  hypogastric nerve lies nearer the ureter.
+- Its retroperitoneum is shown, not dissected: a window opens in the peritoneum of the sidewall and what is under it
+  is already clean. The floor under the window is a shallow bed with three hollows, so the spaces are flatter than
+  they are in a patient, and each is drawn as an outlined region on that floor between the cords that bound it. The
+  cardinal ligament is a web between the uterine artery and the deep uterine vein. The pelvic splanchnic nerves, the
+  inferior hypogastric plexus, the sacral roots, the middle rectal vessels and the nodes are not drawn.
+- At the surface the external iliac vein is mostly under the roof of the broad ligament in this model, so it is
+  taught with the retroperitoneum. The deep inguinal ring is marked where the round ligament leaves the abdomen but
+  has no dimple of its own. The medial paravesical space is seen at a slant from the umbilicus, past the round
+  ligament. In the views of an opened sidewall the adnexa, the bladder or the sigmoid are held aside without an
+  instrument being drawn to hold them.
+- The anatomy case is played by pointing: there is no hand control in it, no depth to judge, and it has not been
+  tried on a touch screen. Its results count what was right first time; they are not a validated test of anatomy.
 - The supracervical hysterectomy and the sacrocolpopexy have also been played by script only, and their clinical
   content (the patient, the order of steps, the teaching text, where the sutures go, what counts as tension, what is
   scored) has not been reviewed by a surgeon. Nor has the cystectomy's.
@@ -534,15 +601,19 @@ two files, the rest its welcome sheet in the template) and a test of 44 lines.
     from it (done)
 11. The total hysterectomy reworked to a surgeon's order: a side at a time, the bipolar throughout, the bladder
     taken down by holding an instrument at its edge, corrected after he played it, and made ready for colleagues to
-    review as 1.0 (this build)
-12. Scope control with both hands: two open palms moved together pan, tilt and advance the view
-13. Contact along the instrument shaft, lifting tissue with the side of an instrument, and instruments that cannot
+    review as 1.0 (done)
+12. Pelvic anatomy as a case of its own: the surface and the retroperitoneum of the sidewall, to tour, find and
+    name (this build). Still to come in it: the third tier of the structure list (the nerves and deeper spaces of
+    nerve-sparing and oncologic dissection), anatomic variants, and opening the retroperitoneum by dissection
+    instead of a window
+13. Scope control with both hands: two open palms moved together pan, tilt and advance the view
+14. Contact along the instrument shaft, lifting tissue with the side of an instrument, and instruments that cannot
     pass through each other
-14. Side-by-side stereo for XR glasses and 3D displays
-15. Wrist orientation driving a wristed instrument tip
-16. Robotic instrument set and multiport robotic case flow
-17. Voice commands for the uterine manipulator and instrument exchanges
-18. Wristed suturing
+15. Side-by-side stereo for XR glasses and 3D displays
+16. Wrist orientation driving a wristed instrument tip
+17. Robotic instrument set and multiport robotic case flow
+18. Voice commands for the uterine manipulator and instrument exchanges
+19. Wristed suturing
 
 If two webcams do not give steady enough depth with real hands, the fallback is a sensor made for hand tracking.
 
@@ -558,7 +629,7 @@ Serve `docs/` with any static web server and open it on `localhost`. Source is i
 numbered files in `src/js/`, concatenated in order; each case is one `06…` file, beside `06-steps.js` for what they
 share). `docs/` is what GitHub Pages serves.
 
-The review site's page is built from the same files, less the other five cases (`06b` to `06f`) and hand control
+The review site's page is built from the same files, less the other six cases (`06b` to `06g`) and hand control
 (`08-hands.js`), plus the two files in `src/review/`. In `template.html`, what is between `<!--@main-->` markers is
 only in this site's page and what is between `<!--@review-->` markers only in the review site's.
 `test/check.mjs` checks both pages' scripts, and that the review page has every element its script looks up and no
@@ -616,7 +687,7 @@ Tests drive a headless Chrome through Playwright (`test/shot.mjs <screenshot> <s
   a rupture leaves to clear, the plane that opens only against counter-traction, the cyst coming out whole and
   being bagged, the bed's bleeding points, bipolar on the operated ovary counted and on the other ovary an injury,
   the score, the debrief, and each case played to its debrief after another.
-- `test/steps/lsh.mjs` checks the supracervical hysterectomy: its place among the six cases, the steps it shares
+- `test/steps/lsh.mjs` checks the supracervical hysterectomy: its place among the cases, the steps it shares
   and the ones it drops, the shorter bladder mobilization, the amputation (the groove, the back of the cervix out of
   reach from in front, the body coming off and the cervix staying on its ligaments), the bag, the stump's bleeding
   vessel and its canal, the low-pressure check, the debrief, energy on the bladder, and the uterus and cup put back
@@ -627,6 +698,15 @@ Tests drive a headless Chrome through Playwright (`test/shot.mjs <screenshot> <s
   arriving, bites that fix nothing, a needle into the rectum or the bladder, each leaf fixed, tension, a second
   suture on top of the first, a bite at the medial edge of the mesh, a bite at the disc, the peritoneal closure and
   what it covers, the low-pressure check, the debrief, and the pelvis put back on leaving the case.
+- `test/steps/anat.mjs` checks the anatomy case's table of 47 structures, its start sheet, and the tour on both
+  sides: for every structure, in the tour's view and again in the view it is asked for in, that its mark is in the
+  picture, that the scope sees it there, that a click on the mark falls on the structure itself, and that it stands
+  clear of the other marks in the view. Then the window in the peritoneum (and that what lies under it cannot be
+  pointed at when it is shut), the umbilical artery hidden until the sidewall is opened, names under the pointer,
+  the probe changing sides, the map, getting about the tour, and that leaving the case leaves nothing of it behind.
+- `test/steps/anatquiz.mjs` plays *Find it* through with real clicks (a miss, the wrong side, three misses, *Show
+  me*, and every other structure found first time) and *Name it* through by click and by number key (every item
+  with four different names and one right one, a wrong name, the eight questions), and checks the results of each.
 - `test/steps/realcam.mjs` loads the real camera and model pipeline against Chrome's fake camera (`LIVE=1 QUERY=q=low`).
 - `test/steps/review.mjs` checks the review site's page (run it, and any hysterectomy test, with
   `ROOT=dist/laparoscape`): its name, the one case, no hand control, manual depth to start, the welcome sheet's

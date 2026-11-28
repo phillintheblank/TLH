@@ -13,7 +13,7 @@ export default async function (page) {
   });
   // ---- the chooser, and the pelvis this case starts in ----
   await page.click('#caseList .case:nth-child(6)'); await settle(); let c = await look();
-  ok('the sixth case is the sacrocolpopexy: 11 steps, five instruments', c.cases === 6 && c.id === 'scp' && c.steps === 11 && c.tools === 5 && c.saved === 'scp', { id: c.id, steps: c.steps, tools: c.tools });
+  ok('the sixth of seven cases is the sacrocolpopexy: 11 steps, five instruments', c.cases === 7 && c.id === 'scp' && c.steps === 11 && c.tools === 5 && c.saved === 'scp', { id: c.id, steps: c.steps, tools: c.tools });
   ok('it starts where the supracervical hysterectomy ends: the body of the uterus and tubes out, pedicles divided, the cervix on its cardinal ligaments, the bladder half down', c.specimen === 'out' && c.stump && !c.uterus && !c.tube && c.roundCut && c.uaCut && !c.cardCut && c.cardM && c.flap === 0.5, { specimen: c.specimen, stump: c.stump, cardCut: c.cardCut, flap: c.flap });
   ok('the promontory and its vessels are there, the sigmoid lies over it, and there is no mesh yet', c.prom && c.vein && !c.mesh && c.sigX > -1.5, { sigX: c.sigX, mesh: c.mesh });
   ok('a probe in the vagina takes the manipulator\'s place', c.note === 'Vaginal probe' && /vault/.test(c.push), { note: c.note, push: c.push });

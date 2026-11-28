@@ -155,9 +155,10 @@ const tipZone = went => Math.min(4, DEPTH.BACK + 3 * went); // BACK, stretched b
 const SOLID = { wall: 1, iliac: 1, uterus: 1, bladder: 1, rectum: 1 };
 function shaftBlocked(hits, upTo) { for (let i = 0; i < hits.length && hits[i].distance < upTo; i++) if (SOLID[hits[i].object.userData.ent] && shown(hits[i].object)) return true; return false; }
 const DKEY = 'tlh.depth.v1';
-const freeDepth = () => (CTRL.mode === 'hands' ? !!HT.cal && HT.cal.n === 2 : !DEPTH.auto);
+const freeDepth = () => !CASE.pointer && (CTRL.mode === 'hands' ? !!HT.cal && HT.cal.n === 2 : !DEPTH.auto); // a case that only points at things (pointer) always has auto depth
 function poseFromPoint(h, p) { h.dir.copy(p).sub(h.port); h.ins = h.dir.length(); h.dir.normalize(); }
 function shown(o) { for (; o; o = o.parent) if (!o.visible) return false; return true; }
+const solidHit = h => shown(h.object) && !(h.object.material === MAT.bowl && peelAt(h.point) > 0.5); // a hit on something drawn: not on a hidden mesh, nor on peritoneum where a window has been opened in it
 function routeMouse() { // mouse mode: the mouse drives the active hand; the other hand holds
   if (CTRL.mode !== 'mouse') return;
   const free = freeDepth();
@@ -179,7 +180,7 @@ function fillPick(h, hit) {
   if (ud.tube) P.u = ud.tube.uAt(hit.face.a);
   else if (ud.strip) { const st = ud.strip.stAt(hit.face.a); if (ud.strip.map) { const m = ud.strip.map(st[0], st[1]); P.u = m[0]; P.v = m[1]; } else { P.u = st[0]; P.v = st[1]; } }
 }
-function firstShown(hits, from = 0) { for (let i = 0; i < hits.length; i++) if (hits[i].distance >= from && shown(hits[i].object)) return hits[i]; return null; }
+function firstShown(hits, from = 0) { for (let i = 0; i < hits.length; i++) if (hits[i].distance >= from && solidHit(hits[i])) return hits[i]; return null; }
 function doPick(h) { // auto depth: what lies under this hand's pointer
   let hit = null;
   if (h.ptr.on) { RAY.setFromCamera(h.ptr.ndc, camera); h.ray.copy(RAY.ray); hit = firstShown(RAY.intersectObjects(PICKS, false)); }
